@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
@@ -47,11 +48,23 @@ type fixtureHarness struct {
 	service  *Service
 }
 
-func newHarness() *fixtureHarness {
-	repo := &memoryRepo{leagues: map[string]*league.League{}, battles: map[string]string{}, origins: map[string]BattleProvenance{}}
-	battles := &fakeBattles{repo: repo}
+func newHarness() *fixtureHarness { return newHarnessWith(Options{}) }
+
+// newHarnessWith builds a harness whose battles record their CLI sides through the
+// options' profiles.
+func newHarnessWith(options Options) *fixtureHarness {
+	repo := &memoryRepo{leagues: map[string]*league.League{}, battles: map[string]string{}, origins: map[string]BattleProvenance{}, cliSides: map[string]int{}, cliSlots: 4}
+	battles := &fakeBattles{repo: repo, profiles: options.Profiles}
 	factions := &fakeFactions{}
-	return &fixtureHarness{repo: repo, battles: battles, factions: factions, service: New(repo, battles, factions)}
+	return &fixtureHarness{repo: repo, battles: battles, factions: factions, service: New(repo, battles, factions, options)}
+}
+
+// fakeProfiles maps profile IDs to their runtime.
+type fakeProfiles map[string]string
+
+func (p fakeProfiles) Get(id string) (ai.ModelProfile, bool) {
+	runtime, ok := p[id]
+	return ai.ModelProfile{ID: id, Runtime: runtime}, ok
 }
 
 func TestCreateLeagueValidatesEveryEntrantOnEveryMap(t *testing.T) {
@@ -231,7 +244,9 @@ type memoryRepo struct {
 	leagues   map[string]*league.League
 	battles   map[string]string
 	origins   map[string]BattleProvenance
-	busy      bool
+	cliSides  map[string]int
+	cliSlots  int
+	capErr    error
 	lockHeld  bool
 	createErr error
 	storeErr  error
@@ -316,10 +331,28 @@ func (r *memoryRepo) RunningLeagues(context.Context) ([]league.League, error) {
 	running := []league.League{}
 	for _, l := range r.leagues {
 		if l.Status == league.StatusRunning {
-			running = append(running, *copyLeague(l))
+			running = append(running, *r.withBattles(copyLeague(l)))
 		}
 	}
 	return running, nil
+}
+
+// withBattles loads each fixture's battle status, as the PostgreSQL join does, unless a
+// test set the outcome itself.
+func (r *memoryRepo) withBattles(l *league.League) *league.League {
+	for i, f := range l.Fixtures {
+		if status, ok := r.battles[deref(f.BattleID)]; ok && f.Battle == nil {
+			l.Fixtures[i].Battle = &league.BattleOutcome{Status: status}
+		}
+	}
+	return l
+}
+
+func deref(id *string) string {
+	if id == nil {
+		return ""
+	}
+	return *id
 }
 
 func (r *memoryRepo) SaveFixture(_ context.Context, f league.Fixture) error {
@@ -344,15 +377,19 @@ func (r *memoryRepo) CompleteLeague(_ context.Context, id string, champion int) 
 	return nil
 }
 
-// EngineBusy is set explicitly, or by any queued or running battle.
-func (r *memoryRepo) EngineBusy(context.Context) (bool, error) {
-	for _, status := range r.battles {
+// Capacity counts queued and running battles and the CLI sides recorded for them.
+func (r *memoryRepo) Capacity(context.Context) (Capacity, error) {
+	capacity := Capacity{CLISlots: r.cliSlots}
+	for id, status := range r.battles {
 		if status == "queued" || status == "running" {
-			return true, nil
+			capacity.Unfinished++
+			capacity.CLISides += r.cliSides[id]
 		}
 	}
-	return r.busy, nil
+	return capacity, r.capErr
 }
+
+func (r *memoryRepo) CLISlots(context.Context) (int, error) { return r.cliSlots, r.capErr }
 
 func (r *memoryRepo) Battle(_ context.Context, id string) (*BattleProvenance, error) {
 	if _, ok := r.battles[id]; !ok {
@@ -377,6 +414,7 @@ func (r *memoryRepo) StrandedBattles(context.Context) ([]StrandedBattle, error) 
 
 type fakeBattles struct {
 	repo        *memoryRepo
+	profiles    Profiles
 	validateErr error
 	createErr   error
 	validated   []battleservice.CreateBattleInput
@@ -399,9 +437,21 @@ func (b *fakeBattles) CreateBattle(ctx context.Context, input battleservice.Crea
 	actor, _ := authn.ActorFromContext(ctx)
 	b.created, b.creators = append(b.created, input), append(b.creators, actor)
 	b.repo.battles[input.ID] = "queued"
+	for _, side := range input.Participants {
+		if profile, ok := b.lookup(side.Controller.ProfileID); ok && side.Controller.Type == ai.ControllerModel && profile.Runtime == "cli" {
+			b.repo.cliSides[input.ID]++
+		}
+	}
 	b.repo.origins[input.ID] = BattleProvenance{OwnerID: actor.ID, DecisionBudgetExempt: input.DecisionBudgetExempt, ScenarioID: input.ScenarioID,
 		FactionIDs: []string{input.Participants[0].FactionID, input.Participants[1].FactionID}}
 	return &battleservice.BattleRun{ID: input.ID, Status: "queued"}, nil
+}
+
+func (b *fakeBattles) lookup(id string) (ai.ModelProfile, bool) {
+	if b.profiles == nil {
+		return ai.ModelProfile{}, false
+	}
+	return b.profiles.Get(id)
 }
 
 // StopBattle stops the battle unless an error is configured for it.

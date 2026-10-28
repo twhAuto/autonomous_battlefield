@@ -100,7 +100,11 @@ func (h *Handler) ListLeagues(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, item)
 	}
-	_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"leagues": items})
+	scheduling, err := h.leagues.Scheduling(r.Context())
+	if writeError(w, r, err, "league_list_failed", "could not list leagues") {
+		return
+	}
+	_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"leagues": items, "scheduling": schedulingJSON{BattleSlots: scheduling.BattleSlots, CLISlots: scheduling.CLISlots}})
 }
 
 func (h *Handler) GetLeague(w http.ResponseWriter, r *http.Request) {
@@ -167,6 +171,11 @@ func groupIndex(letter string) (int, bool) {
 		return 0, false
 	}
 	return int(letter[0] - 'A'), true
+}
+
+type schedulingJSON struct {
+	BattleSlots int `json:"battleSlots"`
+	CLISlots    int `json:"cliSlots"`
 }
 
 type summaryJSON struct {

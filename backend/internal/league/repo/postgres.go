@@ -314,12 +314,30 @@ func (s schedulerStore) CompleteLeague(ctx context.Context, leagueID string, cha
 	return nil
 }
 
-func (s schedulerStore) EngineBusy(ctx context.Context) (bool, error) {
-	var busy bool
-	if err := s.tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM battle_runs WHERE status IN ('queued', 'running'))`).Scan(&busy); err != nil {
-		return false, fmt.Errorf("check engine queue: %w", err)
+// capacitySQL counts unfinished battles of any owner and their CLI model sides, whose
+// runtime the battle's scenario snapshot records, beside the CLI slot limit.
+const capacitySQL = `
+	SELECT count(DISTINCT b.id),
+	       count(*) FILTER (WHERE side->'controller'->>'type' = 'model' AND side->'controller'->>'runtime' = 'cli'),
+	       (SELECT cli_concurrency FROM runtime_policy WHERE id)
+	FROM battle_runs b
+	LEFT JOIN LATERAL jsonb_array_elements(COALESCE(b.scenario_snapshot->'factions', '[]')) AS side ON true
+	WHERE b.status IN ('queued', 'running')`
+
+func (s schedulerStore) Capacity(ctx context.Context) (leagueservice.Capacity, error) {
+	var c leagueservice.Capacity
+	if err := s.tx.QueryRow(ctx, capacitySQL).Scan(&c.Unfinished, &c.CLISides, &c.CLISlots); err != nil {
+		return c, fmt.Errorf("read battle capacity: %w", err)
 	}
-	return busy, nil
+	return c, nil
+}
+
+func (r *Postgres) CLISlots(ctx context.Context) (int, error) {
+	var slots int
+	if err := r.db.QueryRow(ctx, `SELECT cli_concurrency FROM runtime_policy WHERE id`).Scan(&slots); err != nil {
+		return 0, fmt.Errorf("read CLI slots: %w", err)
+	}
+	return slots, nil
 }
 
 func (s schedulerStore) Battle(ctx context.Context, id string) (*leagueservice.BattleProvenance, error) {

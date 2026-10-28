@@ -194,13 +194,51 @@ func startFirstFixture(t *testing.T, db *pgxpool.Pool, l league.League, battleID
 	}
 }
 
-// requireEngine checks that the engine is busy, and the battle exists, exactly when queued.
+// requireEngine checks that one battle is unfinished, and the battle exists, exactly when
+// queued.
 func requireEngine(t *testing.T, ctx context.Context, store leagueservice.SchedulerStore, battleID string, queued bool) {
 	t.Helper()
-	busy, err := store.EngineBusy(ctx)
+	capacity, err := store.Capacity(ctx)
 	origin, originErr := store.Battle(ctx, battleID)
-	if err != nil || originErr != nil || busy != queued || (origin != nil) != queued {
-		t.Fatalf("busy %v %v, battle %+v %v, want %v", busy, err, origin, originErr, queued)
+	if err != nil || originErr != nil || (capacity.Unfinished == 1) != queued || (origin != nil) != queued {
+		t.Fatalf("capacity %+v %v, battle %+v %v, want %v", capacity, err, origin, originErr, queued)
+	}
+}
+
+func TestCapacityCountsUnfinishedBattlesAndTheirCLISides(t *testing.T) {
+	db := privateDatabase(t)
+	repo := NewPostgres(db)
+	ctx := context.Background()
+	battle := func(status string, controllers ...map[string]string) {
+		factions := []map[string]any{}
+		for i, controller := range controllers {
+			factions = append(factions, map[string]any{"id": fmt.Sprintf("faction-%d", i), "controller": controller})
+		}
+		snapshot, _ := json.Marshal(map[string]any{"factions": factions})
+		if _, err := db.Exec(ctx, `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state,status,admission_exempt)
+			VALUES($1,'frontier-siege','d',$2,500,'admin','{}','{}',$3,true)`, uuid(t), snapshot, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cli := map[string]string{"type": "model", "runtime": "cli"}
+	api := map[string]string{"type": "model", "runtime": "api"}
+	scripted := map[string]string{"type": "scripted"}
+	battle("queued", cli, cli)
+	battle("running", cli, scripted)
+	battle("running", api, scripted)
+	battle("completed", cli, cli)
+	if _, err := db.Exec(ctx, `UPDATE runtime_policy SET cli_concurrency = 3`); err != nil {
+		t.Fatal(err)
+	}
+	schedule(t, repo, func(ctx context.Context, store leagueservice.SchedulerStore) error {
+		capacity, err := store.Capacity(ctx)
+		if err != nil || capacity != (leagueservice.Capacity{Unfinished: 3, CLISides: 3, CLISlots: 3}) {
+			t.Fatalf("capacity = %+v, %v", capacity, err)
+		}
+		return nil
+	})
+	if slots, err := repo.CLISlots(ctx); err != nil || slots != 3 {
+		t.Fatalf("CLI slots = %d, %v", slots, err)
 	}
 }
 

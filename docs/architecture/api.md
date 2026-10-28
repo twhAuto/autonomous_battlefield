@@ -306,9 +306,12 @@ two legs; its winner has more wins, then the higher castle-health and damage
 differences, then the better group finish, more group points and entry order. A
 league plays 30 fixtures with 8 entrants and 62 with 16.
 
-The API plays fixtures in order, one battle at a time, and only when no other battle
-is queued or running, so a league battle never waits out the one-hour battle timeout
-in the queue. League battles belong to the creating Admin, skip the battle
+The API starts fixtures in order into free engine slots, so up to `battleSlots`
+battles run at once and a league battle never waits out the one-hour battle timeout
+in the queue; a fixture whose CLI model sides do not fit `cliSlots` waits. Both counts
+appear in `GET /v1/leagues`, and battles of other owners occupy slots too. While a
+league fills every slot, the global limit of unfinished battles rejects new Player
+battles. League battles belong to the creating Admin, skip the battle
 allowances and the decision budget, and appear on `GET /v1/battles/{id}` with a
 `league` field naming the league and fixture. A failed or stopped battle is retried
 once with a new battle; a second failure makes the fixture `void`, which scores for

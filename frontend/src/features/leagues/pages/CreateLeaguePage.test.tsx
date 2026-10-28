@@ -13,13 +13,14 @@ const scenarios = [
 const profiles = [{ id: 'claude', displayName: 'Claude', modelLabel: 'sonnet', runtime: 'cli', available: true, modelOptions: [{ id: 'sonnet', reasoningEfforts: ['low', 'high'] }] }]
 const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status })
 
-function serve(factionCount = 9, create: () => Response = () => reply(201, { id: leagueID })) {
+function serve(factionCount = 9, create: () => Response = () => reply(201, { id: leagueID }), scheduling: unknown = { battleSlots: 4, cliSlots: 4 }) {
   vi.mocked(fetch).mockImplementation(async (input, init) => {
     const url = String(input)
     if (init?.method === 'POST') return create()
     if (url.endsWith('/v1/factions')) return reply(200, { factions: factions(factionCount) })
     if (url.endsWith('/v1/scenarios')) return reply(200, { scenarios })
     if (url.endsWith('/v1/model-profiles')) return reply(200, { profiles })
+    if (url.endsWith('/v1/leagues')) return scheduling ? reply(200, { leagues: [], scheduling }) : reply(500, {})
     throw new Error(`unexpected ${url}`)
   })
 }
@@ -50,6 +51,7 @@ it('starts a league with every entrant and the chosen settings', async () => {
   expect(within(estimate).getByText('30')).toBeInTheDocument()
   // One model entrant can play six group battles and four knockout legs, 51 decisions each.
   expect(within(estimate).getByText('up to 510')).toBeInTheDocument()
+  expect(within(estimate).getByText(/^Up to 4 league battles run at once\./)).toBeInTheDocument()
   await user.click(start)
   expect(await screen.findByRole('heading', { name: 'League page' })).toBeInTheDocument()
   const body = JSON.parse(String(vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'POST')?.[1]?.body))
@@ -97,8 +99,15 @@ it('warns about long battles and shows rejected leagues', async () => {
   for (const row of rows) fireEvent.change(within(row).getByLabelText('Controller'), { target: { value: 'claude' } })
   await user.selectOptions(screen.getByLabelText('Tick duration'), '2s')
   expect(screen.getByText(/approach the one-hour battle timeout/)).toBeInTheDocument()
+  expect(screen.getByText(/or 2 when every battle has two CLI models/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: /START LEAGUE/ }))
   expect(await screen.findByText(/model is unavailable/)).toBeInTheDocument()
+})
+
+it('assumes one battle at a time when the capacity is unknown', async () => {
+  serve(9, undefined, null)
+  show()
+  expect(await screen.findByText(/^League battles run one at a time\./)).toBeInTheDocument()
 })
 
 it('asks for eight factions first', async () => {

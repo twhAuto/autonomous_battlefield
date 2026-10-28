@@ -1,6 +1,6 @@
 // Pure league presentation: labels, battle counts and the setup form's estimates.
 
-import type { GroupLetter, League, LeagueFixture, LeagueStage } from '../api/leagues'
+import type { GroupLetter, League, LeagueFixture, LeagueScheduling, LeagueStage } from '../api/leagues'
 
 export const groupLetters: GroupLetter[] = ['A', 'B', 'C', 'D']
 
@@ -17,8 +17,23 @@ const decisionSeconds = { low: 13, high: 35 }
 const groupBattlesPerEntrant = 6
 const knockoutStageEntrants = { 8: [4, 2], 16: [8, 4, 2] }
 
+/** Assumed when the API does not report its capacity: one battle at a time. */
+const oneAtATime: LeagueScheduling = { battleSlots: 1, cliSlots: 1 }
+
+export interface LeagueSettingsDraft {
+  entrants: 8 | 16
+  /** Entrants with a model controller, and those whose model runs as a CLI process. */
+  modelEntrants: number
+  cliEntrants: number
+  ticks: number
+  tickSeconds: number
+  interval: number
+}
+
 export interface LeagueEstimate {
   battles: number
+  /** Battles that run at once: all battle slots, down to what the CLI slots allow when every battle has two CLI sides. */
+  battlesAtOnce: { low: number; high: number }
   /** The opening decision plus one at every interval that a full-length battle reaches. */
   decisionsPerModelSide: number
   /** Upper bound: model entrants reach every knockout stage and every battle runs its full length. */
@@ -32,16 +47,26 @@ function modelSideBattles(entrants: 8 | 16, modelEntrants: number) {
   return modelEntrants * groupBattlesPerEntrant + knockoutStageEntrants[entrants].reduce((sum, stage) => sum + 2 * Math.min(modelEntrants, stage), 0)
 }
 
-/** Estimates a league from its settings. modelEntrants counts entrants with a model controller. */
-export function estimateLeague(entrants: 8 | 16, modelEntrants: number, ticks: number, tickSeconds: number, interval: number): LeagueEstimate {
+/** Rounds of battles a league needs when this many run at once; each stage waits for the one before. */
+function waves(entrants: 8 | 16, atOnce: number) {
+  const stages = [entrants * 3, ...knockoutStageEntrants[entrants]]
+  return stages.reduce((sum, fixtures) => sum + Math.ceil(fixtures / atOnce), 0)
+}
+
+/** Estimates a league from its settings and the capacity its battles run in. */
+export function estimateLeague(settings: LeagueSettingsDraft, scheduling: LeagueScheduling = oneAtATime): LeagueEstimate {
+  const { entrants, modelEntrants, cliEntrants, ticks, tickSeconds, interval } = settings
   const battles = totalFixtures(entrants)
   const windows = Math.floor(ticks / Math.max(1, interval)) + 1
   const waits = modelEntrants > 0 ? decisionSeconds : { low: 0, high: 0 }
   const minutes = (wait: number) => (ticks * tickSeconds + windows * wait) / 60
   const battleMinutes = { low: minutes(waits.low), high: minutes(waits.high) }
+  const cliPerBattle = Math.min(2, cliEntrants)
+  const fewest = cliPerBattle > 0 ? Math.max(1, Math.min(scheduling.battleSlots, Math.floor(scheduling.cliSlots / cliPerBattle))) : scheduling.battleSlots
   return {
-    battles, decisionsPerModelSide: windows, modelDecisions: modelSideBattles(entrants, modelEntrants) * windows, battleMinutes,
-    leagueHours: { low: (battles * battleMinutes.low) / 60, high: (battles * battleMinutes.high) / 60 },
+    battles, battlesAtOnce: { low: fewest, high: scheduling.battleSlots }, decisionsPerModelSide: windows,
+    modelDecisions: modelSideBattles(entrants, modelEntrants) * windows, battleMinutes,
+    leagueHours: { low: (waves(entrants, scheduling.battleSlots) * battleMinutes.low) / 60, high: (waves(entrants, fewest) * battleMinutes.high) / 60 },
   }
 }
 

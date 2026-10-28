@@ -387,25 +387,34 @@ sequenceDiagram
     participant E as Engine
     S->>DB: lock, read running leagues and fixture battles
     S->>DB: settle finished fixtures, add the next knockout stage or complete
-    alt engine idle and a fixture is pending
+    S->>DB: count unfinished battles and their CLI model sides
+    loop each pending fixture that fits a free engine slot and the free CLI slots
         S->>B: CreateBattle as the league owner (budget-exempt)
         B->>DB: insert battle_runs row
         S->>DB: mark fixture running with the battle
     end
-    E->>DB: claim and play the battle as usual
+    E->>DB: claim and play the battles as usual
 ```
 
 A pass first stops any battle still running in a cancelled league, so a failed stop
 is retried. It then settles running fixtures from their battles, retrying or voiding
 failed ones as the [league rules](api.md#leagues) describe. When every fixture so
 far is settled it adds the next knockout stage, or records the champion after the
-final. Finally it starts the first pending fixture of the oldest running league,
-but only when no battle is queued or running, so a league battle never waits in the
-queue, where its one-hour timeout already counts. Battle IDs
-derive from the fixture, so a pass interrupted after creating a battle adopts it on
-the next pass ([idempotency rules](database.md#idempotency-and-versions)).
-Cancellation takes the same lock, cancels unfinished fixtures and then stops the
-running battle.
+final. Finally it starts pending fixtures, oldest running league first and in fixture
+order, while battles of any owner leave an engine slot free: the scheduler reads the
+slot count from `engine.concurrency`, the same setting the engine uses, so a league
+battle never waits in the queue, where its one-hour timeout already counts. A fixture
+whose CLI model sides, added to those already running, would exceed
+`runtime_policy.cli_concurrency` waits for a later pass, so model decisions do not
+queue toward the decision timeout; when no CLI side is running, a fixture starts even
+if it needs more CLI slots than exist. The count assumes one engine replica, and the
+agents' combined slots should cover `cli_concurrency`; the local CLI launcher runs
+`HOST_AGENT_CONCURRENCY` slots, 2 by default. A permanent start failure ends that
+league's pass, so an outage such as an unavailable profile spends one fixture attempt
+per pass. Battle IDs derive from the fixture, so a pass interrupted after creating a
+battle adopts it on the next pass
+([idempotency rules](database.md#idempotency-and-versions)). Cancellation takes the
+same lock, cancels unfinished fixtures and then stops the league's running battles.
 
 Battle creation goes through the same service as `POST /v1/battles`, as the
 league's Admin owner, so model access, faction existence and timing are rechecked

@@ -7,7 +7,7 @@ import { listModelProfiles, listScenarios, type ScenarioSummary } from '../../ba
 import { ControllerSelect, controllerInput, resolveSelection, type ModelSelection } from '../../battles/components/ControllerSelect'
 import { listFactions, type Faction } from '../../factions/api/factions'
 import type { ModelProfile } from '../../../shared/domain/model-profile'
-import { createLeague, LeagueApiError, type GroupLetter } from '../api/leagues'
+import { createLeague, LeagueApiError, listLeagues, type GroupLetter, type LeagueScheduling } from '../api/leagues'
 import { durationSeconds, estimateLeague, groupLetters } from '../presentation/leagues'
 
 type LoadState = 'loading' | 'ready' | 'error'
@@ -59,13 +59,16 @@ export function CreateLeaguePage() {
   const [entrants, setEntrants] = useState<EntrantDraft[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const [scheduling, setScheduling] = useState<LeagueScheduling>()
 
   useEffect(() => {
     const controller = new AbortController()
     setLoadState('loading')
-    Promise.all([listFactions(controller.signal), listScenarios(controller.signal), listModelProfiles(controller.signal).catch(() => [])])
-      .then(([loadedFactions, loadedScenarios, loadedProfiles]) => {
+    Promise.all([listFactions(controller.signal), listScenarios(controller.signal), listModelProfiles(controller.signal).catch(() => []),
+      listLeagues(controller.signal).then(list => list.scheduling).catch(() => undefined)])
+      .then(([loadedFactions, loadedScenarios, loadedProfiles, loadedScheduling]) => {
         if (controller.signal.aborted) return
+        setScheduling(loadedScheduling)
         setFactions(loadedFactions)
         setScenarios(loadedScenarios)
         setProfiles(loadedProfiles)
@@ -82,8 +85,13 @@ export function CreateLeaguePage() {
   const maximumTicks = chosen.length ? Math.min(...chosen.map(scenario => scenario.maximumTicks)) : 0
   const ticksValid = typeof tickCount === 'number' && Number.isInteger(tickCount) && tickCount >= 1 && tickCount <= maximumTicks
   const blockers = problems(name, entrants, maps, ticksValid, profiles)
-  const estimate = estimateLeague(size, entrants.filter(entrant => entrant.controller !== 'scripted').length, typeof tickCount === 'number' ? tickCount : 0,
-    durationSeconds(tickDuration || chosen[0]?.tickDuration) ?? 1, Number(decisionInterval) || chosen[0]?.decisionIntervalTicks || 10)
+  const modelControllers = entrants.filter(entrant => entrant.controller !== 'scripted')
+  const estimate = estimateLeague({
+    entrants: size, modelEntrants: modelControllers.length,
+    cliEntrants: modelControllers.filter(entrant => profiles.find(profile => profile.id === entrant.controller)?.runtime === 'cli').length,
+    ticks: typeof tickCount === 'number' ? tickCount : 0, tickSeconds: durationSeconds(tickDuration || chosen[0]?.tickDuration) ?? 1,
+    interval: Number(decisionInterval) || chosen[0]?.decisionIntervalTicks || 10,
+  }, scheduling)
 
   function changeSize(next: 8 | 16) {
     setSize(next)
@@ -207,6 +215,12 @@ function TimingFields(props: Readonly<{
   )
 }
 
+function atOnce({ low, high }: { low: number; high: number }) {
+  if (high === 1) return 'League battles run one at a time.'
+  if (low === high) return `Up to ${high} league battles run at once.`
+  return `Up to ${high} league battles run at once, or ${low} when every battle has two CLI models.`
+}
+
 function EstimatePanel({ estimate }: Readonly<{ estimate: ReturnType<typeof estimateLeague> }>) {
   const hours = (value: number) => value < 1 ? `${Math.round(value * 60)} min` : `${value.toFixed(1)} h`
   const minutes = (value: number) => `${Math.round(value)} min`
@@ -219,7 +233,7 @@ function EstimatePanel({ estimate }: Readonly<{ estimate: ReturnType<typeof esti
         <div><dt>League length</dt><dd>{range(hours(estimate.leagueHours.low), hours(estimate.leagueHours.high))}</dd></div>
         <div><dt>Model decisions</dt><dd>up to {estimate.modelDecisions.toLocaleString()}</dd></div>
       </dl>
-      <p className="field-hint">League battles run one at a time and have no per-battle decision budget. Battles that end early use fewer decisions.</p>
+      <p className="field-hint">{atOnce(estimate.battlesAtOnce)} League battles have no per-battle decision budget, and battles that end early use fewer decisions.</p>
       {estimate.battleMinutes.high > 45 && <p className="field-error">Slow models may approach the one-hour battle timeout. Use fewer ticks or a longer decision interval.</p>}
     </section>
   )

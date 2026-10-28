@@ -10,9 +10,9 @@ describe('league requests', () => {
   beforeEach(() => { vi.stubGlobal('fetch', vi.fn()) })
 
   it('reads, creates and cancels leagues', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(reply(200, { leagues: [{ id: 'a' }] })).mockResolvedValueOnce(reply(200, { id: 'a' }))
+    vi.mocked(fetch).mockResolvedValueOnce(reply(200, { leagues: [{ id: 'a' }], scheduling: { battleSlots: 4, cliSlots: 4 } })).mockResolvedValueOnce(reply(200, { id: 'a' }))
       .mockResolvedValueOnce(reply(201, { id: 'a' })).mockResolvedValueOnce(reply(200, { id: 'a', status: 'cancelled' }))
-    expect(await listLeagues()).toEqual([{ id: 'a' }])
+    expect(await listLeagues()).toEqual({ leagues: [{ id: 'a' }], scheduling: { battleSlots: 4, cliSlots: 4 } })
     expect(await getLeague('a')).toEqual({ id: 'a' })
     expect(await createLeague(input)).toEqual({ id: 'a' })
     expect(vi.mocked(fetch).mock.calls[2][1]).toMatchObject({ method: 'POST', body: JSON.stringify(input) })

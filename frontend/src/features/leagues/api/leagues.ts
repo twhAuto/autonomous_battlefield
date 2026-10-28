@@ -46,10 +46,14 @@ export class LeagueApiError extends Error {
 
 const leagueFetch = createApiClient(LeagueApiError)
 
-export async function listLeagues(signal?: AbortSignal): Promise<LeagueSummary[]> {
+/** The capacity league battles run in: engine battle slots and shared CLI execution slots. */
+export interface LeagueScheduling { battleSlots: number; cliSlots: number }
+export interface LeagueList { leagues: LeagueSummary[]; scheduling?: LeagueScheduling }
+
+export async function listLeagues(signal?: AbortSignal): Promise<LeagueList> {
   const response = await leagueFetch('/v1/leagues', { signal })
   if (!response.ok) throw new LeagueApiError('Leagues could not be loaded.', response.status)
-  return ((await response.json()) as { leagues: LeagueSummary[] }).leagues
+  return (await response.json()) as LeagueList
 }
 
 export async function getLeague(id: string, signal?: AbortSignal): Promise<League> {
