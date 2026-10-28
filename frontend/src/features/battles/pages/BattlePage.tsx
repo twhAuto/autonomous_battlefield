@@ -136,7 +136,8 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
 
 // The live faction strips and map, or the replay that replaces them. Replay is offered
 // only once a battle settles, and a settled battle never becomes active again. A result
-// covers the map until the viewer asks for the map; focus follows the swapped control.
+// covers the map, which stays inert, until the viewer asks for the map; focus follows the
+// swapped control. Leaving a replay returns to the results.
 function BattleStage({ battle, view, replaying, decisions, decisionMessage, participantNames, onExitReplay }: Readonly<{
   battle: BattleRun
   view: { map: BattleMap; state: BattleRun['state'] } | null
@@ -156,13 +157,14 @@ function BattleStage({ battle, view, replaying, decisions, decisionMessage, part
   const toggleResults = (shown: boolean) => { toggled.current = true; setResultsShown(shown) }
 
   if (replaying && view) {
-    return <BattleReplay battle={battle} map={view.map} decisions={decisions} decisionMessage={decisionMessage} participantNames={participantNames} onExit={onExitReplay} />
+    const exitReplay = () => { toggled.current = false; setResultsShown(true); onExitReplay() }
+    return <BattleReplay battle={battle} map={view.map} decisions={decisions} decisionMessage={decisionMessage} participantNames={participantNames} onExit={exitReplay} />
   }
   const overlay = !!battle.result && resultsShown
   return <>
     <FactionSummaries battle={battle} decisions={decisions} decisionMessage={decisionMessage} />
     {view && <div className={`battle-map-column${overlay ? ' battle-map-column--results' : ''}`}>
-      <HexBattleMap map={view.map} state={view.state} factionNames={participantNames}
+      <HexBattleMap map={view.map} state={view.state} factionNames={participantNames} covered={overlay}
         actions={battle.result && !resultsShown && <button ref={showResults} className="map-toolbar__results" type="button" onClick={() => toggleResults(true)}>Show results</button>} />
       {overlay && <BattleStatistics battle={battle} participantNames={participantNames} onShowMap={() => toggleResults(false)} showMapRef={viewMap} />}
     </div>}

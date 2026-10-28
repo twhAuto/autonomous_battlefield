@@ -122,14 +122,35 @@ it('shows a result over the map until the viewer asks for the map', async () => 
   expect(results).toHaveTextContent('89 TICKS')
   expect(results).toHaveTextContent('Damage dealt400')
   expect(screen.queryByRole('button', { name: 'Show results' })).not.toBeInTheDocument()
+  // The covered map takes no focus and is hidden from assistive technology.
+  const mapPanel = () => document.querySelector('.battle-map-column > .map-panel')
+  expect(mapPanel()).toHaveAttribute('inert')
 
   await user.click(screen.getByRole('button', { name: 'VIEW MAP' }))
   expect(screen.queryByRole('region', { name: 'After-action statistics' })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Show results' })).toHaveFocus()
   expect(document.querySelector('.battle-map-column')).not.toHaveClass('battle-map-column--results')
+  expect(mapPanel()).not.toHaveAttribute('inert')
 
   await user.click(screen.getByRole('button', { name: 'Show results' }))
   expect(screen.getByRole('button', { name: 'VIEW MAP' })).toHaveFocus()
+})
+
+it('returns to the results after a replay started from the map', async () => {
+  const user = userEvent.setup()
+  vi.mocked(getBattle).mockResolvedValue(runningBattle({
+    status: 'completed', currentTick: 2,
+    result: { winnerFactionId: north, reason: 'castle_destroyed', ticksRun: 2, factions: [] },
+  }))
+  vi.mocked(getBattleReplay).mockResolvedValue(replaySegment())
+  renderBattle()
+  await user.click(await screen.findByRole('button', { name: 'VIEW MAP' }))
+  await user.click(screen.getByRole('button', { name: 'WATCH REPLAY' }))
+  await screen.findByText(/HEX TACTICAL MAP · TICK 0/)
+  expect(screen.queryByRole('region', { name: 'After-action statistics' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'EXIT REPLAY' }))
+  expect(screen.getByRole('region', { name: 'After-action statistics' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'VIEW MAP' })).not.toHaveFocus()
 })
 
 it('lists results below the page when the battle has no map to cover', async () => {

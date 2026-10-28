@@ -14,12 +14,16 @@ type Entity = BattleUnit | BattleBuilding
 const size = 24
 const root3 = Math.sqrt(3)
 
-/** `actions` adds page controls to the toolbar; the expanded dialog omits them. */
-export function HexBattleMap({ map, state, factionNames, actions }: Readonly<{
+/**
+ * `actions` adds page controls to the toolbar; the expanded dialog omits them. `covered`
+ * makes the inline map inert while page content lies over it.
+ */
+export function HexBattleMap({ map, state, factionNames, actions, covered = false }: Readonly<{
   map: BattleMap
   state: BattleState
   factionNames: Map<string, string>
   actions?: ReactNode
+  covered?: boolean
 }>) {
   const markerId = useId()
   const mobile = useMobile()
@@ -90,7 +94,7 @@ export function HexBattleMap({ map, state, factionNames, actions }: Readonly<{
   }
 
   const content = (
-    <section className="map-panel" aria-label="Castle siege map">
+    <section className="map-panel" aria-label="Castle siege map" inert={covered}>
       <div className="map-toolbar">
         <span>HEX TACTICAL MAP · TICK {state.tick}</span>
         <div className="map-toolbar__controls">

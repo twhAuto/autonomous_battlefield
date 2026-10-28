@@ -68,6 +68,17 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
       const cockpit = (await page.locator('.battle-cockpit').boundingBox())!
       expect(cockpit.y + cockpit.height).toBeLessThanOrEqual(page.viewportSize()!.height)
     }
+    // Keyboard focus moves from the faction strips straight to the results: narrow screens
+    // hide the map, and the covered desktop map's controls cannot take focus.
+    const expand = page.getByRole('button', { name: 'Expand map' })
+    if (isMobile) await expect(expand).toBeHidden()
+    else {
+      await expand.focus()
+      await expect(expand).not.toBeFocused()
+    }
+    await page.getByRole('region', { name: 'Faction summaries' }).locator('summary').last().focus()
+    await page.keyboard.press('Tab')
+    await expect(results.getByRole('button', { name: 'VIEW MAP' })).toBeFocused()
     await results.getByRole('button', { name: 'VIEW MAP' }).click()
     await expect(results).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Show results' })).toBeFocused()

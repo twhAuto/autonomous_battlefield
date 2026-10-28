@@ -147,7 +147,8 @@ keep the map's aspect ratio.
 
 A battle with a result opens on its after-action statistics (`BattleStatistics`:
 each faction's totals, units and buildings by type, and upgrade timeline), laid over
-the map so viewers see the outcome without scrolling. **VIEW MAP** reveals the map,
+the map so viewers see the outcome without scrolling. The covered map is inert, so
+keyboard and assistive-technology users reach the results first. **VIEW MAP** reveals the map,
 whose toolbar then offers **Show results**; focus moves to the replacement control.
 Narrower screens show the results in place of the map. A battle without a map lists
 its results below the page.
@@ -208,12 +209,12 @@ rows initially; Show more reveals loaded rows. A polite status announces counts.
 [`HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx)
 draws the SVG map: entity icons, HP bars, movement routes, tracking and
 fixed-position attack markers, tower fire, healing lines and death markers. Each
-faction's build area is tinted in its faction color: buildable terrain within range
-of its active buildings and at least two hexes from every living building, the
-engine's placement rule (`backend/internal/game/construction.go`). Units also block a
-site, but they move every tick, so the tint ignores them. A tile's tooltip names the
+faction's build area is tinted in its faction color, following the
+[construction rules](../game/game-rules.md#construction-and-training) except that
+units, which move every tick, do not clear the tint. A tile's tooltip names the
 factions that can build there. Pages can add toolbar controls through the `actions`
-prop; the expanded dialog leaves them out.
+prop, which the expanded dialog leaves out, and mark the inline map `covered` to make
+it inert beneath page content.
 `features/battles/battles.css` and `map.css` own the battle layout; browser tests
 assert the rendered map aspect ratio. Layout values, breakpoints and animation
 timings live in the CSS and components with their tests, not in this guide.
