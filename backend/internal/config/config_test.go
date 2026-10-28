@@ -5,6 +5,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +40,32 @@ http:
 	}
 	if configuration.API.MaxTicks != 10_000 {
 		t.Fatalf("MaxTicks = %d, want the 10000 default", configuration.API.MaxTicks)
+	}
+	if configuration.API.EngineConcurrency != 4 {
+		t.Fatalf("EngineConcurrency = %d, want the engine's default of 4", configuration.API.EngineConcurrency)
+	}
+}
+
+func TestLoadAPIReadsAndValidatesEngineConcurrency(t *testing.T) {
+	file := func(concurrency int) string {
+		return writeConfigFile(t, fmt.Sprintf(`
+http:
+  address: ":9000"
+  readHeaderTimeout: 2s
+  readTimeout: 3s
+  writeTimeout: 4s
+  idleTimeout: 30s
+  shutdownTimeout: 5s
+engine:
+  concurrency: %d
+`, concurrency))
+	}
+	configuration, err := LoadAPI(file(2))
+	if err != nil || configuration.API.EngineConcurrency != 2 {
+		t.Fatalf("LoadAPI() = %d, %v", configuration.API.EngineConcurrency, err)
+	}
+	if _, err := LoadAPI(file(9)); err == nil || !strings.Contains(err.Error(), "engine.concurrency") {
+		t.Fatalf("LoadAPI() error = %v, want engine.concurrency", err)
 	}
 }
 

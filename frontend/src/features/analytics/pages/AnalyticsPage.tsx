@@ -26,7 +26,7 @@ export function AnalyticsPage() {
 
   useEffect(() => {
     const controller = new AbortController()
-    listLeagues(controller.signal).then(setLeagues).catch(() => undefined)
+    listLeagues(controller.signal).then(result => setLeagues(result.leagues)).catch(() => undefined)
     return () => controller.abort()
   }, [])
 

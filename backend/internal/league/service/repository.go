@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	"github.com/twh09/autonomous_battlefield/backend/internal/league"
@@ -23,6 +24,8 @@ type Repository interface {
 	// Schedule runs fn while holding the scheduler lock, and reports false without
 	// running it when another replica holds the lock.
 	Schedule(context.Context, func(context.Context, SchedulerStore) error) (bool, error)
+	// CLISlots reads runtime_policy.cli_concurrency.
+	CLISlots(context.Context) (int, error)
 }
 
 // SchedulerStore is the scheduler's view of storage inside one locked pass.
@@ -31,12 +34,32 @@ type SchedulerStore interface {
 	SaveFixture(context.Context, league.Fixture) error
 	AddFixtures(context.Context, string, []league.Fixture) error
 	CompleteLeague(context.Context, string, int) error
-	// EngineBusy reports whether any battle is queued or running.
-	EngineBusy(context.Context) (bool, error)
+	// Capacity counts battles of any owner that are queued or running.
+	Capacity(context.Context) (Capacity, error)
 	// Battle describes an existing battle's origin, or returns nil when there is none.
 	Battle(context.Context, string) (*BattleProvenance, error)
 	// StrandedBattles lists battles of cancelled leagues that are still queued or running.
 	StrandedBattles(context.Context) ([]StrandedBattle, error)
+}
+
+// Capacity is what is in use when a pass starts. Unfinished battles fill engine slots;
+// their CLI model sides share the CLI execution slots.
+type Capacity struct {
+	Unfinished int
+	CLISides   int
+	CLISlots   int
+}
+
+// fits reports whether a battle with cliSides CLI model sides can start now. A battle
+// that needs more CLI slots than exist still starts once no CLI side is running, so a
+// league never stalls.
+func (c Capacity) fits(battleSlots, cliSides int) bool {
+	return c.Unfinished < battleSlots && (cliSides == 0 || c.CLISides == 0 || c.CLISides+cliSides <= c.CLISlots)
+}
+
+// Profiles looks up model profiles by ID.
+type Profiles interface {
+	Get(string) (ai.ModelProfile, bool)
 }
 
 // BattleProvenance is what the scheduler checks before adopting an existing battle.

@@ -58,13 +58,23 @@ type EntrantInput struct {
 }
 
 type Service struct {
-	repo     Repository
-	battles  Battles
-	factions Factions
+	repo        Repository
+	battles     Battles
+	factions    Factions
+	profiles    Profiles
+	battleSlots int
 }
 
-func New(repo Repository, battles Battles, factions Factions) *Service {
-	return &Service{repo: repo, battles: battles, factions: factions}
+// Options sets how many league battles the scheduler may keep running.
+type Options struct {
+	// BattleSlots is the engine's battle capacity (engine.concurrency); zero means one.
+	BattleSlots int
+	// Profiles resolves which model controllers run as CLI processes.
+	Profiles Profiles
+}
+
+func New(repo Repository, battles Battles, factions Factions, options Options) *Service {
+	return &Service{repo: repo, battles: battles, factions: factions, profiles: options.Profiles, battleSlots: max(1, options.BattleSlots)}
 }
 
 // CreateLeague validates every entrant against every chosen map, then stores the league
@@ -221,6 +231,15 @@ func (s *Service) ListLeagues(ctx context.Context, limit int) ([]league.Summary,
 		return nil, ErrInvalidLeague
 	}
 	return s.repo.ListLeagues(ctx, limit)
+}
+
+// Scheduling reports the capacity league battles run in.
+func (s *Service) Scheduling(ctx context.Context) (league.Scheduling, error) {
+	if err := requireInspect(ctx); err != nil {
+		return league.Scheduling{}, err
+	}
+	cliSlots, err := s.repo.CLISlots(ctx)
+	return league.Scheduling{BattleSlots: s.battleSlots, CLISlots: cliSlots}, err
 }
 
 // CancelLeague stops a running league: unfinished fixtures are cancelled and running

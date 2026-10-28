@@ -60,12 +60,9 @@ func parseEngineConfig(raw fileConfig) (Engine, error) {
 	if maxAttempts < 1 {
 		return Engine{}, fmt.Errorf("engine.maxAttempts must be positive")
 	}
-	concurrency := defaultEngineConcurrency
-	if raw.Engine.Concurrency != nil {
-		concurrency = *raw.Engine.Concurrency
-	}
-	if concurrency < 1 || concurrency > 8 {
-		return Engine{}, fmt.Errorf("engine.concurrency must be between 1 and 8")
+	concurrency, err := parseEngineConcurrency(raw)
+	if err != nil {
+		return Engine{}, err
 	}
 	limits := ai.DefaultKnowledgeLimits()
 	if raw.Engine.KnowledgeRetrieval.MaxUnitCards != nil {
@@ -82,6 +79,19 @@ func parseEngineConfig(raw fileConfig) (Engine, error) {
 		HeartbeatInterval: heartbeatInterval, ShutdownTimeout: shutdownTimeout,
 		MaxAttempts: maxAttempts, Concurrency: concurrency, WorkerID: workerID(),
 	}, nil
+}
+
+// parseEngineConcurrency reads engine.concurrency. The API reads it too, to know how many
+// league battles the engine can run at once.
+func parseEngineConcurrency(raw fileConfig) (int, error) {
+	concurrency := defaultEngineConcurrency
+	if raw.Engine.Concurrency != nil {
+		concurrency = *raw.Engine.Concurrency
+	}
+	if concurrency < 1 || concurrency > 8 {
+		return 0, fmt.Errorf("engine.concurrency must be between 1 and 8")
+	}
+	return concurrency, nil
 }
 
 func workerID() string {

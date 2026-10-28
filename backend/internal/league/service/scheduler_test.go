@@ -1,4 +1,4 @@
-// Checks scheduling passes: one battle at a time only on an idle engine, recovery of an
+// Checks scheduling passes: battles only into free engine and CLI slots, recovery of an
 // interrupted start, retries and void fixtures, and progression to a champion.
 
 package service
@@ -85,9 +85,9 @@ func TestSchedulePassStartsTheFirstFixtureOnAnIdleEngine(t *testing.T) {
 
 func TestSchedulePassWaitsForTheEngineAndTheLock(t *testing.T) {
 	h := runningHarness(t)
-	h.repo.busy = true
+	h.repo.battles["someone-elses"] = "running"
 	h.pass(t)
-	h.repo.busy, h.repo.lockHeld = false, true
+	h.repo.battles["someone-elses"], h.repo.lockHeld = league.BattleCompleted, true
 	h.pass(t)
 	if len(h.battles.created) != 0 || h.stored().Fixtures[0].Status != league.FixturePending {
 		t.Fatalf("started while busy or unlocked: %+v", h.stored().Fixtures[0])
@@ -246,5 +246,110 @@ func TestRunSchedulerPassesUntilCancelled(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("scheduler did not stop")
+	}
+}
+
+// slotHarness runs a league with the given engine slots; Claude entrants are CLI models.
+func slotHarness(t *testing.T, slots int) *fixtureHarness {
+	t.Helper()
+	h := newHarnessWith(Options{BattleSlots: slots, Profiles: fakeProfiles{"claude-subscription-local": "cli"}})
+	if _, err := h.service.CreateLeague(actorContext(authn.Admin), validInput(8)); err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+func (h *fixtureHarness) running() []int {
+	indexes := []int{}
+	for i, f := range h.stored().Fixtures {
+		if f.Status == league.FixtureRunning {
+			indexes = append(indexes, i)
+		}
+	}
+	return indexes
+}
+
+// cliFixture reports whether both sides of fixture i are Claude CLI entrants; in
+// validInput the even entrants, which make up group A, are.
+func (h *fixtureHarness) cliFixture(i int) bool {
+	return h.stored().Fixtures[i].Home%2 == 0
+}
+
+func TestSchedulePassFillsFreeBattleSlots(t *testing.T) {
+	h := newHarnessWith(Options{BattleSlots: 4})
+	if _, err := h.service.CreateLeague(actorContext(authn.Admin), validInput(8)); err != nil {
+		t.Fatal(err)
+	}
+	h.repo.battles["someone-elses"] = "running"
+	h.pass(t)
+	if got := h.running(); fmt.Sprint(got) != "[0 1 2]" || len(h.battles.created) != 3 {
+		t.Fatalf("running %v, created %d; want the first three fixtures beside another owner's battle", got, len(h.battles.created))
+	}
+	h.pass(t)
+	if len(h.battles.created) != 3 {
+		t.Fatal("started a battle with every slot full")
+	}
+	l := h.stored()
+	l.Fixtures[1].Battle = &league.BattleOutcome{Status: league.BattleCompleted, Factions: map[string]league.FactionScore{}}
+	h.repo.battles[*l.Fixtures[1].BattleID] = league.BattleCompleted
+	h.pass(t)
+	if got := h.running(); fmt.Sprint(got) != "[0 2 3]" || h.stored().Fixtures[1].Status != league.FixtureCompleted {
+		t.Fatalf("after one battle finished, running %v", got)
+	}
+}
+
+func TestSchedulePassKeepsCLISidesWithinTheirSlots(t *testing.T) {
+	h := slotHarness(t, 4)
+	h.repo.cliSlots = 2
+	h.pass(t)
+	cli := 0
+	for _, i := range h.running() {
+		if h.cliFixture(i) {
+			cli++
+		}
+	}
+	if len(h.running()) != 4 || cli != 1 {
+		t.Fatalf("running %v with %d CLI fixtures; want four battles, one with two CLI sides", h.running(), cli)
+	}
+	// One CLI slot cannot hold a two-sided CLI fixture, but the league must not stall.
+	h = slotHarness(t, 1)
+	h.repo.cliSlots = 1
+	h.pass(t)
+	if got := h.running(); len(got) != 1 || !h.cliFixture(got[0]) {
+		t.Fatalf("running %v; want the first fixture started despite too few CLI slots", got)
+	}
+}
+
+func TestSchedulePassStopsALeagueAfterAPermanentStartFailure(t *testing.T) {
+	h := slotHarness(t, 4)
+	h.battles.createErr = battleservice.ErrModelProfileUnavailable
+	h.pass(t)
+	spent := 0
+	for _, f := range h.stored().Fixtures {
+		spent += f.Attempts
+	}
+	if spent != 1 || h.stored().Fixtures[0].Attempts != 1 {
+		t.Fatalf("attempts spent = %d; want only the first fixture's", spent)
+	}
+}
+
+func TestSchedulePassAndSchedulingSurfaceCapacityErrors(t *testing.T) {
+	h := slotHarness(t, 4)
+	h.repo.capErr = errDatabase
+	if err := h.service.SchedulePass(context.Background()); !errors.Is(err, errDatabase) || len(h.battles.created) != 0 {
+		t.Fatalf("pass err = %v, created %d", err, len(h.battles.created))
+	}
+	if _, err := h.service.Scheduling(actorContext(authn.Developer)); !errors.Is(err, errDatabase) {
+		t.Fatalf("scheduling err = %v", err)
+	}
+	h.repo.capErr = nil
+	if got, err := h.service.Scheduling(actorContext(authn.Developer)); err != nil || got != (league.Scheduling{BattleSlots: 4, CLISlots: 4}) {
+		t.Fatalf("scheduling = %+v, %v", got, err)
+	}
+	if _, err := h.service.Scheduling(actorContext(authn.Player)); !errors.Is(err, authn.ErrForbidden) {
+		t.Fatalf("player scheduling err = %v", err)
+	}
+	if got := newHarness().service.battleSlots; got != 1 {
+		t.Fatalf("default battle slots = %d, want 1", got)
 	}
 }

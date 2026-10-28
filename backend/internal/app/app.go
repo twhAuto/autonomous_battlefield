@@ -48,6 +48,8 @@ type Options struct {
 	Generation *generation.Config
 	Profiles   *profile.Registry
 	Members    members.Repository
+	// EngineConcurrency is how many battles the engine runs at once; leagues fill it.
+	EngineConcurrency int
 }
 
 // New composes the API from its database, scenario catalog, and battle tick limit.
@@ -69,7 +71,7 @@ func New(db postgres.Pool, catalog *catalog.Catalog, maxTicks uint64, options Op
 	factionService := factionservice.NewService(factionRepository, catalog)
 	battleService := battleservice.NewService(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks, battleservice.Options{Cache: options.Cache, Profiles: profiles})
 
-	leagueService := leagueservice.New(leaguerepo.NewPostgres(db), battleService, factionRepository)
+	leagueService := leagueservice.New(leaguerepo.NewPostgres(db), battleService, factionRepository, leagueservice.Options{BattleSlots: options.EngineConcurrency, Profiles: profiles})
 	analyticsService := analyticsservice.New(analyticsrepo.NewPostgres(db), currentRulesVersion(catalog))
 
 	factionHandler := factionapi.NewHandler(factionService)

@@ -767,16 +767,29 @@ paths:
           schema: {type: integer, minimum: 1, maximum: 100, default: 25}
       responses:
         '200':
-          description: League summaries.
+          description: League summaries, and the capacity league battles run in.
           content:
             application/json:
               schema:
                 type: object
-                required: [leagues]
+                required: [leagues, scheduling]
                 properties:
                   leagues:
                     type: array
                     items: {$ref: '#/components/schemas/LeagueSummary'}
+                  scheduling:
+                    type: object
+                    additionalProperties: false
+                    required: [battleSlots, cliSlots]
+                    properties:
+                      battleSlots:
+                        description: Battles the engine runs at once (`engine.concurrency`).
+                        type: integer
+                        minimum: 1
+                      cliSlots:
+                        description: CLI model executions allowed at once (`runtime_policy.cli_concurrency`), shared by the CLI model sides of league battles.
+                        type: integer
+                        minimum: 1
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/AuthenticationRequired'}
         '403': {$ref: '#/components/responses/PermissionDenied'}

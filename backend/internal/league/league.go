@@ -81,6 +81,13 @@ type Settings struct {
 
 // Entrant is one competitor: a faction and the controller that plays it. Index is the
 // entry order, the final tiebreak.
+// Scheduling is the capacity league battles run in: the engine's battle slots and the
+// CLI execution slots that model decisions share.
+type Scheduling struct {
+	BattleSlots int
+	CLISlots    int
+}
+
 type Entrant struct {
 	Index       int
 	Group       int

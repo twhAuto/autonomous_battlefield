@@ -1,6 +1,6 @@
 // Plays league fixtures in the background. Each pass settles finished battles, opens the
-// next knockout stage or completes the league, and starts at most one battle, only
-// when the engine is idle so a league battle never waits out its timeout in the queue.
+// next knockout stage or completes the league, and starts pending fixtures only into free
+// engine slots, so a league battle never waits out its timeout in the queue.
 
 package service
 
@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
@@ -73,12 +74,53 @@ func (s *Service) pass(ctx context.Context, store SchedulerStore) error {
 			return err
 		}
 	}
+	capacity, err := store.Capacity(ctx)
+	if err != nil {
+		return err
+	}
 	for i := range leagues {
-		if next := nextPending(&leagues[i]); next != nil {
-			return s.start(ctx, store, &leagues[i], *next)
+		if err := s.startPending(ctx, store, &leagues[i], &capacity); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// startPending starts a league's pending fixtures in order while engine slots are free.
+// A fixture whose CLI model sides do not fit the free CLI slots waits for a later pass.
+// Every pending fixture is visited even when the slots are full, so the battle of an
+// interrupted start is still adopted. A permanent start failure ends the league's pass,
+// so a passing outage such as an unavailable profile spends one fixture attempt per
+// pass rather than one for every pending fixture.
+func (s *Service) startPending(ctx context.Context, store SchedulerStore, l *league.League, capacity *Capacity) error {
+	if l.Status != league.StatusRunning {
+		return nil
+	}
+	for i := range l.Fixtures {
+		if l.Fixtures[i].Status != league.FixturePending {
+			continue
+		}
+		failed, err := s.start(ctx, store, l, l.Fixtures[i], capacity)
+		if err != nil || failed {
+			return err
+		}
+	}
+	return nil
+}
+
+// cliSides counts the fixture's sides played by a CLI model profile.
+func (s *Service) cliSides(l *league.League, f league.Fixture) int {
+	sides := 0
+	for _, entrant := range []int{f.Home, f.Away} {
+		controller := l.Entrants[entrant].Controller
+		if controller.Type != ai.ControllerModel || s.profiles == nil {
+			continue
+		}
+		if profile, ok := s.profiles.Get(controller.ProfileID); ok && profile.Runtime == "cli" {
+			sides++
+		}
+	}
+	return sides
 }
 
 // stopStranded retries stops that a cancellation could not complete.
@@ -149,35 +191,24 @@ func settledFixture(f league.Fixture) (league.Fixture, bool) {
 	return f, true
 }
 
-func nextPending(l *league.League) *league.Fixture {
-	if l.Status != league.StatusRunning {
-		return nil
-	}
-	for i := range l.Fixtures {
-		if l.Fixtures[i].Status == league.FixturePending {
-			return &l.Fixtures[i]
-		}
-	}
-	return nil
-}
-
 // start creates the fixture's battle as the league owner. The battle ID is derived from
 // the league's salt, the fixture and the attempt, so a pass interrupted after creating
 // it links the same battle next time instead of starting another. An existing battle
-// is adopted only when it is that battle.
-func (s *Service) start(ctx context.Context, store SchedulerStore, l *league.League, f league.Fixture) error {
+// is adopted only when it is that battle; adopting needs no free slot, because the
+// battle already counts as unfinished. It reports whether the start failed permanently.
+func (s *Service) start(ctx context.Context, store SchedulerStore, l *league.League, f league.Fixture, capacity *Capacity) (bool, error) {
 	battleID := league.FixtureBattleID(l.BattleSalt, f.ID, f.Attempts+1)
 	existing, err := store.Battle(ctx, battleID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if existing != nil && !createdFor(l, f, *existing) {
 		return failStart(ctx, store, l.ID, f, errForeignBattle)
 	}
 	if existing == nil {
-		busy, err := store.EngineBusy(ctx)
-		if err != nil || busy {
-			return err
+		sides := s.cliSides(l, f)
+		if !capacity.fits(s.battleSlots, sides) {
+			return false, nil
 		}
 		home, away := l.Entrants[f.Home], l.Entrants[f.Away]
 		input := battleInput(battleID, f.ScenarioID, l.Settings,
@@ -187,11 +218,13 @@ func (s *Service) start(ctx context.Context, store SchedulerStore, l *league.Lea
 		if _, err := s.battles.CreateBattle(ownerContext(ctx, l.OwnerID), input); err != nil {
 			return failStart(ctx, store, l.ID, f, err)
 		}
+		capacity.Unfinished++
+		capacity.CLISides += sides
 	}
 	f.Attempts++
 	f.Status, f.BattleID = league.FixtureRunning, &battleID
 	slog.InfoContext(ctx, "league_fixture_started", "league_id", l.ID, "fixture_id", f.ID, "battle_id", battleID, "attempt", f.Attempts)
-	return store.SaveFixture(ctx, f)
+	return false, store.SaveFixture(ctx, f)
 }
 
 // createdFor reports whether an existing battle is the one the scheduler starts for the
@@ -201,16 +234,18 @@ func createdFor(l *league.League, f league.Fixture, b BattleProvenance) bool {
 		b.FactionIDs[0] == l.Entrants[f.Home].FactionID && b.FactionIDs[1] == l.Entrants[f.Away].FactionID
 }
 
-func failStart(ctx context.Context, store SchedulerStore, leagueID string, f league.Fixture, err error) error {
+// failStart spends the fixture's attempt on a permanent failure and reports it; any other
+// error is returned for the next pass to retry.
+func failStart(ctx context.Context, store SchedulerStore, leagueID string, f league.Fixture, err error) (bool, error) {
 	if !isAny(err, permanentStartErrors) {
-		return err
+		return false, err
 	}
 	f.Attempts++
 	if f.Attempts >= league.MaxAttempts {
 		f.Status = league.FixtureVoid
 	}
 	slog.WarnContext(ctx, "league_fixture_start_failed", "league_id", leagueID, "fixture_id", f.ID, "attempt", f.Attempts, "status", f.Status, "error", err)
-	return store.SaveFixture(ctx, f)
+	return true, store.SaveFixture(ctx, f)
 }
 
 func isAny(err error, targets []error) bool {

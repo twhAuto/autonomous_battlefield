@@ -31,7 +31,7 @@ type harness struct {
 
 func newHarness() *harness {
 	h := &harness{repo: &memoryRepo{leagues: map[string]*league.League{}}, battles: &fakeBattles{}, mux: http.NewServeMux()}
-	NewHandler(leagueservice.New(h.repo, h.battles, fakeFactions{})).RegisterRoutes(h.mux)
+	NewHandler(leagueservice.New(h.repo, h.battles, fakeFactions{}, leagueservice.Options{BattleSlots: 4})).RegisterRoutes(h.mux)
 	return h
 }
 
@@ -117,9 +117,13 @@ func TestListLeaguesRouteShowsChampions(t *testing.T) {
 	stored := h.repo.leagues[testLeagueID]
 	stored.Status, stored.Champion = league.StatusCompleted, &champion
 	list := h.do(authn.Developer, http.MethodGet, "/v1/leagues?limit=5", "")
-	item := decode(t, list)["leagues"].([]any)[0].(map[string]any)
+	body := decode(t, list)
+	item := body["leagues"].([]any)[0].(map[string]any)
 	if list.Code != http.StatusOK || item["entrantCount"] != 8.0 || item["champion"].(map[string]any)["factionName"] != "Faction" || h.repo.listLimit != 5 {
 		t.Fatalf("list = %d %s", list.Code, list.Body.String())
+	}
+	if scheduling := body["scheduling"].(map[string]any); scheduling["battleSlots"] != 4.0 || scheduling["cliSlots"] != 3.0 {
+		t.Fatalf("scheduling = %v", scheduling)
 	}
 }
 
@@ -149,6 +153,7 @@ func TestLeagueRoutesMapErrors(t *testing.T) {
 		{"limit too high", authn.Developer, http.MethodGet, "/v1/leagues?limit=101", "", nil, 400, ""},
 		{"player list", authn.Player, http.MethodGet, "/v1/leagues", "", nil, 403, ""},
 		{"list failure", authn.Developer, http.MethodGet, "/v1/leagues", "", func(h *harness) { h.repo.err = errors.New("database down") }, 500, ""},
+		{"slot read failure", authn.Developer, http.MethodGet, "/v1/leagues", "", func(h *harness) { h.repo.slotsErr = errors.New("database down") }, 500, ""},
 		{"missing league", authn.Developer, http.MethodGet, "/v1/leagues/" + testLeagueID, "", nil, 404, ""},
 		{"bad league ID", authn.Developer, http.MethodGet, "/v1/leagues/league", "", nil, 400, ""},
 		{"completed cancel", authn.Admin, http.MethodPost, "/v1/leagues/" + testLeagueID + "/cancel", "", func(h *harness) {
@@ -184,8 +189,11 @@ func TestCancelLeagueRoute(t *testing.T) {
 type memoryRepo struct {
 	leagues   map[string]*league.League
 	err       error
+	slotsErr  error
 	listLimit int
 }
+
+func (r *memoryRepo) CLISlots(context.Context) (int, error) { return 3, r.slotsErr }
 
 func (r *memoryRepo) CreateLeague(_ context.Context, l league.League) error {
 	if r.err != nil {
