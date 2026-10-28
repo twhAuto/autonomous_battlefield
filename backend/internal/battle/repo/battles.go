@@ -28,9 +28,9 @@ func (r *Postgres) CreateBattle(ctx context.Context, params battleservice.Create
 		return fmt.Errorf("marshal battle initial state: %w", err)
 	}
 	_, err = r.db.Exec(ctx, `
-		INSERT INTO battle_runs (id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks, initial_state, current_state, traceparent, tracestate, owner_id, admission_exempt)
-		VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $10)
-	`, params.ID, params.ScenarioID, params.ScenarioDigest, snapshot, params.RequestedTicks, initialState, params.Traceparent, params.Tracestate, authn.Owner(ctx), params.AdmissionExempt)
+		INSERT INTO battle_runs (id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks, initial_state, current_state, traceparent, tracestate, owner_id, admission_exempt, decision_budget_exempt)
+		VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $10, $11)
+	`, params.ID, params.ScenarioID, params.ScenarioDigest, snapshot, params.RequestedTicks, initialState, params.Traceparent, params.Tracestate, authn.Owner(ctx), params.AdmissionExempt, params.DecisionBudgetExempt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "P0429" {
@@ -49,16 +49,21 @@ func (r *Postgres) GetBattle(ctx context.Context, id string) (*battleservice.Bat
 	var snapshot []byte
 	var initialState, currentState []byte
 	var result []byte
+	var league battleLeagueColumns
 	err := r.db.QueryRow(ctx, `
-		SELECT id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks,
-		       initial_state, current_state, current_tick, status, paused, attempt, result, error_code, error_message,
-		       created_at, started_at, completed_at, owner_id
-		FROM battle_runs
-		WHERE id = $1
+		SELECT r.id, r.scenario_id, r.scenario_digest, r.scenario_snapshot, r.requested_ticks,
+		       r.initial_state, r.current_state, r.current_tick, r.status, r.paused, r.attempt, r.result, r.error_code, r.error_message,
+		       r.created_at, r.started_at, r.completed_at, r.owner_id,
+		       l.id, l.name, f.id, f.stage, f.group_index, f.round, f.tie, f.leg
+		FROM battle_runs r
+		LEFT JOIN league_fixtures f ON f.battle_id = r.id
+		LEFT JOIN leagues l ON l.id = f.league_id
+		WHERE r.id = $1
 	`, id).Scan(
 		&run.ID, &run.ScenarioID, &run.ScenarioDigest, &snapshot, &run.RequestedTicks, &initialState, &currentState,
 		&run.CurrentTick, &run.Status, &run.Paused, &run.Attempt, &result, &run.ErrorCode, &run.ErrorMessage,
 		&run.CreatedAt, &run.StartedAt, &run.CompletedAt, &run.OwnerID,
+		&league.id, &league.name, &league.fixtureID, &league.stage, &league.group, &league.round, &league.tie, &league.leg,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, battleservice.ErrBattleNotFound
@@ -82,7 +87,26 @@ func (r *Postgres) GetBattle(ctx context.Context, id string) (*battleservice.Bat
 		}
 		run.Result = &decoded
 	}
+	run.League = league.value()
 	return &run, nil
+}
+
+// battleLeagueColumns scans the nullable league columns of a battle read.
+type battleLeagueColumns struct {
+	id, name, fixtureID, stage *string
+	group, round, tie, leg     *int
+}
+
+func (c battleLeagueColumns) value() *battleservice.BattleLeague {
+	if c.id == nil || c.fixtureID == nil {
+		return nil
+	}
+	league := &battleservice.BattleLeague{ID: *c.id, Name: *c.name, FixtureID: *c.fixtureID, Stage: *c.stage, Round: *c.round, Tie: *c.tie, Leg: *c.leg}
+	if c.group != nil {
+		letter := string(rune('A' + *c.group))
+		league.Group = &letter
+	}
+	return league
 }
 
 func (r *Postgres) StopBattle(ctx context.Context, id string) error {

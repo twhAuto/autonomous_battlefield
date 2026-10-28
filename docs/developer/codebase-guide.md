@@ -27,6 +27,7 @@ autonomous_battlefield/
 │   ├── internal/
 │   │   ├── battle/{api,service,catalog,worker,repo,resultcache}/
 │   │   ├── faction/{api,service,repo}/
+│   │   ├── league/{api,service,repo}/ # AI leagues; the league package holds the pure rules
 │   │   ├── game/               # Deterministic state transitions
 │   │   │   └── controller/     # Infrastructure-free controller contracts
 │   │   ├── ai/                 # Shared decision contracts; subpackages for capability tokens,
@@ -347,6 +348,31 @@ destruction events. `buildResult` copies the counters into `FactionStats`.
 figures add up to the faction totals over complete battles. The battle page renders
 them in
 [`TypeStatistics.tsx`](../../frontend/src/features/battles/components/TypeStatistics.tsx).
+
+## League implementation
+
+[`internal/league`](../../backend/internal/league) holds the pure tournament rules:
+`GroupFixtures` builds the double round robin, `GroupStandings` ranks a group with its
+tiebreakers, and `Advance` seeds the crossover knockout, decides two-leg ties with
+`TieWinner` and names the champion. Fixture and battle IDs come from `DerivedID`, so
+retried writes repeat themselves; battle IDs also take the league's secret
+`BattleSalt`. `league_test.go` covers the schedule, every
+tiebreak, both bracket sizes and a full run to a champion.
+
+[`league/service`](../../backend/internal/league/service) validates creation through
+the battle service's `ValidateBattle` and checks Admin or Inspect access;
+`scheduler.go` is the background pass that stops battles left in cancelled leagues,
+settles fixtures, advances stages and starts at most one battle with
+`CreateBattleInput.DecisionBudgetExempt`, adopting an existing battle only when
+`createdFor` matches its origin.
+[`league/repo`](../../backend/internal/league/repo) stores leagues (migration `00022`),
+joins each fixture's battle outcome, and holds the scheduler advisory lock;
+`postgres_integration_test.go` runs in a private schema so its engine-idle checks see
+only its own battles. [`league/api`](../../backend/internal/league/api) serves the four
+`/v1/leagues` routes. `internal/app` composes the service and `cmd/server` starts the
+scheduler with `App.StartLeagueScheduler`. `battle/repo/battles.go` adds a battle's
+league to `GetBattle`, and `migrations/leagues_integration_test.go` covers the budget
+exemption and the downgrade guard.
 
 ## Battle replay implementation
 

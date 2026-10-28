@@ -79,6 +79,48 @@ func TestCreateBattleExemptsOnlyAdminFromAllowances(t *testing.T) {
 	}
 }
 
+func TestDecisionBudgetExemptionAppliesOnlyToAdmins(t *testing.T) {
+	for _, tc := range []struct {
+		role      authn.Role
+		requested bool
+		want      bool
+	}{{authn.Admin, true, true}, {authn.Admin, false, false}, {authn.Developer, true, false}, {authn.Player, true, false}} {
+		battleRepo := &fakeBattleRepo{}
+		factions := &battleFactionRepo{factions: map[string]*faction.Faction{
+			"4db8d152-1e04-4d10-8824-859c6ed72878": {ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Northwind"},
+			"41ac3a2f-3371-4de1-b0f6-70600fcd9052": {ID: "41ac3a2f-3371-4de1-b0f6-70600fcd9052", Name: "Verdant"},
+		}}
+		service := NewService(battleRepo, factions, &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}}, 10_000, Options{})
+		ctx := authn.WithActor(context.Background(), authn.Actor{ID: "actor", Role: tc.role})
+		if _, err := service.CreateBattle(ctx, CreateBattleInput{
+			ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1",
+			Participants: scriptedParticipants(), TickCount: 100, DecisionBudgetExempt: tc.requested,
+		}); err != nil {
+			t.Fatalf("%s: CreateBattle() returned an error: %v", tc.role, err)
+		}
+		if battleRepo.created.DecisionBudgetExempt != tc.want {
+			t.Fatalf("%s requested=%v: DecisionBudgetExempt = %v; want %v", tc.role, tc.requested, battleRepo.created.DecisionBudgetExempt, tc.want)
+		}
+	}
+}
+
+func TestValidateBattleChecksWithoutCreating(t *testing.T) {
+	battleRepo := &fakeBattleRepo{}
+	factions := &battleFactionRepo{factions: map[string]*faction.Faction{
+		"4db8d152-1e04-4d10-8824-859c6ed72878": {ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Northwind"},
+		"41ac3a2f-3371-4de1-b0f6-70600fcd9052": {ID: "41ac3a2f-3371-4de1-b0f6-70600fcd9052", Name: "Verdant"},
+	}}
+	service := NewService(battleRepo, factions, &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}}, 10_000, Options{})
+	input := CreateBattleInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1", Participants: scriptedParticipants(), TickCount: 100}
+	if err := service.ValidateBattle(context.Background(), input); err != nil || battleRepo.created.ID != "" {
+		t.Fatalf("ValidateBattle() = %v, created %q", err, battleRepo.created.ID)
+	}
+	input.TickCount = 0
+	if err := service.ValidateBattle(context.Background(), input); !errors.Is(err, ErrInvalidBattle) {
+		t.Fatalf("invalid ValidateBattle() = %v", err)
+	}
+}
+
 func TestCreateBattleValidationAndDependencies(t *testing.T) {
 	valid := CreateBattleInput{
 		ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1",

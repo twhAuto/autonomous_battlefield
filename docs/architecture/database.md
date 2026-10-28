@@ -37,6 +37,7 @@ schema lifecycle. Grants (restated in full by `00017`):
 | `faction_background_generations` | `SELECT`, `UPDATE` | `00009` |
 | `runtime_policy` | `SELECT`, `UPDATE(id)` (row lock only) | `00011` |
 | `battle_runs` | `SELECT(id, ai_executions)`, `UPDATE(ai_executions)` | `00011` |
+| `battle_runs` | `SELECT(decision_budget_exempt)`, read by claim admission | `00022` |
 | `agent_execution_leases` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` | `00011` |
 
 The role has no access to battle events, battle state, replay frames, factions, membership or
@@ -59,10 +60,13 @@ it is not part of the battle simulation snapshot.
 | Table or view | Purpose | Key rules |
 | --- | --- | --- |
 | `factions` | Reusable faction identity: name, doctrine, background, emblem, owner | `ruleset_id` and `blueprint` are legacy-only. Battles snapshot faction data, so deleting a faction never changes a battle |
-| `battle_runs` | One battle: scenario snapshot, initial and current state, status, lease, attempt and graceful-requeue count, pause flag, result, owner, model-execution count, trace context | Status `queued`, `running`, `completed`, `failed` or `stopped`. A lease owner and expiry are both set or both null, and only while `running` |
+| `battle_runs` | One battle: scenario snapshot, initial and current state, status, lease, attempt and graceful-requeue count, pause flag, result, owner, model-execution count, admission and decision-budget exemptions, trace context | Status `queued`, `running`, `completed`, `failed` or `stopped`. A lease owner and expiry are both set or both null, and only while `running` |
 | `battle_events` | Ordered events per battle attempt | Primary key `(battle_id, attempt, sequence)` makes inserts idempotent and serves event paging |
 | `battle_replay_frames` | One engine checkpoint per decision window of a battle attempt, with that tick's events | Primary key `(battle_id, attempt, tick)` makes inserts idempotent and finds the nearest earlier checkpoint. `checkpoint` is a JSON object and `events` a JSON array |
 | `battle_decisions` | One strategy decision window: frozen observation and hash, controller and profile, lease, resolved plan, fallback source, error category, usage, provider metadata, trace context | Unique per `(battle_id, attempt, faction_id, target_tick)`. Status `pending`, `running`, `accepted`, `fallback` or `failed`. `version` guards resolution; `idempotency_key` deduplicates submissions. `faction_id` is snapshot data, not a foreign key |
+| `leagues` | One AI league: owner, name, status, request digest, secret battle-ID salt, maps, battle timing, group count, champion | Status `running`, `completed` or `cancelled`; `completed_at` is set exactly when it is not running, and a champion only when completed |
+| `league_entrants` | One competitor per league: entry index, group, faction ID, faction name copied at creation, requested controller | Primary key `(league_id, entrant_index)`; one entrant per faction per league. No foreign key to `factions`, so deleting a faction never breaks a league |
+| `league_fixtures` | One battle slot: play sequence, stage, group, round, tie, leg, home and away entrants, map, status, attempts, current battle | IDs are derived from the league and sequence, so repeated writes are no-ops. Status `pending`, `running`, `completed`, `void` or `cancelled`; a running fixture has a battle. `battle_id` is unique and set to null if that battle is deleted |
 | `faction_generation_accounts` | Per-actor row used as a generation lock | Locked `FOR UPDATE` while creating a job |
 | `faction_background_generations` | Durable background-draft jobs | Unique `(actor_id, idempotency_key)`; a partial unique index allows one queued or running job per actor. Status `queued`, `running`, `succeeded`, `failed` or `expired` |
 | `runtime_policy` | Singleton: AI stop switch, battle allowances, per-battle model budget, CLI concurrency | Row lock serializes every admission decision |
@@ -74,7 +78,7 @@ it is not part of the battle simulation snapshot.
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
 These diagrams show every column of every table, generated from the schema after
-migration `00021` with keys marked `PK` and `FK`. Update them with any schema
+migration `00022` with keys marked `PK` and `FK`. Update them with any schema
 change. Battles snapshot faction data instead of referencing `factions`, so
 deleting a faction never changes a battle.
 
@@ -112,6 +116,7 @@ erDiagram
         int ai_executions
         bool admission_exempt
         int graceful_requeues
+        bool decision_budget_exempt
     }
     BATTLE_EVENTS {
         uuid battle_id PK,FK
@@ -163,6 +168,58 @@ erDiagram
         timestamptz claimed_at
         timestamptz context_served_at
         timestamptz runner_completed_at
+    }
+```
+
+### Leagues
+
+```mermaid
+erDiagram
+    LEAGUES ||--o{ LEAGUE_ENTRANTS : "enters (cascade)"
+    LEAGUES ||--o{ LEAGUE_FIXTURES : "schedules (cascade)"
+    LEAGUE_ENTRANTS ||--o{ LEAGUE_FIXTURES : "plays home or away"
+    BATTLE_RUNS |o--o| LEAGUE_FIXTURES : "plays (set null)"
+    LEAGUES {
+        uuid id PK
+        text owner_id
+        text name
+        text status
+        text request_digest
+        text battle_salt
+        text_array scenario_ids
+        int requested_ticks
+        text tick_duration
+        int decision_interval_ticks
+        int group_count
+        int champion_entrant
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz completed_at
+    }
+    LEAGUE_ENTRANTS {
+        uuid league_id PK,FK
+        int entrant_index PK
+        int group_index
+        uuid faction_id
+        text faction_name
+        jsonb controller
+    }
+    LEAGUE_FIXTURES {
+        uuid id PK
+        uuid league_id FK
+        int sequence
+        text stage
+        int group_index
+        int round
+        int tie
+        int leg
+        int home_entrant FK
+        int away_entrant FK
+        text scenario_id
+        text status
+        int attempts
+        uuid battle_id FK
+        timestamptz updated_at
     }
 ```
 
@@ -320,15 +377,16 @@ API replica, engine and AI gateway instance sees one serialized policy:
 | Trigger (function) | Fires | Effect |
 | --- | --- | --- |
 | `friend_battle_admission` (`admit_friend_battle`) | Before inserting a battle | Locks `runtime_policy` and rejects with SQLSTATE `P0429` when the owner reached the daily or unfinished allowance, or the global unfinished cap. Skips `legacy-admin` and `admission_exempt` (Admin) battles; retried IDs reach the unique constraint without spending an allowance |
-| `gate_decision` / `gate_generation` (`gate_new_ai_job`) | Before inserting a decision or generation job | A new model decision becomes `failed` with `ai_disabled_or_budget` when AI is stopped or the battle's budget is spent, so the engine falls back at once. A new generation job raises `P0429` while AI is stopped |
-| `agent_decision_admission` / `agent_generation_admission` (`admit_agent_execution`) | Before a claim sets `lease_owner` or `worker_id` | Locks `runtime_policy`. Cancels the claim (returns `NULL`) when AI is stopped or CLI slots are full, prunes expired leases, counts the battle's model execution (marking the decision `failed` with `decision_budget` past the limit), and inserts a CLI lease |
+| `gate_decision` / `gate_generation` (`gate_new_ai_job`) | Before inserting a decision or generation job | A new model decision becomes `failed` with `ai_disabled_or_budget` when AI is stopped or the battle's budget is spent (never for a `decision_budget_exempt` battle), so the engine falls back at once. A new generation job raises `P0429` while AI is stopped |
+| `agent_decision_admission` / `agent_generation_admission` (`admit_agent_execution`) | Before a claim sets `lease_owner` or `worker_id` | Locks `runtime_policy`. Cancels the claim (returns `NULL`) when AI is stopped or CLI slots are full, prunes expired leases, counts the battle's model execution (marking the decision `failed` with `decision_budget` past the limit unless the battle is `decision_budget_exempt`), and inserts a CLI lease |
 | `release_decision_execution` / `release_generation_execution` (`release_agent_execution`) | After a worker reports usage | Deletes the job's CLI lease |
 
 Defaults (`runtime_policy`): 20 battles per person per UTC day, 2 unfinished per
 person, 4 unfinished globally, 100 model executions per battle, 4 CLI slots. API
 jobs do not take CLI slots. Paused battles remain `queued` or `running`, so they
 still count as unfinished. Admin battles skip the allowances but count toward other
-identities' global cap.
+identities' global cap. League battles are Admin battles that also skip the model
+budget; their executions are still counted in `ai_executions`.
 
 Rows created before ownership existed belong to `legacy-admin`, which bypasses the
 battle allowances for migrations and trusted fixtures; application identities,
@@ -444,3 +502,28 @@ and does not move acceptance time. Failed execution records a resolution timesta
 Reuse requires matching model and effort. Existing table grants cover the new
 columns; no new roles or broader table privileges are introduced. Down removes
 the trigger/function and these columns.
+
+## AI leagues
+
+Migration `00022_leagues.sql` adds `leagues`, `league_entrants` and `league_fixtures`,
+and `battle_runs.decision_budget_exempt` (default false). Only the league scheduler
+sets the flag, through the battle service, and only for an Admin owner; the
+`gate_new_ai_job` and `admit_agent_execution` triggers let an exempt battle's model
+decisions continue past `runtime_policy.decision_executions` while still counting
+them. Claims run as the AI gateway login, so that role gains `SELECT` on this one
+column. Nothing is backfilled.
+
+Fixture IDs are derived from the league and sequence, so a retried write reuses its
+row. Battle IDs are derived from the fixture, the attempt and `leagues.battle_salt`, a
+random value the API never returns, so an interrupted battle start finds its battle
+while nobody else can create a battle with that ID first. The scheduler also adopts
+an existing battle only when its owner, decision-budget exemption, map and factions
+match the fixture; anything else spends the attempt. A fixture's battle outcome is
+read by joining `battle_runs`; the league stores no copy of results. Scheduling passes and cancellations take transaction advisory lock
+`741928320` (`pg_try_advisory_xact_lock` for passes, the blocking form for
+cancellation), so API replicas never schedule the same league twice and a
+cancellation cannot race a new battle. Cancellation returns the league's battles
+that are still queued or running, also when repeated, and every scheduling pass
+stops such battles in cancelled leagues, so a failed stop is retried. Down refuses while any league is running;
+otherwise it restores both trigger functions and drops the column and the three
+tables with every completed or cancelled league.

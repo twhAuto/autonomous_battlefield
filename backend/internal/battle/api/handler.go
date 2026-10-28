@@ -309,6 +309,7 @@ func battleResponse(run *battleservice.BattleRun) any {
 		State          any     `json:"state"`
 		ErrorCode      *string `json:"errorCode,omitempty"`
 		ErrorMessage   *string `json:"errorMessage,omitempty"`
+		League         any     `json:"league,omitempty"`
 	}{
 		OwnerID: run.OwnerID, ID: run.ID, ScenarioID: run.ScenarioID, ScenarioDigest: run.ScenarioDigest,
 		RequestedTicks: run.RequestedTicks, CurrentTick: run.CurrentTick, Status: run.Status, Paused: run.Paused,
@@ -316,7 +317,16 @@ func battleResponse(run *battleservice.BattleRun) any {
 		Attempt:    run.Attempt, Participants: participants, Result: run.Result,
 		Map: run.ScenarioSnapshot.Map, State: run.CurrentState,
 		ErrorCode: run.ErrorCode, ErrorMessage: run.ErrorMessage,
+		League: leagueFor(run),
 	}
+}
+
+// leagueFor keeps the field absent, not null, for battles outside a league.
+func leagueFor(run *battleservice.BattleRun) any {
+	if run.League == nil {
+		return nil
+	}
+	return run.League
 }
 
 func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {

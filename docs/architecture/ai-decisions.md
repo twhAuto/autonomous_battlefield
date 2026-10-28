@@ -388,8 +388,8 @@ model still receives the full message.
 | `plan_not_submitted` | Agent worker | Runner reported success but MCP holds no accepted plan |
 | `profile_unavailable`, `capability`, `provider_unavailable` | Agent worker | Claimed profile is not executable locally, the claim carried no capability, or no runner could be built for the profile |
 | `runner` | Agent worker | Runner failed without a more specific category |
-| `decision_budget` | PostgreSQL admission trigger | The battle's model execution budget is exhausted at claim time |
-| `ai_disabled_or_budget` | PostgreSQL insert trigger | AI execution was stopped, or the battle's budget was already spent, when the decision was created; the engine falls back at once |
+| `decision_budget` | PostgreSQL admission trigger | The battle's model execution budget is exhausted at claim time; never for a league battle, which is budget-exempt |
+| `ai_disabled_or_budget` | PostgreSQL insert trigger | AI execution was stopped, or the battle's budget was already spent (not for a budget-exempt league battle), when the decision was created; the engine falls back at once |
 | `battle_stopped` | Battle stop route / expiry sweep | Battle stopped or expired while the decision was open |
 
 Background-generation jobs share the worker and runner categories above except

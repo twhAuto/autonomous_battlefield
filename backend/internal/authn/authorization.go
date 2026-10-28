@@ -152,6 +152,11 @@ var routeRules = []routeRule{
 
 	{pattern: "GET /v1/battles/{id}/decisions", permission: PermissionInspect},
 	{pattern: "GET /v1/battles/{id}/decisions/{requestId}/context", permission: PermissionInspect},
+	{pattern: "GET /v1/leagues", permission: PermissionInspect},
+	{pattern: "GET /v1/leagues/{id}", permission: PermissionInspect},
+
+	{pattern: "POST /v1/leagues", permission: PermissionAdmin},
+	{pattern: "POST /v1/leagues/{id}/cancel", permission: PermissionAdmin},
 
 	{pattern: "GET /v1/admin/model-access", permission: PermissionAdmin},
 	{pattern: "PUT /v1/admin/model-access", permission: PermissionAdmin},
