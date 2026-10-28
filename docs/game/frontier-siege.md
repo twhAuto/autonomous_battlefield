@@ -36,14 +36,8 @@ Gold mines take only economy buildings and hold finite gold
 
 Each faction starts with 220 gold and only its castle. There is **no building
 limit**, and each faction may field **50 units** (living plus paid in training).
-Construction requires a site within a living active friendly building's range: a
-gold mine with gold left for economy, unoccupied ground for everything else. Every
-pair of buildings must be at least two hexes apart, including opposing structures,
-and no building may stand beside a mine with gold left, so mines are claimed rather
-than walled off. Destroyed buildings
-stop granting range. Economy activates immediately; other structures activate next
-tick. Engineers can repair non-castle buildings. There is no selling, demolition,
-or capture.
+Placement, spacing, mine and activation rules are in
+[construction and training](game-rules.md#construction-and-training).
 
 ## Unit roster
 
