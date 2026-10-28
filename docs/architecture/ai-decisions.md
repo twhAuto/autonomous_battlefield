@@ -20,10 +20,7 @@ For Admin and Developer viewers, each faction status box shows the latest
 accepted or fallback plan at or before the current tick and its submitted
 rationale. A pending or future decision does not replace the applied plan.
 Stopped battles retain the last plan; missing records have explicit empty states.
-Fallback plans are labeled. The strip shows the plan name; opening it reveals the
-full plan and rationale in a keyboard-focusable read-only text box, capped at 320px
-and floating over the map, so it costs no layout space while closed.
-Player roles retain the existing restriction on decision inspection.
+Fallback plans are labeled. Players cannot inspect decisions.
 
 ## Decision lifecycle
 
@@ -252,7 +249,7 @@ profiles/state. The MCP response remains one JSON object;
 session identity deduplication preserves this order. Only prefetched prompt rendering
 splits nested stable leaves into a separate reference block.
 
-With prompt v11, `encoding="tables-v1"` enables further lossless model-only
+The `encoding="tables-v1"` marker enables further lossless model-only
 compaction. A table has `fields`, `rows`, and optional `shared` values. Cells follow
 column order; null cells and omitted trailing cells mean absent fields. Records
 with explicit null fields stay inline. Unit/building catalogs use tables;
@@ -265,9 +262,7 @@ fields use that integer; string targets remain building IDs. `unitDeaths` entrie
 replace `factionId` with the same `faction` index. Destroyed buildings are omitted
 from the projection; faction stats still count them. Building IDs stay complete
 because `productionOrders` name them. Numbers are assigned in faction-group order
-and never reused within one response; they are not stable across decisions. At the
-AB-173 baseline (battle `fc68915a`, tick 190) this cut `unitMap` from 15.0 to 7.9 KB
-and the projected context from 36.3 to 28.5 KB.
+and never reused within one response; they are not stable across decisions.
 
 `view.unitMap` consolidates every visible unit into one table. `faction` is a
 zero-based index into `view.state.factions`; `xy` is position `[x,y]`. All IDs,
@@ -283,7 +278,7 @@ Historical plans may reuse individual exact active-plan fields through
 every memory entry. Historical differences remain explicit. Encodings are selected
 only when smaller including their keys and version marker; tiny or incompatible
 records retain the original shape. All references are local to one frozen response.
-Canonical observations, hashes and plan validation remain unchanged. CLI prefetch
+Canonical observations, hashes and plan validation use the uncompacted structure. CLI prefetch
 checks only transport metadata, allowing compact catalogs without decoding them
 as canonical storage structs. Offline round-trip tests reconstruct the original
 projection, including large integers, optional fields, unknown values and order.
@@ -487,7 +482,7 @@ effort (or the option's explicit `defaultReasoningEffort`). The backend validate
 both fields, freezes them in the scenario and decision row, and includes effort in
 retry-reuse matching. Workers validate against their own allowlist before execution;
 a removed option fails as `model_selection_unavailable`, rather than substituting
-another model. Existing API profiles and Antigravity expose no effort controls.
+another model. API profiles and Antigravity expose no effort controls.
 The setup page never leaves effort implicit: when the chosen model lists efforts
 it preselects `low` (or the first listed effort when `low` is absent) and submits
 it with the model identifier. API clients that omit both fields still get the
@@ -504,7 +499,7 @@ The shipped CLI catalog includes choices for lighter workloads: Claude `haiku`, 
 model-default effort because the alias can resolve to a model without effort
 support on older supported CLIs. Antigravity's Flash low/medium/high variants
 encode reasoning in the model ID. Profile defaults remain `gpt-5.6-luna`,
-`sonnet` and `gemini-3.8-flash-medium`; existing selections are preserved.
+`sonnet` and `gemini-3.8-flash-medium`.
 See the provider catalogs for [OpenAI](https://developers.openai.com/api/docs/models/gpt-6-luna),
 [Claude](https://code.claude.com/docs/en/model-config) and
 [Antigravity](https://antigravity.google/docs/models). Subscription availability
@@ -523,26 +518,25 @@ wait measurement immediately; `runnerCompletedAt` records the gateway receipt of
 the later worker report. Process-launch milliseconds measure only OS process
 creation, not provider readiness. Claim-to-context includes CLI initialization,
 provider activity and MCP work, and is not pure inference or reasoning time.
-Missing historical measurements stay unknown. A lease reclaim resets claim/context
+A timestamp a record lacks stays unknown. A lease reclaim resets claim/context
 and completion timestamps; total wait still starts at the original request.
 
 ## CLI context prefetch
 
 Codex and Claude battle profiles prefetch context by default; the worker-only
-`prefetchContext: false` setting restores tool-fetched context. An absent setting
-means prefetch, so existing worker configurations adopt it when the worker binary
-is upgraded. The worker calls `get_decision_context` with the same
+`prefetchContext: false` setting selects tool-fetched context; an absent setting
+means prefetch. The worker calls `get_decision_context` with the same
 request capability before launching the CLI, verifies the request identity,
 version/tick and 64 KiB limit, and embeds the frozen JSON as untrusted data. The
 model is instructed to use that snapshot without fetching it again; submission
 and optional unit-detail tools retain the same capabilities and validation.
 Prefetch failure stops execution as `mcp_context`; it never launches with missing
-or mismatched context. Background-generation behavior is unchanged. Antigravity
+or mismatched context. Antigravity
 always prefetches, regardless of this option.
 
 Each CLI result stores `contextDelivery` (`tool` or `prefetch`) in provider metadata,
 exposed through decision history and the timing panel; the generation span has
-`battlefield.context_delivery`. Historical records omit this field. With prefetch,
+`battlefield.context_delivery`; a record without it has unknown delivery. With prefetch,
 `contextServedAt` precedes CLI launch: compare request/claim-to-resolution and
 success/fallback rates across modes, not just claim-to-context time. Model,
 effort, scenario, concurrency and prompt revision must be recorded for comparisons.

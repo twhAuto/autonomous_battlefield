@@ -211,13 +211,6 @@ sequenceDiagram
     API-->>UI: Current presentation data
 ```
 
-Faction creation and editing offer 12 named SVG emblems with keyboard selection
-and live preview. The API validates the chosen identifier and stores it in
-`factions.emblem`; registry and battle setup reuse the shared emblem renderer.
-Existing factions default to the star, and profile updates from older clients
-preserve the saved emblem. Emblems are cosmetic and do not enter simulation or
-AI decision context.
-
 The game library is the deterministic `internal/game` package compiled into the
 API and engine binaries, not a separate service. The API builds the match once to
 validate the request and store its initial state; only the engine advances it.
@@ -227,11 +220,7 @@ complete resolved scenario and initial state, so later edits to factions or cata
 YAML cannot change an existing run. Battle creation accepts optional tick-duration
 (100ms–10s) and decision-interval (1–100 ticks) overrides. The service applies
 validated overrides before computing the scenario digest and initial match;
-workers use the stored timing without changing catalog defaults. Setup exposes
-map-default choices and timing presets, with both combatant slots aligned at the
-top. It omits shared roster/rules explanations and the integration status panel;
-controller options still come from the available profile list, with an inline error
-if that lookup fails.
+workers use the stored timing without changing catalog defaults.
 
 ### 5.2 Strategy decision window
 
@@ -406,22 +395,22 @@ sequenceDiagram
     E->>DB: claim and play the battle as usual
 ```
 
-A pass first settles running fixtures from their battles: a completed battle
-completes the fixture, and a failed, stopped or missing battle sends it back to
-pending for one retry, then makes it void. When every fixture so far is settled the
-pass adds the next knockout stage from the group tables or tie winners, or records
-the champion after the final. It then starts the first pending fixture of the oldest
-running league, but only when no battle is queued or running, because the single
-engine plays battles one at a time and a battle's one-hour timeout counts queued
-time. Battle IDs derive from the fixture, the attempt and a per-league secret salt: a
-pass interrupted after creating a battle links that battle on the next pass instead
-of creating another, and only after checking that its owner, budget exemption, map
-and factions match the fixture. Cancelling a league takes the same lock, cancels
-unfinished fixtures and then stops the running battle; each pass begins by stopping
-any battle still running in a cancelled league, so a failed stop is retried. Battle creation goes through the same service as
-`POST /v1/battles`, as the league's Admin owner, so model access, faction existence
-and timing are rechecked for every battle; that is why the scheduler runs in the
-API, which composes the battle service, rather than in the engine.
+A pass first stops any battle still running in a cancelled league, so a failed stop
+is retried. It then settles running fixtures from their battles, retrying or voiding
+failed ones as the [league rules](api.md#leagues) describe. When every fixture so
+far is settled it adds the next knockout stage, or records the champion after the
+final. Finally it starts the first pending fixture of the oldest running league,
+but only when no battle is queued or running, because the single engine plays
+battles one at a time and a battle's one-hour timeout counts queued time. Battle IDs
+derive from the fixture, so a pass interrupted after creating a battle adopts it on
+the next pass ([idempotency rules](database.md#idempotency-and-versions)).
+Cancellation takes the same lock, cancels unfinished fixtures and then stops the
+running battle.
+
+Battle creation goes through the same service as `POST /v1/battles`, as the
+league's Admin owner, so model access, faction existence and timing are rechecked
+for every battle. That is why the scheduler runs in the API, which composes the
+battle service, rather than in the engine.
 
 ## 6. AI decisions
 
@@ -433,9 +422,13 @@ accepted or fallback, exactly like a scripted plan. Background drafting for
 faction profiles reuses the same workers, runners and capability model with a
 separate tool set.
 
+Battle creation freezes each model faction's model and reasoning effort, and
+decision rows record lifecycle timestamps that the inspector and traces expose.
+
 [AI decisions](ai-decisions.md) owns this contract: runners and CLI isolation,
-prompt provenance and faction memory, the decision context and unit knowledge, plan
-validation, fallback error categories, and background generation.
+model and effort selection, decision timing, context prefetch, prompt provenance
+and faction memory, the decision context and unit knowledge, plan validation,
+fallback error categories, and background generation.
 
 ## 7. Persistence and durability
 
@@ -826,26 +819,15 @@ timing/controller configuration. Scenario YAML contains only map ID and geometry
 Every map receives all units, structures and upgrades from the active content
 library. Adding content therefore needs no per-map selection updates.
 
-Three-level general upgrades retain one purchase ID per level; specialist choices
-use unit/class scopes and exclusive groups. Engine and AI validators check frozen
-ownership and ordered prerequisites/choices before accepting plans. Unit turns
-also resolve Scout retreat, cavalry pursuit, armor penetration and bounded
-Engineer repair. Repair spends gold during unit turns while respecting reserves.
-
-Snapshots store the resolved rules and mutable repair charges; no database migration
-or historical live ruleset is needed. Old snapshots remain readable, but the
-open-map construction and training overhaul changes their replay behavior. A
-worker retry or restart re-simulates with the current engine; historical authored
-pads outside the default building range may no longer accept their old orders.
-The [gameplay cutover precondition](../operations/deployment.md#gameplay-rules-cutover)
-requires finishing existing battles before this engine is deployed.
-
 ### Frozen snapshots over live catalog references
 
-Rules, factions, and initial state are captured per battle. Replays remain stable
-within an engine version, at the cost of larger JSONB rows and explicit version
-provenance. Snapshot versions describe data compatibility; they do not retain
-previous engine implementations.
+Rules, factions, and initial state are captured per battle, so gameplay content
+changes need no database migration. Replays remain stable within an engine version,
+at the cost of larger JSONB rows and explicit version provenance. Snapshot versions
+describe data compatibility; they do not retain previous engine implementations. A
+retry, restart or replay re-simulates a saved battle with the deployed engine, so a
+release that changes engine behavior follows the
+[gameplay rules cutover](../operations/deployment.md#gameplay-rules-cutover).
 
 ### Decision-window checkpoints over per-tick history
 
@@ -878,8 +860,8 @@ broker.
   verification cannot observe. The development password login remains
   single-administrator and is not player identity.
 - Public battle updates use polling rather than push delivery.
-- Replays cover only battles whose final attempt ran after migration `00020`, and
-  only the final attempt; frames of earlier attempts are kept but not served.
+- Replays cover only a battle's final attempt, and only when that attempt stored
+  checkpoints; frames of earlier attempts are kept but not served.
 - Load and failover behavior needs testing before increasing engine, AI gateway, or agent replicas.
 - Antigravity decisions prefetch the context into the prompt and refuse contexts
   over 64 KiB, because the CLI offloads large tool results to files it cannot read.
@@ -891,43 +873,3 @@ broker.
   [`battlefield-platform/cli`](../operations/cli-worker.md) job.
 - Rigorous controller experiments may need experiment identity, model parameters,
   and cost normalization beyond the current evaluation view.
-
-## Battle model choices and decision timing
-
-Each faction can select an operator-allowlisted model and reasoning effort from
-its authorized profile. The API freezes those choices in the scenario, the engine
-copies them into each decision, and the claim response carries them to the worker.
-Both API and worker validate choices. The gateway requires selection protocol 1
-before claims, so old workers stop claiming after gateway promotion. The CLI
-Jenkins job upgrades from the deployed production image and then synchronizes
-managed model options; use the documented
-[CLI maintenance window](../operations/cli-worker.md#model-selection-rollout).
-The synchronized catalog includes Haiku and GPT-6 Luna, plus Antigravity Flash
-low/medium/high model variants. These are explicit battle choices; profile
-defaults stay unchanged. The host launcher ships the same choices as the API
-and production worker configuration.
-
-PostgreSQL timestamps request creation, the latest claim, first context delivery,
-resolution and worker completion-report receipt. The existing decision-history
-API exposes those timestamps to the existing inspector roles. The frontend counts
-elapsed time only for active unresolved decisions; completed records use persisted
-resolution time. Detailed traces and the Battle Traces Grafana dashboard separate
-queue/context/resolution timings and model/effort. No private reasoning content or
-additional game state is exposed. See [AI decisions](ai-decisions.md#model-selection-and-latency).
-
-CLI workers prefetch context for Codex/Claude battle profiles unless a profile sets
-`prefetchContext: false`. The worker fetches the same capability-scoped frozen context before
-process launch and passes it inline. Gateway validation, leases and submission
-authority remain unchanged; no persistent sessions are introduced. Delivery mode
-is stored in existing decision metadata and exposed alongside timing so prefetch
-and model-tool fetches can be distinguished.
-Prefetched battle prompts place frozen reference data before faction identity and
-dynamic state, with request metadata last. Two disjoint JSON blocks reconstruct the
-same context; rules repeated in the policy are omitted only for an exact reviewed
-mechanics snapshot. Model-facing MCP JSON is also ordered by stability without
-changing stored observations or submission arguments. Prompt v11 adds lossless
-catalog/upgrade tables, a shared dynamic unit map, legal-site runs and memory
-references to the model-facing projection. CLI prefetch validates only transport
-metadata; canonical persistence and hashes remain unchanged. See
-[prompt provenance](ai-decisions.md#prompt-provenance-and-faction-memory) for
-fallback behavior and the limits of ordering for provider caching.

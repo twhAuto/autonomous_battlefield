@@ -49,24 +49,16 @@ must supply the restricted login
 
 ## Schema
 
-Migration `00021_faction_emblem.sql` adds `factions.emblem`, a non-null text
-identifier defaulting to `star`, with a check constraint for the 12 supported
-symbols. Existing rows receive the star automatically. Profile creation writes
-the selected identifier; updates with an omitted or empty emblem preserve the
-stored value in the same SQL statement. Its Down migration removes the column.
-The emblem is cosmetic profile metadata used by the registry and battle setup;
-it is not part of the battle simulation snapshot.
-
 | Table or view | Purpose | Key rules |
 | --- | --- | --- |
-| `factions` | Reusable faction identity: name, doctrine, background, emblem, owner | `ruleset_id` and `blueprint` are legacy-only. Battles snapshot faction data, so deleting a faction never changes a battle |
+| `factions` | Reusable faction identity: name, doctrine, background, emblem, owner | `emblem` is one of 12 identifiers (check constraint, default `star`) and is not part of battle snapshots. `ruleset_id` and `blueprint` are legacy-only. Battles snapshot faction data, so deleting a faction never changes a battle |
 | `battle_runs` | One battle: scenario snapshot, initial and current state, status, lease, attempt and graceful-requeue count, pause flag, result, owner, model-execution count, admission and decision-budget exemptions, trace context | Status `queued`, `running`, `completed`, `failed` or `stopped`. A lease owner and expiry are both set or both null, and only while `running` |
 | `battle_events` | Ordered events per battle attempt | Primary key `(battle_id, attempt, sequence)` makes inserts idempotent and serves event paging |
-| `battle_replay_frames` | One engine checkpoint per decision window of a battle attempt, with that tick's events | Primary key `(battle_id, attempt, tick)` makes inserts idempotent and finds the nearest earlier checkpoint. `checkpoint` is a JSON object and `events` a JSON array |
-| `battle_decisions` | One strategy decision window: frozen observation and hash, controller and profile, lease, resolved plan, fallback source, error category, usage, provider metadata, trace context | Unique per `(battle_id, attempt, faction_id, target_tick)`. Status `pending`, `running`, `accepted`, `fallback` or `failed`. `version` guards resolution; `idempotency_key` deduplicates submissions. `faction_id` is snapshot data, not a foreign key |
+| `battle_replay_frames` | One engine checkpoint per decision window of a battle attempt (tick 0, then every `decisionIntervalTicks`), with that tick's events | Written in the same lease-guarded statement as the tick. Primary key `(battle_id, attempt, tick)` makes inserts idempotent and finds the nearest earlier checkpoint. `checkpoint` is a JSON object about the size of one `current_state`; `events` is a JSON array. Frames of every attempt stay until the battle is deleted |
+| `battle_decisions` | One strategy decision window: frozen observation and hash, controller, profile, model and `reasoning_effort` (empty for the model default), lease, lifecycle timestamps, resolved plan, fallback source, error category, usage, provider metadata, trace context | Unique per `(battle_id, attempt, faction_id, target_tick)`. Status `pending`, `running`, `accepted`, `fallback` or `failed`. `version` guards resolution; `idempotency_key` deduplicates submissions. `faction_id` is snapshot data, not a foreign key |
 | `leagues` | One AI league: owner, name, status, request digest, secret battle-ID salt, maps, battle timing, group count, champion | Status `running`, `completed` or `cancelled`; `completed_at` is set exactly when it is not running, and a champion only when completed |
 | `league_entrants` | One competitor per league: entry index, group, faction ID, faction name copied at creation, requested controller | Primary key `(league_id, entrant_index)`; one entrant per faction per league. No foreign key to `factions`, so deleting a faction never breaks a league |
-| `league_fixtures` | One battle slot: play sequence, stage, group, round, tie, leg, home and away entrants, map, status, attempts, current battle | IDs are derived from the league and sequence, so repeated writes are no-ops. Status `pending`, `running`, `completed`, `void` or `cancelled`; a running fixture has a battle. `battle_id` is unique and set to null if that battle is deleted |
+| `league_fixtures` | One battle slot: play sequence, stage, group, round, tie, leg, home and away entrants, map, status, attempts, current battle | IDs are derived from the league and sequence, so repeated writes are no-ops. Status `pending`, `running`, `completed`, `void` or `cancelled`; a running fixture has a battle. `battle_id` is unique and set to null if that battle is deleted. Results are read from the battle, not copied |
 | `faction_generation_accounts` | Per-actor row used as a generation lock | Locked `FOR UPDATE` while creating a job |
 | `faction_background_generations` | Durable background-draft jobs | Unique `(actor_id, idempotency_key)`; a partial unique index allows one queued or running job per actor. Status `queued`, `running`, `succeeded`, `failed` or `expired` |
 | `runtime_policy` | Singleton: AI stop switch, battle allowances, per-battle model budget, CLI concurrency | Row lock serializes every admission decision |
@@ -80,7 +72,11 @@ it is not part of the battle simulation snapshot.
 These diagrams show every column of every table, generated from the schema after
 migration `00022` with keys marked `PK` and `FK`. Update them with any schema
 change. Battles snapshot faction data instead of referencing `factions`, so
-deleting a faction never changes a battle.
+deleting a faction never changes a battle. Gameplay content lives in the frozen
+scenario and state JSON of `battle_runs`, not in relational columns: each battle
+keeps the ruleset and map it started with, workers never re-resolve catalog IDs,
+and retired IDs stay readable in saved battles. Gameplay changes therefore need no
+schema migration.
 
 ### Battles
 
@@ -332,7 +328,7 @@ same migrated schema, are:
 | Table | Index | Columns and condition | Serves |
 | --- | --- | --- | --- |
 | `battle_runs` | `battle_runs_unpaused_claim_idx` | `(status, lease_expires_at, created_at, id)` where `status` is `queued` or `running` and not `paused` | Engine battle claims |
-| `battle_runs` | `battle_runs_claim_idx` | Same columns where `status` is `queued` or `running`, paused or not | The original claim index (`00002`); claims have used the unpaused index since `00006` |
+| `battle_runs` | `battle_runs_claim_idx` | Same columns where `status` is `queued` or `running`, paused or not | No current query; claims use `battle_runs_unpaused_claim_idx` |
 | `battle_runs` | `battle_runs_history_idx` | `(created_at DESC, id DESC)` | Battle history pages, newest first |
 | `battle_runs` | `battle_runs_owner_created` | `(owner_id, created_at)` | Per-owner admission counts |
 | `battle_events` | primary key | `(battle_id, attempt, sequence)` | Idempotent inserts and event paging |
@@ -366,8 +362,15 @@ block on or double-claim the same row.
 - **Decisions:** the AI gateway claims `model` decisions that are `pending`, or `running` with
   an expired lease, for the worker's profile IDs, and sets `status='running'` with a
   lease. The capability token issued with the claim expires at that lease deadline.
+  The `battle_decision_claim_time` trigger (`record_decision_claim_time`) sets
+  `claimed_at` and clears
+  `context_served_at` and `runner_completed_at` whenever a decision becomes
+  `running` or its lease expiry changes, so timing describes the latest execution.
 - **Generation jobs:** the AI gateway claims queued jobs by setting `status='running'`, the
   worker ID and an expiry.
+- **League scheduling:** each pass takes transaction advisory lock `741928320` with
+  `pg_try_advisory_xact_lock` and skips when another API replica holds it.
+  Cancellation takes the blocking form, so it cannot race a battle start.
 
 ### Admission triggers
 
@@ -386,7 +389,8 @@ person, 4 unfinished globally, 100 model executions per battle, 4 CLI slots. API
 jobs do not take CLI slots. Paused battles remain `queued` or `running`, so they
 still count as unfinished. Admin battles skip the allowances but count toward other
 identities' global cap. League battles are Admin battles that also skip the model
-budget; their executions are still counted in `ai_executions`.
+budget: only the league scheduler sets `decision_budget_exempt`, and only for an
+Admin owner. Their executions are still counted in `ai_executions`.
 
 Rows created before ownership existed belong to `legacy-admin`, which bypasses the
 battle allowances for migrations and trusted fixtures; application identities,
@@ -418,6 +422,12 @@ accepted.
 - Generation jobs are unique per `(actor_id, idempotency_key)`.
 - Battle creation retries with the same ID reach the primary-key constraint without
   counting against admission.
+- League fixture IDs derive from the league and sequence. League battle IDs derive
+  from the fixture, the attempt and `leagues.battle_salt`, a secret the API never
+  returns, so an interrupted scheduling pass finds the battle it created and nobody
+  else can take that ID first. A pass adopts an existing battle only when its owner,
+  budget exemption, map and factions match the fixture; otherwise the attempt is
+  spent.
 
 ### Expiry
 
@@ -467,63 +477,3 @@ validate a database backup first. [Jenkins production delivery](../operations/je
 owns the migration gate, the [local walkthrough](../developer/local-kubernetes.md#migration-gate)
 shows how to inspect it, and [K3s delivery](../operations/k3s-delivery.md) covers
 backup, restore and recovery records.
-
-## Shared content snapshot compatibility
-
-New battles freeze one shared ruleset with their chosen map. Retired catalog IDs
-remain readable in existing battle JSON; workers do not re-resolve them. Upgrade
-ownership remains an array of purchased IDs. Specialist capabilities and remaining
-Engineer repair charges are stored in scenario/state JSON, so no relational schema
-migration is required. Historical replay tests retain the original transition hash.
-
-## Battle replay frames
-
-Migration `00020_battle_replay_frames.sql` adds `battle_replay_frames`. After every
-decision-window transition (the opening at tick 0, then every
-`decisionIntervalTicks`), `SaveTick` or `CompleteBattle` inserts the engine
-checkpoint and that tick's events in the same statement as the tick, and only while
-the lease still matches. Nothing is backfilled: battles that finished before the
-migration have no frames and no replay. Frames of earlier attempts remain until the
-battle is deleted; replays read only the final attempt. A checkpoint is about the
-size of one `current_state` (26 KB on average, 36 KB at most, for a measured
-frontier battle), so frames add roughly a tenth of a state per tick. No role gains
-access. Down drops the table and every stored replay.
-
-## Decision selection and timing columns
-
-Migration `00018_decision_selection_timing.sql` adds `reasoning_effort` (empty for
-historical/model-default choices), nullable `claimed_at`, `context_served_at`, and
-`runner_completed_at` to `battle_decisions`. Existing records are not backfilled
-with invented measurements. `record_decision_claim_time` is a BEFORE UPDATE trigger
-that records the latest claim and resets context/completion timing on a lease
-reclaim. The gateway records the first successful context read once per claim.
-`resolved_at` ends the battle's wait; completion-report receipt remains separate
-and does not move acceptance time. Failed execution records a resolution timestamp.
-Reuse requires matching model and effort. Existing table grants cover the new
-columns; no new roles or broader table privileges are introduced. Down removes
-the trigger/function and these columns.
-
-## AI leagues
-
-Migration `00022_leagues.sql` adds `leagues`, `league_entrants` and `league_fixtures`,
-and `battle_runs.decision_budget_exempt` (default false). Only the league scheduler
-sets the flag, through the battle service, and only for an Admin owner; the
-`gate_new_ai_job` and `admit_agent_execution` triggers let an exempt battle's model
-decisions continue past `runtime_policy.decision_executions` while still counting
-them. Claims run as the AI gateway login, so that role gains `SELECT` on this one
-column. Nothing is backfilled.
-
-Fixture IDs are derived from the league and sequence, so a retried write reuses its
-row. Battle IDs are derived from the fixture, the attempt and `leagues.battle_salt`, a
-random value the API never returns, so an interrupted battle start finds its battle
-while nobody else can create a battle with that ID first. The scheduler also adopts
-an existing battle only when its owner, decision-budget exemption, map and factions
-match the fixture; anything else spends the attempt. A fixture's battle outcome is
-read by joining `battle_runs`; the league stores no copy of results. Scheduling passes and cancellations take transaction advisory lock
-`741928320` (`pg_try_advisory_xact_lock` for passes, the blocking form for
-cancellation), so API replicas never schedule the same league twice and a
-cancellation cannot race a new battle. Cancellation returns the league's battles
-that are still queued or running, also when repeated, and every scheduling pass
-stops such battles in cancelled leagues, so a failed stop is retried. Down refuses while any league is running;
-otherwise it restores both trigger functions and drops the column and the three
-tables with every completed or cancelled league.
