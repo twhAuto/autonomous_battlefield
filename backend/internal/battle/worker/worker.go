@@ -15,6 +15,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/sync/errgroup"
 )
 
 type Config struct {
@@ -26,6 +27,8 @@ type Config struct {
 	ShutdownTimeout    time.Duration
 	MaxAttempts        int
 	DecisionTimeout    time.Duration
+	// Concurrency is how many battles run at once, one claim loop each; zero means one.
+	Concurrency int
 }
 
 type Worker struct {
@@ -53,7 +56,10 @@ func NewWithLogger(repository Repository, decisions DecisionRepository, config C
 	if config.DecisionTimeout == 0 {
 		config.DecisionTimeout = 2 * time.Minute
 	}
-	if config.WorkerID == "" || config.PollInterval <= 0 || config.LeaseDuration <= 0 || config.HeartbeatInterval <= 0 || config.HeartbeatInterval >= config.LeaseDuration || config.ShutdownTimeout <= 0 || config.MaxAttempts <= 0 {
+	if config.Concurrency == 0 {
+		config.Concurrency = 1
+	}
+	if config.Concurrency < 0 || config.WorkerID == "" || config.PollInterval <= 0 || config.LeaseDuration <= 0 || config.HeartbeatInterval <= 0 || config.HeartbeatInterval >= config.LeaseDuration || config.ShutdownTimeout <= 0 || config.MaxAttempts <= 0 {
 		return nil, errors.New("invalid worker configuration")
 	}
 	if logger == nil {
@@ -70,7 +76,9 @@ func (w *Worker) Run(ctx context.Context) error {
 
 	w.ready.Store(true)
 	metrics.SetEngineReady(true)
+	metrics.SetEngineSlots(w.config.Concurrency)
 	w.logger.InfoContext(ctx, "battle_worker_ready",
+		"concurrency", w.config.Concurrency,
 		"poll_interval", w.config.PollInterval,
 		"lease_duration", w.config.LeaseDuration,
 		"max_attempts", w.config.MaxAttempts,
@@ -80,7 +88,14 @@ func (w *Worker) Run(ctx context.Context) error {
 		metrics.SetEngineReady(false)
 		w.logger.Info("battle_worker_stopped")
 	}()
-	return w.claimBattles(ctx)
+	// Each slot claims and runs one battle at a time under the shared worker ID; leases
+	// are per battle. A claim failure in one slot cancels the others, which requeue
+	// their battles before Run returns the error.
+	group, groupContext := errgroup.WithContext(ctx)
+	for slot := range w.config.Concurrency {
+		group.Go(func() error { return w.claimBattles(groupContext, slot+1) })
+	}
+	return group.Wait()
 }
 
 func (w *Worker) sweepExpiredBattles(ctx context.Context, done chan<- struct{}) {
@@ -98,7 +113,7 @@ func (w *Worker) sweepExpiredBattles(ctx context.Context, done chan<- struct{}) 
 	}
 }
 
-func (w *Worker) claimBattles(ctx context.Context) error {
+func (w *Worker) claimBattles(ctx context.Context, slot int) error {
 	for {
 		if err := ctx.Err(); err != nil {
 			w.shuttingDown.Store(true)
@@ -118,18 +133,20 @@ func (w *Worker) claimBattles(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("claim battle: %w", err)
 		}
-		w.processClaimedBattle(ctx, job)
+		w.processClaimedBattle(ctx, job, slot)
 	}
 }
 
-func (w *Worker) processClaimedBattle(ctx context.Context, job *queue.Job) {
+func (w *Worker) processClaimedBattle(ctx context.Context, job *queue.Job, slot int) {
 	metrics.ObserveEngineClaim(job.Lease.Attempt > 1)
+	defer metrics.TrackEngineBattle()()
 	jobContext, span := tracing.StartBattleProcess(ctx, job.Traceparent, job.Tracestate,
 		attribute.String("battlefield.battle_id", job.Lease.BattleID),
 		attribute.Int("battlefield.attempt", job.Lease.Attempt),
 	)
 	defer span.End()
 	w.logger.InfoContext(jobContext, "battle_claimed",
+		"slot", slot,
 		"battle_id", job.Lease.BattleID,
 		"attempt", job.Lease.Attempt,
 		"reclaimed", job.Lease.Attempt > 1,

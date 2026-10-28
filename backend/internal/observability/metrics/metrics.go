@@ -63,6 +63,18 @@ var (
 		Name:      "worker_ready",
 		Help:      "Whether this engine worker is ready to claim and process battles.",
 	})
+	engineSlots = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "battlefield",
+		Subsystem: "engine",
+		Name:      "battle_slots",
+		Help:      "How many battles this engine worker can run at once.",
+	})
+	engineActiveBattles = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "battlefield",
+		Subsystem: "engine",
+		Name:      "active_battles",
+		Help:      "Battles this engine worker is running now.",
+	})
 )
 
 func init() {
@@ -74,6 +86,8 @@ func init() {
 		engineBattleDuration,
 		engineTicks,
 		engineReady,
+		engineSlots,
+		engineActiveBattles,
 		resultCacheOperations,
 	)
 }
@@ -143,6 +157,17 @@ func ObserveEngineTick() {
 // through this metric.
 func ObserveResultCache(operation, outcome string) {
 	resultCacheOperations.WithLabelValues(operation, outcome).Inc()
+}
+
+// SetEngineSlots reports how many battles this engine worker can run at once.
+func SetEngineSlots(slots int) {
+	engineSlots.Set(float64(slots))
+}
+
+// TrackEngineBattle counts a battle as active until the returned function is called.
+func TrackEngineBattle() func() {
+	engineActiveBattles.Inc()
+	return engineActiveBattles.Dec
 }
 
 // SetEngineReady reports whether this engine worker can claim battles.

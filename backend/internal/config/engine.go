@@ -19,9 +19,15 @@ type Engine struct {
 	HeartbeatInterval  time.Duration
 	ShutdownTimeout    time.Duration
 	MaxAttempts        int
+	// Concurrency is how many battles the engine runs at once, one claim loop each.
+	Concurrency int
 	// WorkerID names this engine in leases; it defaults to the hostname and process ID.
 	WorkerID string
 }
+
+// defaultEngineConcurrency applies when the file omits engine.concurrency. Deployed
+// ConfigMaps leave the key out so a rollback to an image that predates it still starts.
+const defaultEngineConcurrency = 4
 
 func parseEngineConfig(raw fileConfig) (Engine, error) {
 	healthAddress := strings.TrimSpace(raw.Engine.HealthAddress)
@@ -54,6 +60,13 @@ func parseEngineConfig(raw fileConfig) (Engine, error) {
 	if maxAttempts < 1 {
 		return Engine{}, fmt.Errorf("engine.maxAttempts must be positive")
 	}
+	concurrency := defaultEngineConcurrency
+	if raw.Engine.Concurrency != nil {
+		concurrency = *raw.Engine.Concurrency
+	}
+	if concurrency < 1 || concurrency > 8 {
+		return Engine{}, fmt.Errorf("engine.concurrency must be between 1 and 8")
+	}
 	limits := ai.DefaultKnowledgeLimits()
 	if raw.Engine.KnowledgeRetrieval.MaxUnitCards != nil {
 		limits.MaxUnitCards = *raw.Engine.KnowledgeRetrieval.MaxUnitCards
@@ -67,7 +80,7 @@ func parseEngineConfig(raw fileConfig) (Engine, error) {
 	return Engine{KnowledgeRetrieval: limits,
 		HealthAddress: healthAddress, PollInterval: pollInterval, LeaseDuration: leaseDuration,
 		HeartbeatInterval: heartbeatInterval, ShutdownTimeout: shutdownTimeout,
-		MaxAttempts: maxAttempts, WorkerID: workerID(),
+		MaxAttempts: maxAttempts, Concurrency: concurrency, WorkerID: workerID(),
 	}, nil
 }
 

@@ -132,6 +132,8 @@ lifecycle probes and metrics scrapes bypass request instrumentation.
 | `battlefield_engine_battle_processing_duration_seconds` | Histogram | Wall-clock processing duration by outcome. |
 | `battlefield_engine_ticks_total` | Counter | Successfully advanced simulation ticks. |
 | `battlefield_engine_worker_ready` | Gauge | `1` while the worker can claim work, otherwise `0`. |
+| `battlefield_engine_battle_slots` | Gauge | Battles the worker can run at once (`engine.concurrency`). |
+| `battlefield_engine_active_battles` | Gauge | Battles the worker is running now; equal to the slots when the engine is saturated. |
 | `battlefield_result_cache_operations_total` | Counter | API completed-battle Redis cache operations by `operation` (`get`, `set`) and `outcome` (`hit`, `miss`, `stored`, `error`). The API falls back to PostgreSQL on any cache miss or failure, so a rising `error` count is the only sign of an unhealthy cache. Recorded only when a Redis URL is configured. |
 
 The Prometheus Go client also publishes standard `go_*`, `process_*`, and

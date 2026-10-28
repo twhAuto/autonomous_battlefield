@@ -77,6 +77,7 @@ func TestNewWorkerRejectsInvalidConfiguration(t *testing.T) {
 		{name: "heartbeat at lease duration", mutate: func(config *Config) { config.HeartbeatInterval = config.LeaseDuration }},
 		{name: "shutdown timeout", mutate: func(config *Config) { config.ShutdownTimeout = 0 }},
 		{name: "max attempts", mutate: func(config *Config) { config.MaxAttempts = 0 }},
+		{name: "concurrency", mutate: func(config *Config) { config.Concurrency = -1 }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
