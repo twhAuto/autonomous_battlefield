@@ -192,7 +192,9 @@ battle routes. Only a completed battle with an outcome and no winner is a draw.
 ### Status and controls
 
 `GET /v1/battles/{id}` returns the authored map and the current state, attempt and
-result. While a battle is queued or running, `production` gives the next point at
+result. Each faction's result totals include per-unit-type and per-building-type
+figures and its upgrade purchase ticks; results completed before these were added
+omit those lists. While a battle is queued or running, `production` gives the next point at
 which factions spend gold; all purchases for a window happen at once and nothing
 is queued between windows.
 

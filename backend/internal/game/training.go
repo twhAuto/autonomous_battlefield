@@ -78,8 +78,10 @@ func (m *Match) trainBuilding(b *Building, definitions map[string]UnitType) (Eve
 	m.state.Units = append(m.state.Units, unit)
 	if head.Opening {
 		m.factionState(b.FactionID).UnitsStarted++
+		runtime.stats.unit(unit.Type).Started++
 	} else {
 		m.factionState(b.FactionID).UnitsRecruited++
+		runtime.stats.unit(unit.Type).Recruited++
 	}
 	b.TrainingQueue = b.TrainingQueue[1:]
 	// Keep cost as informational unit value for existing event clients; only

@@ -24,7 +24,11 @@ type Checkpoint struct {
 
 // FactionCheckpoint holds one faction's plan, upgrade and statistics runtime. Scoped
 // upgrades are saved by ID in purchase order and resolved from the frozen ruleset.
+// Checkpoints saved before per-type statistics restore with those lists empty.
 type FactionCheckpoint struct {
+	UnitTypes        []UnitTypeStats         `json:"unitTypes,omitempty"`
+	BuildingTypes    []BuildingTypeStats     `json:"buildingTypes,omitempty"`
+	Upgrades         []UpgradePurchase       `json:"upgrades,omitempty"`
 	ActivePlan       controller.PlanProposal `json:"activePlan"`
 	ScopedUpgradeIDs []string                `json:"scopedUpgradeIds,omitempty"`
 	FactionID        string                  `json:"factionId"`
@@ -55,6 +59,7 @@ func (m *Match) Checkpoint() Checkpoint {
 			FactionID: id, ActiveSource: runtime.activeSource, PlanIndex: runtime.planIndex, UnitSequence: runtime.unitSequence,
 			AttackBonus: runtime.attackBonus, DefenseBonus: runtime.defenseBonus, EconomyBonus: runtime.economyBonus,
 			DamageDealt: runtime.damageDealt, DamageTaken: runtime.damageTaken, AttackTicks: runtime.attackTicks, DefendTicks: runtime.defendTicks,
+			UnitTypes: runtime.stats.unitList(), BuildingTypes: runtime.stats.buildingList(), Upgrades: runtime.stats.upgradeList(),
 		})
 	}
 	return Checkpoint{State: CloneState(m.state), Factions: factions, Sequence: m.sequence, Started: m.started}
@@ -113,5 +118,6 @@ func (f *factionRuntime) restore(saved FactionCheckpoint, upgrades map[string]Up
 	f.planIndex, f.unitSequence, f.scopedUpgrades = saved.PlanIndex, saved.UnitSequence, scoped
 	f.attackBonus, f.defenseBonus, f.economyBonus = saved.AttackBonus, saved.DefenseBonus, saved.EconomyBonus
 	f.damageDealt, f.damageTaken, f.attackTicks, f.defendTicks = saved.DamageDealt, saved.DamageTaken, saved.AttackTicks, saved.DefendTicks
+	f.stats = restoreTypeStatistics(saved.UnitTypes, saved.BuildingTypes, saved.Upgrades)
 	return nil
 }

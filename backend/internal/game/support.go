@@ -31,6 +31,7 @@ func (m *Match) runHealer(unit *Unit) []Event {
 	if patient != nil {
 		amount := min(unit.HealAmount, patient.MaxHealth-patient.Health)
 		patient.Health += amount
+		m.factions[unit.FactionID].stats.unit(unit.Type).HealthRestored += amount
 		unit.HealTargetID = patient.ID
 		unit.HealTargetPosition = clonePosition(&patient.Position)
 		return []Event{m.event("unit_healed", map[string]any{"factionId": unit.FactionID, "healerId": unit.ID, "targetId": patient.ID, "amount": amount, "remainingHealth": patient.Health})}

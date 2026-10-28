@@ -334,6 +334,20 @@ terrain bonuses, selected-building range and training progress.
 runtime state; `structures.go` runs castle and tower attacks together. The full map
 uses the main battle snapshot; the former faction-perspective polling hook is removed.
 
+## Battle statistics
+
+[`game/statistics.go`](../../backend/internal/game/statistics.go) keeps each
+faction's per-unit-type and per-building-type counters and upgrade purchase ticks
+in `factionRuntime`, outside `State`, so they add nothing to tick snapshots or
+model views and travel in checkpoints instead. Recruitment, construction, upgrade,
+healing and repair code credits the type that acted; unit and tower attacks share
+`strike` in `combat.go`, which calls `recordStrike` and adds the killer fields to
+destruction events. `buildResult` copies the counters into `FactionStats`.
+`game/statistics_test.go` checks kill credit, event fields, and that the per-type
+figures add up to the faction totals over complete battles. The battle page renders
+them in
+[`TypeStatistics.tsx`](../../frontend/src/features/battles/components/TypeStatistics.tsx).
+
 ## Battle replay implementation
 
 [`game/checkpoint.go`](../../backend/internal/game/checkpoint.go) defines

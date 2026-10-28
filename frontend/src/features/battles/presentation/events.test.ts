@@ -34,6 +34,15 @@ it('summarizes structured references without guessing unknown payloads', () => {
   for (const type of ['unit_moved', 'unit_recruited', 'building_constructed', 'castle_destroyed', 'unit_destroyed', 'unit_died', 'building_destroyed', 'loot_collected', 'unknown_event']) expect(eventSummary(event(type), naming)).toMatch(/\.$/)
 })
 
+it('names the killer of destroyed units, buildings and castles when the event records one', () => {
+  const naming = { factionNames: new Map([['a', 'Amber'], ['b', 'Basalt']]) }
+  const killer = { killerId: 'a:heavy_cavalry:007', killerType: 'heavy_cavalry', killerFactionId: 'a' }
+  expect(eventSummary(event('unit_destroyed', { unitId: 'b:ranger:002', unitType: 'ranger', ...killer }), naming)).toBe('Basalt · Ranger #2 was destroyed by Amber · Heavy Cavalry #7.')
+  expect(eventSummary(event('building_destroyed', { buildingId: 'b:barracks:001', ...killer }), naming)).toBe('Basalt · Barracks #1 was destroyed by Amber · Heavy Cavalry #7.')
+  expect(eventSummary(event('castle_destroyed', { castleId: 'b:castle', killerId: 'a:defense_tower:003' }), naming)).toBe('Basalt · Castle was destroyed by Amber · Defense Tower #3.')
+  expect(eventSummary(event('unit_destroyed', { unitId: 'b:ranger:002' }), naming)).toBe('Basalt · Ranger #2 was lost.')
+})
+
 
 it('distinguishes paid training orders from deployed recruits', () => {
   const queued = event('unit_queued', { factionId: 'a', unitType: 'ranger' })

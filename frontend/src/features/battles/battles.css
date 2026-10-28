@@ -56,6 +56,18 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .statistics-card dl > div { padding: 16px; background: #151a14; }
 .statistics-card dt { color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .11em; text-transform: uppercase; }
 .statistics-card dd { margin: 7px 0 0; color: #d5dbce; font: 500 17px 'DM Mono', monospace; }
+.type-statistics { display: grid; gap: 18px; margin-top: 22px; }
+.type-statistics__scroll { overflow-x: auto; }
+.type-statistics table { width: 100%; border-collapse: collapse; color: #d5dbce; font: 13px 'DM Mono', monospace; }
+.type-statistics caption { padding-bottom: 8px; color: var(--muted); font-size: 12px; letter-spacing: .11em; text-align: left; text-transform: uppercase; }
+.type-statistics th, .type-statistics td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.type-statistics thead th { color: var(--muted); font-size: 11px; font-weight: 400; letter-spacing: .08em; text-transform: uppercase; }
+.type-statistics th[scope="row"], .type-statistics thead th:first-child { text-align: left; }
+.type-statistics th[scope="row"] { font-weight: 400; }
+.type-statistics th[scope="row"] .entity-icon { width: 18px; height: 18px; flex-basis: 18px; margin: -2px 7px 0 0; }
+.upgrade-timeline { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0; padding: 0; color: #d5dbce; font: 13px 'DM Mono', monospace; list-style: none; }
+.upgrade-timeline li { display: inline-flex; align-items: center; gap: 7px; }
+.upgrade-timeline span { color: var(--muted); font-size: 11px; letter-spacing: .08em; }
 .player-status-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 20px 0 12px; }
 .player-status-metrics dd { margin: 6px 0 0; color: #e0e6d9; font: 18px 'DM Mono', monospace; }
 .player-status-metrics > div:first-child dd { color: #ffcf70; }
