@@ -355,13 +355,16 @@ them in
 `GroupFixtures` builds the double round robin, `GroupStandings` ranks a group with its
 tiebreakers, and `Advance` seeds the crossover knockout, decides two-leg ties with
 `TieWinner` and names the champion. Fixture and battle IDs come from `DerivedID`, so
-retried writes repeat themselves. `league_test.go` covers the schedule, every
+retried writes repeat themselves; battle IDs also take the league's secret
+`BattleSalt`. `league_test.go` covers the schedule, every
 tiebreak, both bracket sizes and a full run to a champion.
 
 [`league/service`](../../backend/internal/league/service) validates creation through
 the battle service's `ValidateBattle` and checks Admin or Inspect access;
-`scheduler.go` is the background pass that settles fixtures, advances stages and
-starts at most one battle with `CreateBattleInput.DecisionBudgetExempt`.
+`scheduler.go` is the background pass that stops battles left in cancelled leagues,
+settles fixtures, advances stages and starts at most one battle with
+`CreateBattleInput.DecisionBudgetExempt`, adopting an existing battle only when
+`createdFor` matches its origin.
 [`league/repo`](../../backend/internal/league/repo) stores leagues (migration `00022`),
 joins each fixture's battle outcome, and holds the scheduler advisory lock;
 `postgres_integration_test.go` runs in a private schema so its engine-idle checks see

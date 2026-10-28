@@ -318,8 +318,10 @@ mid-league voids that entrant's remaining fixtures.
 `GET /v1/leagues/{id}` returns the settings, entrants, ranked `groups`, `knockout`
 ties and every fixture with its `battleId` and, once completed, its `result`.
 `GET /v1/leagues` lists summaries, newest first. `POST /v1/leagues/{id}/cancel`
-cancels unfinished fixtures and stops the running battle; repeating it returns `200`,
-and cancelling a completed league returns `409`.
+cancels unfinished fixtures and stops the running battle; repeating it returns `200`
+and stops any league battle still running. The scheduler also stops battles left
+running in cancelled leagues, so a failed stop is retried. Cancelling a completed
+league returns `409`.
 
 ## Faction background generation
 

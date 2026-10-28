@@ -89,7 +89,7 @@ func TestLeagueDowngradeRefusesRunningLeagues(t *testing.T) {
 		t.Fatal(err)
 	}
 	league := randomUUID(t)
-	if _, err = db.ExecContext(ctx, `INSERT INTO leagues(id,owner_id,name,request_digest,scenario_ids,requested_ticks,group_count) VALUES($1,'admin','Cup','d','{frontier-siege}',500,2)`, league); err != nil {
+	if _, err = db.ExecContext(ctx, `INSERT INTO leagues(id,owner_id,name,request_digest,battle_salt,scenario_ids,requested_ticks,group_count) VALUES($1,'admin','Cup','d',repeat('a',32),'{frontier-siege}',500,2)`, league); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = provider.Down(ctx); err == nil {

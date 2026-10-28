@@ -36,9 +36,9 @@ func (r *Postgres) CreateLeague(ctx context.Context, l league.League) error {
 	}
 	defer rollback(ctx, tx)
 	_, err = tx.Exec(ctx, `
-		INSERT INTO leagues (id, owner_id, name, request_digest, scenario_ids, requested_ticks, tick_duration, decision_interval_ticks, group_count)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		l.ID, l.OwnerID, l.Name, l.RequestDigest, l.Settings.ScenarioIDs, l.Settings.TickCount, l.Settings.TickDuration, l.Settings.DecisionIntervalTicks, l.GroupCount)
+		INSERT INTO leagues (id, owner_id, name, request_digest, battle_salt, scenario_ids, requested_ticks, tick_duration, decision_interval_ticks, group_count)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		l.ID, l.OwnerID, l.Name, l.RequestDigest, l.BattleSalt, l.Settings.ScenarioIDs, l.Settings.TickCount, l.Settings.TickDuration, l.Settings.DecisionIntervalTicks, l.GroupCount)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -85,10 +85,10 @@ func (r *Postgres) GetLeague(ctx context.Context, id string) (*league.League, er
 func loadLeague(ctx context.Context, db postgres.DBTX, id string) (*league.League, error) {
 	l := league.League{}
 	err := db.QueryRow(ctx, `
-		SELECT id, owner_id, name, status, request_digest, scenario_ids, requested_ticks, tick_duration, decision_interval_ticks,
+		SELECT id, owner_id, name, status, request_digest, battle_salt, scenario_ids, requested_ticks, tick_duration, decision_interval_ticks,
 		       group_count, champion_entrant, created_at, completed_at
 		FROM leagues WHERE id = $1`, id).Scan(
-		&l.ID, &l.OwnerID, &l.Name, &l.Status, &l.RequestDigest, &l.Settings.ScenarioIDs, &l.Settings.TickCount, &l.Settings.TickDuration,
+		&l.ID, &l.OwnerID, &l.Name, &l.Status, &l.RequestDigest, &l.BattleSalt, &l.Settings.ScenarioIDs, &l.Settings.TickCount, &l.Settings.TickDuration,
 		&l.Settings.DecisionIntervalTicks, &l.GroupCount, &l.Champion, &l.CreatedAt, &l.CompletedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, leagueservice.ErrLeagueNotFound
@@ -219,33 +219,31 @@ func (r *Postgres) CancelLeague(ctx context.Context, id string) (bool, []string,
 	if err != nil {
 		return false, nil, fmt.Errorf("get league %q: %w", id, err)
 	}
-	switch status {
-	case league.StatusCancelled:
-		return false, nil, nil
-	case league.StatusCompleted:
+	if status == league.StatusCompleted {
 		return false, nil, leagueservice.ErrLeagueNotActive
 	}
-	if _, err := tx.Exec(ctx, `UPDATE leagues SET status = 'cancelled', completed_at = now(), updated_at = now() WHERE id = $1`, id); err != nil {
-		return false, nil, fmt.Errorf("cancel league %q: %w", id, err)
-	}
-	rows, err := tx.Query(ctx, `
-		UPDATE league_fixtures SET status = 'cancelled', updated_at = now()
-		WHERE league_id = $1 AND status IN ('pending', 'running')
-		RETURNING battle_id`, id)
-	if err != nil {
-		return false, nil, fmt.Errorf("cancel league %q fixtures: %w", id, err)
-	}
-	battles, err := pgx.CollectRows(rows, pgx.RowTo[*string])
-	if err != nil {
-		return false, nil, fmt.Errorf("cancel league %q fixtures: %w", id, err)
-	}
-	running := []string{}
-	for _, battleID := range battles {
-		if battleID != nil {
-			running = append(running, *battleID)
+	cancelled := status == league.StatusRunning
+	if cancelled {
+		if _, err := tx.Exec(ctx, `UPDATE leagues SET status = 'cancelled', completed_at = now(), updated_at = now() WHERE id = $1`, id); err != nil {
+			return false, nil, fmt.Errorf("cancel league %q: %w", id, err)
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE league_fixtures SET status = 'cancelled', updated_at = now()
+			WHERE league_id = $1 AND status IN ('pending', 'running')`, id); err != nil {
+			return false, nil, fmt.Errorf("cancel league %q fixtures: %w", id, err)
 		}
 	}
-	return true, running, tx.Commit(ctx)
+	rows, err := tx.Query(ctx, `
+		SELECT f.battle_id FROM league_fixtures f JOIN battle_runs b ON b.id = f.battle_id
+		WHERE f.league_id = $1 AND b.status IN ('queued', 'running') ORDER BY f.sequence`, id)
+	if err != nil {
+		return false, nil, fmt.Errorf("list league %q active battles: %w", id, err)
+	}
+	active, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return false, nil, fmt.Errorf("list league %q active battles: %w", id, err)
+	}
+	return cancelled, active, tx.Commit(ctx)
 }
 
 func (r *Postgres) Schedule(ctx context.Context, fn func(context.Context, leagueservice.SchedulerStore) error) (bool, error) {
@@ -324,12 +322,41 @@ func (s schedulerStore) EngineBusy(ctx context.Context) (bool, error) {
 	return busy, nil
 }
 
-func (s schedulerStore) BattleExists(ctx context.Context, id string) (bool, error) {
-	var exists bool
-	if err := s.tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM battle_runs WHERE id = $1)`, id).Scan(&exists); err != nil {
-		return false, fmt.Errorf("check battle %q: %w", id, err)
+func (s schedulerStore) Battle(ctx context.Context, id string) (*leagueservice.BattleProvenance, error) {
+	var b leagueservice.BattleProvenance
+	err := s.tx.QueryRow(ctx, `
+		SELECT owner_id, decision_budget_exempt, scenario_id,
+		       ARRAY(SELECT faction->>'id' FROM jsonb_array_elements(COALESCE(scenario_snapshot->'factions', '[]')) WITH ORDINALITY AS f(faction, n) ORDER BY n)
+		FROM battle_runs WHERE id = $1`, id).Scan(&b.OwnerID, &b.DecisionBudgetExempt, &b.ScenarioID, &b.FactionIDs)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
 	}
-	return exists, nil
+	if err != nil {
+		return nil, fmt.Errorf("read battle %q: %w", id, err)
+	}
+	return &b, nil
+}
+
+func (s schedulerStore) StrandedBattles(ctx context.Context) ([]leagueservice.StrandedBattle, error) {
+	rows, err := s.tx.Query(ctx, `
+		SELECT l.id, b.id, l.owner_id
+		FROM leagues l
+		JOIN league_fixtures f ON f.league_id = l.id
+		JOIN battle_runs b ON b.id = f.battle_id
+		WHERE l.status = 'cancelled' AND b.status IN ('queued', 'running')
+		ORDER BY l.id, f.sequence`)
+	if err != nil {
+		return nil, fmt.Errorf("list stranded league battles: %w", err)
+	}
+	battles, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (leagueservice.StrandedBattle, error) {
+		var b leagueservice.StrandedBattle
+		err := row.Scan(&b.LeagueID, &b.BattleID, &b.OwnerID)
+		return b, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list stranded league battles: %w", err)
+	}
+	return battles, nil
 }
 
 func rollback(ctx context.Context, tx pgx.Tx) {

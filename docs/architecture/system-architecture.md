@@ -413,10 +413,12 @@ pass adds the next knockout stage from the group tables or tie winners, or recor
 the champion after the final. It then starts the first pending fixture of the oldest
 running league, but only when no battle is queued or running, because the single
 engine plays battles one at a time and a battle's one-hour timeout counts queued
-time. Battle IDs derive from the fixture and attempt: a pass interrupted after
-creating a battle links that battle on the next pass instead of creating another.
-Cancelling a league takes the same lock, cancels unfinished fixtures and then stops
-the running battle. Battle creation goes through the same service as
+time. Battle IDs derive from the fixture, the attempt and a per-league secret salt: a
+pass interrupted after creating a battle links that battle on the next pass instead
+of creating another, and only after checking that its owner, budget exemption, map
+and factions match the fixture. Cancelling a league takes the same lock, cancels
+unfinished fixtures and then stops the running battle; each pass begins by stopping
+any battle still running in a cancelled league, so a failed stop is retried. Battle creation goes through the same service as
 `POST /v1/battles`, as the league's Admin owner, so model access, faction existence
 and timing are rechecked for every battle; that is why the scheduler runs in the
 API, which composes the battle service, rather than in the engine.

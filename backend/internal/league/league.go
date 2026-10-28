@@ -46,13 +46,15 @@ type League struct {
 	Name          string
 	Status        string
 	RequestDigest string
-	Settings      Settings
-	GroupCount    int
-	Entrants      []Entrant
-	Fixtures      []Fixture
-	Champion      *int
-	CreatedAt     time.Time
-	CompletedAt   *time.Time
+	// BattleSalt keeps battle IDs unpredictable; it is never shown to clients.
+	BattleSalt  string
+	Settings    Settings
+	GroupCount  int
+	Entrants    []Entrant
+	Fixtures    []Fixture
+	Champion    *int
+	CreatedAt   time.Time
+	CompletedAt *time.Time
 }
 
 // Summary is a league in a list: no entrants or fixtures, only progress and champion.
@@ -162,9 +164,10 @@ func DerivedID(parts ...string) string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", sum[0:4], sum[4:6], sum[6:8], sum[8:10], sum[10:16])
 }
 
-// FixtureBattleID is the battle a fixture starts on the given attempt, from 1.
-func FixtureBattleID(fixtureID string, attempt int) string {
-	return DerivedID("league-fixture-battle", fixtureID, fmt.Sprint(attempt))
+// FixtureBattleID is the battle a fixture starts on the given attempt, from 1. The
+// league's secret salt stops anyone else from creating a battle with that ID first.
+func FixtureBattleID(salt, fixtureID string, attempt int) string {
+	return DerivedID("league-fixture-battle", salt, fixtureID, fmt.Sprint(attempt))
 }
 
 func fixtureID(leagueID string, sequence int) string {

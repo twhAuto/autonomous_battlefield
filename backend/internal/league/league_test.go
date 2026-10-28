@@ -100,9 +100,12 @@ func requireBothSidesOnOneMap(t *testing.T, l *League) int {
 
 func TestDerivedIDsAreUUIDs(t *testing.T) {
 	pattern := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
-	first, second := FixtureBattleID("fixture", 1), FixtureBattleID("fixture", 2)
-	if !pattern.MatchString(first) || first == second || first != FixtureBattleID("fixture", 1) {
+	first, second := FixtureBattleID("salt", "fixture", 1), FixtureBattleID("salt", "fixture", 2)
+	if !pattern.MatchString(first) || first == second || first != FixtureBattleID("salt", "fixture", 1) {
 		t.Fatalf("battle IDs %q %q", first, second)
+	}
+	if FixtureBattleID("other-salt", "fixture", 1) == first {
+		t.Fatal("battle IDs must depend on the league's salt")
 	}
 }
 

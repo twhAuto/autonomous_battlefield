@@ -22,9 +22,14 @@ const (
 	passTimeout       = 30 * time.Second
 )
 
+// errForeignBattle marks a battle that holds a fixture's battle ID but was not created
+// for that fixture.
+var errForeignBattle = errors.New("battle ID is held by another battle")
+
 // permanentStartErrors are battle-creation failures a retry cannot fix; they spend the
 // fixture's attempt. Any other error is retried on the next pass.
 var permanentStartErrors = []error{
+	errForeignBattle,
 	authn.ErrForbidden, battleservice.ErrInvalidBattle, battleservice.ErrBattleAlreadyExists, battleservice.ErrBattleFactionMissing,
 	battleservice.ErrScenarioNotFound, battleservice.ErrIncompatibleFaction, battleservice.ErrModelProfileUnavailable, game.ErrInvalidBlueprint,
 }
@@ -48,26 +53,44 @@ func (s *Service) RunScheduler(ctx context.Context, interval time.Duration) {
 	}
 }
 
-// SchedulePass advances every running league once.
+// SchedulePass stops battles left running in cancelled leagues, then advances every
+// running league once.
 func (s *Service) SchedulePass(ctx context.Context) error {
-	_, err := s.repo.Schedule(ctx, func(ctx context.Context, store SchedulerStore) error {
-		leagues, err := store.RunningLeagues(ctx)
-		if err != nil {
+	_, err := s.repo.Schedule(ctx, s.pass)
+	return err
+}
+
+func (s *Service) pass(ctx context.Context, store SchedulerStore) error {
+	if err := s.stopStranded(ctx, store); err != nil {
+		return err
+	}
+	leagues, err := store.RunningLeagues(ctx)
+	if err != nil {
+		return err
+	}
+	for i := range leagues {
+		if err := settle(ctx, store, &leagues[i]); err != nil {
 			return err
 		}
-		for i := range leagues {
-			if err := settle(ctx, store, &leagues[i]); err != nil {
-				return err
-			}
+	}
+	for i := range leagues {
+		if next := nextPending(&leagues[i]); next != nil {
+			return s.start(ctx, store, &leagues[i], *next)
 		}
-		for i := range leagues {
-			if next := nextPending(&leagues[i]); next != nil {
-				return s.start(ctx, store, &leagues[i], *next)
-			}
-		}
-		return nil
-	})
-	return err
+	}
+	return nil
+}
+
+// stopStranded retries stops that a cancellation could not complete.
+func (s *Service) stopStranded(ctx context.Context, store SchedulerStore) error {
+	stranded, err := store.StrandedBattles(ctx)
+	if err != nil {
+		return err
+	}
+	for _, battle := range stranded {
+		s.stopBattle(ownerContext(ctx, battle.OwnerID), battle.LeagueID, battle.BattleID)
+	}
+	return nil
 }
 
 // settle records finished battles, then opens the next stage or crowns the champion.
@@ -139,15 +162,19 @@ func nextPending(l *league.League) *league.Fixture {
 }
 
 // start creates the fixture's battle as the league owner. The battle ID is derived from
-// the fixture and attempt, so a pass interrupted after creating it links the same battle
-// next time instead of starting another.
+// the league's salt, the fixture and the attempt, so a pass interrupted after creating
+// it links the same battle next time instead of starting another. An existing battle
+// is adopted only when it is that battle.
 func (s *Service) start(ctx context.Context, store SchedulerStore, l *league.League, f league.Fixture) error {
-	battleID := league.FixtureBattleID(f.ID, f.Attempts+1)
-	exists, err := store.BattleExists(ctx, battleID)
+	battleID := league.FixtureBattleID(l.BattleSalt, f.ID, f.Attempts+1)
+	existing, err := store.Battle(ctx, battleID)
 	if err != nil {
 		return err
 	}
-	if !exists {
+	if existing != nil && !createdFor(l, f, *existing) {
+		return failStart(ctx, store, l.ID, f, errForeignBattle)
+	}
+	if existing == nil {
 		busy, err := store.EngineBusy(ctx)
 		if err != nil || busy {
 			return err
@@ -163,6 +190,13 @@ func (s *Service) start(ctx context.Context, store SchedulerStore, l *league.Lea
 	f.Status, f.BattleID = league.FixtureRunning, &battleID
 	slog.InfoContext(ctx, "league_fixture_started", "league_id", l.ID, "fixture_id", f.ID, "battle_id", battleID, "attempt", f.Attempts)
 	return store.SaveFixture(ctx, f)
+}
+
+// createdFor reports whether an existing battle is the one the scheduler starts for the
+// fixture: owned by the league owner, budget-exempt, on the fixture's map, home first.
+func createdFor(l *league.League, f league.Fixture, b BattleProvenance) bool {
+	return b.OwnerID == l.OwnerID && b.DecisionBudgetExempt && b.ScenarioID == f.ScenarioID && len(b.FactionIDs) == 2 &&
+		b.FactionIDs[0] == l.Entrants[f.Home].FactionID && b.FactionIDs[1] == l.Entrants[f.Away].FactionID
 }
 
 func failStart(ctx context.Context, store SchedulerStore, leagueID string, f league.Fixture, err error) error {

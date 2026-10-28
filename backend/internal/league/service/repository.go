@@ -17,8 +17,8 @@ type Repository interface {
 	GetLeague(context.Context, string) (*league.League, error)
 	ListLeagues(context.Context, int) ([]league.Summary, error)
 	// CancelLeague cancels a running league and its unfinished fixtures, serialized with
-	// scheduling. It reports whether this call cancelled the league and returns the
-	// battles that were running; an already-cancelled league reports false.
+	// scheduling. It reports whether this call cancelled the league, and returns the
+	// league's battles still queued or running, also on a repeated cancellation.
 	CancelLeague(context.Context, string) (bool, []string, error)
 	// Schedule runs fn while holding the scheduler lock, and reports false without
 	// running it when another replica holds the lock.
@@ -33,7 +33,24 @@ type SchedulerStore interface {
 	CompleteLeague(context.Context, string, int) error
 	// EngineBusy reports whether any battle is queued or running.
 	EngineBusy(context.Context) (bool, error)
-	BattleExists(context.Context, string) (bool, error)
+	// Battle describes an existing battle's origin, or returns nil when there is none.
+	Battle(context.Context, string) (*BattleProvenance, error)
+	// StrandedBattles lists battles of cancelled leagues that are still queued or running.
+	StrandedBattles(context.Context) ([]StrandedBattle, error)
+}
+
+// BattleProvenance is what the scheduler checks before adopting an existing battle.
+type BattleProvenance struct {
+	OwnerID              string
+	DecisionBudgetExempt bool
+	ScenarioID           string
+	FactionIDs           []string
+}
+
+type StrandedBattle struct {
+	LeagueID string
+	BattleID string
+	OwnerID  string
 }
 
 // Battles is the battle service as leagues use it.

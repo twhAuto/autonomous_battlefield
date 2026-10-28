@@ -9,6 +9,8 @@ CREATE TABLE leagues (
     name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 80),
     status text NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'cancelled')),
     request_digest text NOT NULL,
+    -- Secret input to fixture battle IDs; the API never returns it.
+    battle_salt text NOT NULL CHECK (char_length(battle_salt) >= 32),
     scenario_ids text[] NOT NULL CHECK (cardinality(scenario_ids) BETWEEN 1 AND 5),
     requested_ticks integer NOT NULL CHECK (requested_ticks BETWEEN 1 AND 10000),
     tick_duration text,

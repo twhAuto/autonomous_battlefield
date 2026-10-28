@@ -48,7 +48,7 @@ type fixtureHarness struct {
 }
 
 func newHarness() *fixtureHarness {
-	repo := &memoryRepo{leagues: map[string]*league.League{}, battles: map[string]string{}}
+	repo := &memoryRepo{leagues: map[string]*league.League{}, battles: map[string]string{}, origins: map[string]BattleProvenance{}}
 	battles := &fakeBattles{repo: repo}
 	factions := &fakeFactions{}
 	return &fixtureHarness{repo: repo, battles: battles, factions: factions, service: New(repo, battles, factions)}
@@ -193,23 +193,26 @@ func TestReadsRequireInspection(t *testing.T) {
 	}
 }
 
-func TestCancelLeagueStopsRunningBattles(t *testing.T) {
+func TestCancelLeagueStopsRunningBattlesAndRetriesFailedStops(t *testing.T) {
 	h := newHarness()
 	admin := actorContext(authn.Admin)
 	if _, err := h.service.CreateLeague(admin, validInput(8)); err != nil {
 		t.Fatal(err)
 	}
 	stored := h.repo.leagues[leagueID]
-	battleID, other := "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"
+	battleID, other, finished := "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333"
 	stored.Fixtures[0].Status, stored.Fixtures[0].BattleID = league.FixtureRunning, &battleID
 	stored.Fixtures[1].Status, stored.Fixtures[1].BattleID = league.FixtureRunning, &other
-	h.battles.stopErrs = map[string]error{battleID: battleservice.ErrBattleNotActive, other: errDatabase}
+	stored.Fixtures[2].Status, stored.Fixtures[2].BattleID = league.FixtureCompleted, &finished
+	h.repo.battles[battleID], h.repo.battles[other], h.repo.battles[finished] = "running", "queued", league.BattleCompleted
+	h.battles.stopErrs = map[string]error{other: errDatabase}
 	cancelled, err := h.service.CancelLeague(admin, leagueID)
-	if err != nil || cancelled.Status != league.StatusCancelled || len(h.battles.stopped) != 2 {
+	if err != nil || cancelled.Status != league.StatusCancelled || fmt.Sprint(h.battles.stopped) != fmt.Sprint([]string{battleID, other}) {
 		t.Fatalf("cancel = %+v, %v, stopped %v", cancelled, err, h.battles.stopped)
 	}
-	if again, err := h.service.CancelLeague(admin, leagueID); err != nil || again.Status != league.StatusCancelled || len(h.battles.stopped) != 2 {
-		t.Fatalf("repeat cancel = %+v, %v", again, err)
+	h.battles.stopErrs = map[string]error{other: battleservice.ErrBattleNotActive}
+	if again, err := h.service.CancelLeague(admin, leagueID); err != nil || again.Status != league.StatusCancelled || fmt.Sprint(h.battles.stopped) != fmt.Sprint([]string{battleID, other, other}) {
+		t.Fatalf("repeat cancel = %+v, %v, stopped %v", again, err, h.battles.stopped)
 	}
 	if _, err := h.service.CancelLeague(actorContext(authn.Developer), leagueID); !errors.Is(err, authn.ErrForbidden) {
 		t.Fatalf("developer cancel err = %v", err)
@@ -227,6 +230,7 @@ func TestCancelLeagueStopsRunningBattles(t *testing.T) {
 type memoryRepo struct {
 	leagues   map[string]*league.League
 	battles   map[string]string
+	origins   map[string]BattleProvenance
 	busy      bool
 	lockHeld  bool
 	createErr error
@@ -275,23 +279,27 @@ func (r *memoryRepo) CancelLeague(_ context.Context, id string) (bool, []string,
 	if !ok {
 		return false, nil, ErrLeagueNotFound
 	}
-	switch l.Status {
-	case league.StatusCancelled:
-		return false, nil, nil
-	case league.StatusCompleted:
+	if l.Status == league.StatusCompleted {
 		return false, nil, ErrLeagueNotActive
 	}
+	cancelled := l.Status == league.StatusRunning
 	l.Status = league.StatusCancelled
-	running := []string{}
 	for i, f := range l.Fixtures {
-		if f.Status == league.FixtureRunning && f.BattleID != nil {
-			running = append(running, *f.BattleID)
-		}
 		if !f.Settled() {
 			l.Fixtures[i].Status = league.FixtureCancelled
 		}
 	}
-	return true, running, nil
+	return cancelled, r.activeBattles(l), nil
+}
+
+func (r *memoryRepo) activeBattles(l *league.League) []string {
+	active := []string{}
+	for _, f := range l.Fixtures {
+		if f.BattleID != nil && (r.battles[*f.BattleID] == "queued" || r.battles[*f.BattleID] == "running") {
+			active = append(active, *f.BattleID)
+		}
+	}
+	return active
 }
 
 func (r *memoryRepo) Schedule(ctx context.Context, fn func(context.Context, SchedulerStore) error) (bool, error) {
@@ -346,9 +354,25 @@ func (r *memoryRepo) EngineBusy(context.Context) (bool, error) {
 	return r.busy, nil
 }
 
-func (r *memoryRepo) BattleExists(_ context.Context, id string) (bool, error) {
-	_, ok := r.battles[id]
-	return ok, nil
+func (r *memoryRepo) Battle(_ context.Context, id string) (*BattleProvenance, error) {
+	if _, ok := r.battles[id]; !ok {
+		return nil, nil
+	}
+	origin := r.origins[id]
+	return &origin, nil
+}
+
+func (r *memoryRepo) StrandedBattles(context.Context) ([]StrandedBattle, error) {
+	stranded := []StrandedBattle{}
+	for _, l := range r.leagues {
+		if l.Status != league.StatusCancelled {
+			continue
+		}
+		for _, id := range r.activeBattles(l) {
+			stranded = append(stranded, StrandedBattle{LeagueID: l.ID, BattleID: id, OwnerID: l.OwnerID})
+		}
+	}
+	return stranded, nil
 }
 
 type fakeBattles struct {
@@ -359,6 +383,7 @@ type fakeBattles struct {
 	created     []battleservice.CreateBattleInput
 	creators    []authn.Actor
 	stopped     []string
+	stoppers    []authn.Actor
 	stopErrs    map[string]error
 }
 
@@ -374,12 +399,20 @@ func (b *fakeBattles) CreateBattle(ctx context.Context, input battleservice.Crea
 	actor, _ := authn.ActorFromContext(ctx)
 	b.created, b.creators = append(b.created, input), append(b.creators, actor)
 	b.repo.battles[input.ID] = "queued"
+	b.repo.origins[input.ID] = BattleProvenance{OwnerID: actor.ID, DecisionBudgetExempt: input.DecisionBudgetExempt, ScenarioID: input.ScenarioID,
+		FactionIDs: []string{input.Participants[0].FactionID, input.Participants[1].FactionID}}
 	return &battleservice.BattleRun{ID: input.ID, Status: "queued"}, nil
 }
 
-func (b *fakeBattles) StopBattle(_ context.Context, id string) (*battleservice.BattleRun, error) {
-	b.stopped = append(b.stopped, id)
-	return nil, b.stopErrs[id]
+// StopBattle stops the battle unless an error is configured for it.
+func (b *fakeBattles) StopBattle(ctx context.Context, id string) (*battleservice.BattleRun, error) {
+	actor, _ := authn.ActorFromContext(ctx)
+	b.stopped, b.stoppers = append(b.stopped, id), append(b.stoppers, actor)
+	if err := b.stopErrs[id]; err != nil {
+		return nil, err
+	}
+	b.repo.battles[id] = "stopped"
+	return nil, nil
 }
 
 type fakeFactions struct{ missing string }

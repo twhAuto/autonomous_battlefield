@@ -6,6 +6,7 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -166,8 +167,12 @@ func (s *Service) newLeague(ctx context.Context, input CreateInput, groupCount i
 	if err != nil {
 		return nil, err
 	}
+	var salt [16]byte
+	if _, err := rand.Read(salt[:]); err != nil {
+		return nil, fmt.Errorf("generate league battle salt: %w", err)
+	}
 	created := &league.League{
-		ID: input.ID, OwnerID: authn.Owner(ctx), Name: input.Name, Status: league.StatusRunning, RequestDigest: digest, GroupCount: groupCount,
+		ID: input.ID, OwnerID: authn.Owner(ctx), Name: input.Name, Status: league.StatusRunning, RequestDigest: digest, BattleSalt: hex.EncodeToString(salt[:]), GroupCount: groupCount,
 		Settings: league.Settings{ScenarioIDs: append([]string(nil), input.ScenarioIDs...), TickCount: input.TickCount, TickDuration: input.TickDuration, DecisionIntervalTicks: input.DecisionIntervalTicks},
 	}
 	for index, entrant := range input.Entrants {
@@ -225,19 +230,25 @@ func (s *Service) CancelLeague(ctx context.Context, id string) (*league.League, 
 		return nil, ErrInvalidLeague
 	}
 	id = strings.ToLower(id)
-	cancelled, running, err := s.repo.CancelLeague(ctx, id)
+	cancelled, active, err := s.repo.CancelLeague(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	for _, battleID := range running {
-		if _, err := s.battles.StopBattle(ctx, battleID); err != nil && !errors.Is(err, battleservice.ErrBattleNotActive) {
-			slog.WarnContext(ctx, "league_battle_stop_failed", "league_id", id, "battle_id", battleID, "error", err)
-		}
+	// A stop that fails here is retried by repeating the cancellation, and by every
+	// scheduling pass, which stops battles left running in cancelled leagues.
+	for _, battleID := range active {
+		s.stopBattle(ctx, id, battleID)
 	}
 	if cancelled {
-		slog.InfoContext(ctx, "league_cancelled", "league_id", id, "stopped_battles", len(running))
+		slog.InfoContext(ctx, "league_cancelled", "league_id", id, "active_battles", len(active))
 	}
 	return s.repo.GetLeague(ctx, id)
+}
+
+func (s *Service) stopBattle(ctx context.Context, leagueID, battleID string) {
+	if _, err := s.battles.StopBattle(ctx, battleID); err != nil && !errors.Is(err, battleservice.ErrBattleNotActive) {
+		slog.WarnContext(ctx, "league_battle_stop_failed", "league_id", leagueID, "battle_id", battleID, "error", err)
+	}
 }
 
 func requireAdmin(ctx context.Context) error {

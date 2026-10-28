@@ -7,10 +7,12 @@ package repo
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,7 +72,7 @@ func uuid(t *testing.T) string {
 func sampleLeague(t *testing.T) league.League {
 	t.Helper()
 	interval := uint64(10)
-	l := league.League{ID: uuid(t), OwnerID: "admin", Name: "Autumn cup", Status: league.StatusRunning, RequestDigest: "digest", GroupCount: 2,
+	l := league.League{ID: uuid(t), OwnerID: "admin", Name: "Autumn cup", Status: league.StatusRunning, RequestDigest: "digest", BattleSalt: strings.Repeat("ab", 16), GroupCount: 2,
 		Settings: league.Settings{ScenarioIDs: []string{"frontier-siege", "castle-siege"}, TickCount: 500, DecisionIntervalTicks: &interval}}
 	for i := range 8 {
 		controller := game.ControllerConfig{Type: "model", ProfileID: "claude-subscription-local", ModelIdentifier: "sonnet", ReasoningEffort: "low"}
@@ -80,10 +82,15 @@ func sampleLeague(t *testing.T) league.League {
 	return l
 }
 
-func insertBattle(t *testing.T, db *pgxpool.Pool, id string) {
+func insertBattle(t *testing.T, db *pgxpool.Pool, id string, factionIDs ...string) {
 	t.Helper()
-	if _, err := db.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state,admission_exempt)
-		VALUES($1,'frontier-siege','d','{}',500,'admin','{}','{}',true)`, id); err != nil {
+	factions := []map[string]string{}
+	for _, factionID := range factionIDs {
+		factions = append(factions, map[string]string{"id": factionID})
+	}
+	snapshot, _ := json.Marshal(map[string]any{"factions": factions})
+	if _, err := db.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state,admission_exempt,decision_budget_exempt)
+		VALUES($1,'frontier-siege','d',$2,500,'admin','{}','{}',true,true)`, id, snapshot); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -109,7 +116,7 @@ func TestLeagueRoundTripAgainstPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != l.Name || got.Status != league.StatusRunning || got.RequestDigest != "digest" || got.GroupCount != 2 || got.Settings.TickCount != 500 ||
+	if got.Name != l.Name || got.Status != league.StatusRunning || got.RequestDigest != "digest" || got.BattleSalt != l.BattleSalt || got.GroupCount != 2 || got.Settings.TickCount != 500 ||
 		*got.Settings.DecisionIntervalTicks != 10 || got.Settings.TickDuration != nil || len(got.Settings.ScenarioIDs) != 2 || got.Champion != nil || got.CompletedAt != nil {
 		t.Fatalf("league = %+v", got)
 	}
@@ -130,8 +137,8 @@ func TestSchedulerStoreAgainstPostgres(t *testing.T) {
 	if err := repo.CreateLeague(ctx, l); err != nil {
 		t.Fatal(err)
 	}
-	battleID := league.FixtureBattleID(l.Fixtures[0].ID, 1)
-	schedule(t, repo, startFirstFixture(t, db, battleID))
+	battleID := league.FixtureBattleID(l.BattleSalt, l.Fixtures[0].ID, 1)
+	schedule(t, repo, startFirstFixture(t, db, l, battleID))
 	home, away := l.Entrants[l.Fixtures[0].Home].FactionID, l.Entrants[l.Fixtures[0].Away].FactionID
 	if _, err := db.Exec(ctx, `UPDATE battle_runs SET status='completed', completed_at=now(), result=$2 WHERE id=$1`, battleID,
 		fmt.Sprintf(`{"winnerFactionId":%q,"reason":"castle_destroyed","ticksRun":90,"factions":[{"factionId":%q,"castleHealth":120,"damageDealt":400},{"factionId":%q,"castleHealth":0,"damageDealt":150}]}`, home, home, away)); err != nil {
@@ -167,15 +174,20 @@ func TestSchedulerStoreAgainstPostgres(t *testing.T) {
 
 // startFirstFixture is a pass that sees an idle engine, queues battleID, and links it
 // to the league's first fixture.
-func startFirstFixture(t *testing.T, db *pgxpool.Pool, battleID string) func(context.Context, leagueservice.SchedulerStore) error {
+func startFirstFixture(t *testing.T, db *pgxpool.Pool, l league.League, battleID string) func(context.Context, leagueservice.SchedulerStore) error {
 	return func(ctx context.Context, store leagueservice.SchedulerStore) error {
 		running, err := store.RunningLeagues(ctx)
-		if err != nil || len(running) != 1 || len(running[0].Fixtures) != 24 {
+		if err != nil || len(running) != 1 || len(running[0].Fixtures) != 24 || running[0].BattleSalt != l.BattleSalt {
 			t.Fatalf("running = %d leagues, %v", len(running), err)
 		}
 		requireEngine(t, ctx, store, battleID, false)
-		insertBattle(t, db, battleID)
+		home, away := l.Entrants[l.Fixtures[0].Home].FactionID, l.Entrants[l.Fixtures[0].Away].FactionID
+		insertBattle(t, db, battleID, home, away)
 		requireEngine(t, ctx, store, battleID, true)
+		origin, err := store.Battle(ctx, battleID)
+		if err != nil || origin.OwnerID != "admin" || !origin.DecisionBudgetExempt || origin.ScenarioID != "frontier-siege" || fmt.Sprint(origin.FactionIDs) != fmt.Sprint([]string{home, away}) {
+			t.Fatalf("battle origin = %+v, %v", origin, err)
+		}
 		f := running[0].Fixtures[0]
 		f.Status, f.Attempts, f.BattleID = league.FixtureRunning, 1, &battleID
 		return store.SaveFixture(ctx, f)
@@ -186,9 +198,9 @@ func startFirstFixture(t *testing.T, db *pgxpool.Pool, battleID string) func(con
 func requireEngine(t *testing.T, ctx context.Context, store leagueservice.SchedulerStore, battleID string, queued bool) {
 	t.Helper()
 	busy, err := store.EngineBusy(ctx)
-	exists, existsErr := store.BattleExists(ctx, battleID)
-	if err != nil || existsErr != nil || busy != queued || exists != queued {
-		t.Fatalf("busy %v %v, exists %v %v, want %v", busy, err, exists, existsErr, queued)
+	origin, originErr := store.Battle(ctx, battleID)
+	if err != nil || originErr != nil || busy != queued || (origin != nil) != queued {
+		t.Fatalf("busy %v %v, battle %+v %v, want %v", busy, err, origin, originErr, queued)
 	}
 }
 
@@ -236,13 +248,38 @@ func TestCancelLeagueAgainstPostgres(t *testing.T) {
 	if err != nil || !cancelled || len(running) != 1 || running[0] != battleID {
 		t.Fatalf("cancel = %v %v %v", cancelled, running, err)
 	}
+	requireStranded(t, repo, leagueservice.StrandedBattle{LeagueID: l.ID, BattleID: battleID, OwnerID: "admin"})
 	got, err := repo.GetLeague(ctx, l.ID)
 	if err != nil || got.Status != league.StatusCancelled || got.Fixtures[0].Status != league.FixtureCancelled || got.Fixtures[1].Status != league.FixtureCompleted || got.Fixtures[2].Status != league.FixtureCancelled {
 		t.Fatalf("cancelled league = %+v, %v", got, err)
 	}
-	if cancelled, running, err := repo.CancelLeague(ctx, l.ID); err != nil || cancelled || running != nil {
-		t.Fatalf("repeat cancel = %v %v %v", cancelled, running, err)
+	if cancelled, running, err := repo.CancelLeague(ctx, l.ID); err != nil || cancelled || len(running) != 1 {
+		t.Fatalf("repeat cancel while the battle runs = %v %v %v", cancelled, running, err)
 	}
+	if _, err := db.Exec(ctx, `UPDATE battle_runs SET status='stopped', completed_at=now() WHERE id=$1`, battleID); err != nil {
+		t.Fatal(err)
+	}
+	if cancelled, running, err := repo.CancelLeague(ctx, l.ID); err != nil || cancelled || len(running) != 0 {
+		t.Fatalf("repeat cancel after the stop = %v %v %v", cancelled, running, err)
+	}
+	requireStranded(t, repo)
+}
+
+// requireStranded checks the battles a scheduling pass would stop.
+func requireStranded(t *testing.T, repo *Postgres, want ...leagueservice.StrandedBattle) {
+	t.Helper()
+	schedule(t, repo, func(ctx context.Context, store leagueservice.SchedulerStore) error {
+		stranded, err := store.StrandedBattles(ctx)
+		if err != nil || fmt.Sprint(stranded) != fmt.Sprint(append([]leagueservice.StrandedBattle{}, want...)) {
+			t.Fatalf("stranded = %+v, %v, want %+v", stranded, err, want)
+		}
+		return nil
+	})
+}
+
+func TestCancelLeagueRejectsMissingAndCompletedLeagues(t *testing.T) {
+	db := privateDatabase(t)
+	repo, ctx := NewPostgres(db), context.Background()
 	if _, _, err := repo.CancelLeague(ctx, uuid(t)); !errors.Is(err, leagueservice.ErrLeagueNotFound) {
 		t.Fatalf("missing err = %v", err)
 	}

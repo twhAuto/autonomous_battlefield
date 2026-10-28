@@ -64,7 +64,7 @@ it is not part of the battle simulation snapshot.
 | `battle_events` | Ordered events per battle attempt | Primary key `(battle_id, attempt, sequence)` makes inserts idempotent and serves event paging |
 | `battle_replay_frames` | One engine checkpoint per decision window of a battle attempt, with that tick's events | Primary key `(battle_id, attempt, tick)` makes inserts idempotent and finds the nearest earlier checkpoint. `checkpoint` is a JSON object and `events` a JSON array |
 | `battle_decisions` | One strategy decision window: frozen observation and hash, controller and profile, lease, resolved plan, fallback source, error category, usage, provider metadata, trace context | Unique per `(battle_id, attempt, faction_id, target_tick)`. Status `pending`, `running`, `accepted`, `fallback` or `failed`. `version` guards resolution; `idempotency_key` deduplicates submissions. `faction_id` is snapshot data, not a foreign key |
-| `leagues` | One AI league: owner, name, status, request digest, maps, battle timing, group count, champion | Status `running`, `completed` or `cancelled`; `completed_at` is set exactly when it is not running, and a champion only when completed |
+| `leagues` | One AI league: owner, name, status, request digest, secret battle-ID salt, maps, battle timing, group count, champion | Status `running`, `completed` or `cancelled`; `completed_at` is set exactly when it is not running, and a champion only when completed |
 | `league_entrants` | One competitor per league: entry index, group, faction ID, faction name copied at creation, requested controller | Primary key `(league_id, entrant_index)`; one entrant per faction per league. No foreign key to `factions`, so deleting a faction never breaks a league |
 | `league_fixtures` | One battle slot: play sequence, stage, group, round, tie, leg, home and away entrants, map, status, attempts, current battle | IDs are derived from the league and sequence, so repeated writes are no-ops. Status `pending`, `running`, `completed`, `void` or `cancelled`; a running fixture has a battle. `battle_id` is unique and set to null if that battle is deleted |
 | `faction_generation_accounts` | Per-actor row used as a generation lock | Locked `FOR UPDATE` while creating a job |
@@ -185,6 +185,7 @@ erDiagram
         text name
         text status
         text request_digest
+        text battle_salt
         text_array scenario_ids
         int requested_ticks
         text tick_duration
@@ -512,12 +513,17 @@ decisions continue past `runtime_policy.decision_executions` while still countin
 them. Claims run as the AI gateway login, so that role gains `SELECT` on this one
 column. Nothing is backfilled.
 
-Fixture and battle IDs are derived from the league, fixture sequence and attempt, so a
-retried write reuses its row and an interrupted battle start finds its battle. A
-fixture's battle outcome is read by joining `battle_runs`; the league stores no copy
-of results. Scheduling passes and cancellations take transaction advisory lock
+Fixture IDs are derived from the league and sequence, so a retried write reuses its
+row. Battle IDs are derived from the fixture, the attempt and `leagues.battle_salt`, a
+random value the API never returns, so an interrupted battle start finds its battle
+while nobody else can create a battle with that ID first. The scheduler also adopts
+an existing battle only when its owner, decision-budget exemption, map and factions
+match the fixture; anything else spends the attempt. A fixture's battle outcome is
+read by joining `battle_runs`; the league stores no copy of results. Scheduling passes and cancellations take transaction advisory lock
 `741928320` (`pg_try_advisory_xact_lock` for passes, the blocking form for
 cancellation), so API replicas never schedule the same league twice and a
-cancellation cannot race a new battle. Down refuses while any league is running;
+cancellation cannot race a new battle. Cancellation returns the league's battles
+that are still queued or running, also when repeated, and every scheduling pass
+stops such battles in cancelled leagues, so a failed stop is retried. Down refuses while any league is running;
 otherwise it restores both trigger functions and drops the column and the three
 tables with every completed or cancelled league.

@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -32,11 +33,26 @@ func (h *fixtureHarness) pass(t *testing.T) {
 	}
 }
 
+// battleID is the battle a fixture starts on the given attempt.
+func (h *fixtureHarness) battleID(i, attempt int) string {
+	return league.FixtureBattleID(h.stored().BattleSalt, h.stored().Fixtures[i].ID, attempt)
+}
+
+// ownBattle registers a battle the scheduler created for fixture i on the attempt.
+func (h *fixtureHarness) ownBattle(i, attempt int, status string) string {
+	l, id := h.stored(), h.battleID(i, attempt)
+	f := l.Fixtures[i]
+	h.repo.battles[id] = status
+	h.repo.origins[id] = BattleProvenance{OwnerID: l.OwnerID, DecisionBudgetExempt: true, ScenarioID: f.ScenarioID,
+		FactionIDs: []string{l.Entrants[f.Home].FactionID, l.Entrants[f.Away].FactionID}}
+	return id
+}
+
 // finish marks a fixture's battle completed, the home side winning.
 func (h *fixtureHarness) finish(i int) {
 	l := h.stored()
 	f := &l.Fixtures[i]
-	id := league.FixtureBattleID(f.ID, f.Attempts+1)
+	id := h.battleID(i, f.Attempts+1)
 	home, away := l.Entrants[f.Home].FactionID, l.Entrants[f.Away].FactionID
 	f.Status, f.Attempts, f.BattleID = league.FixtureCompleted, f.Attempts+1, &id
 	f.Battle = &league.BattleOutcome{Status: league.BattleCompleted, WinnerFactionID: &home, Reason: "castle_destroyed",
@@ -48,7 +64,7 @@ func TestSchedulePassStartsTheFirstFixtureOnAnIdleEngine(t *testing.T) {
 	h := runningHarness(t)
 	h.pass(t)
 	first := h.stored().Fixtures[0]
-	want := league.FixtureBattleID(first.ID, 1)
+	want := h.battleID(0, 1)
 	if len(h.battles.created) != 1 || first.Status != league.FixtureRunning || first.Attempts != 1 || *first.BattleID != want {
 		t.Fatalf("created %d, fixture %+v", len(h.battles.created), first)
 	}
@@ -80,11 +96,54 @@ func TestSchedulePassWaitsForTheEngineAndTheLock(t *testing.T) {
 
 func TestSchedulePassLinksTheBattleOfAnInterruptedStart(t *testing.T) {
 	h := runningHarness(t)
-	id := league.FixtureBattleID(h.stored().Fixtures[0].ID, 1)
-	h.repo.battles[id] = "running"
+	id := h.ownBattle(0, 1, "running")
 	h.pass(t)
 	if f := h.stored().Fixtures[0]; len(h.battles.created) != 0 || f.Status != league.FixtureRunning || *f.BattleID != id || f.Attempts != 1 {
 		t.Fatalf("created %d, fixture %+v", len(h.battles.created), f)
+	}
+}
+
+func TestSchedulePassNeverAdoptsAForeignBattle(t *testing.T) {
+	foreign := map[string]func(*BattleProvenance){
+		"other owner":      func(b *BattleProvenance) { b.OwnerID = "intruder" },
+		"not exempt":       func(b *BattleProvenance) { b.DecisionBudgetExempt = false },
+		"other map":        func(b *BattleProvenance) { b.ScenarioID = "elsewhere" },
+		"sides swapped":    func(b *BattleProvenance) { b.FactionIDs[0], b.FactionIDs[1] = b.FactionIDs[1], b.FactionIDs[0] },
+		"other faction":    func(b *BattleProvenance) { b.FactionIDs[1] = factionID(99) },
+		"missing factions": func(b *BattleProvenance) { b.FactionIDs = nil },
+	}
+	for name, mutate := range foreign {
+		h := runningHarness(t)
+		id := h.ownBattle(0, 1, league.BattleCompleted)
+		origin := h.repo.origins[id]
+		mutate(&origin)
+		h.repo.origins[id] = origin
+		h.pass(t)
+		if f := h.stored().Fixtures[0]; f.Status != league.FixturePending || f.Attempts != 1 || f.BattleID != nil || len(h.battles.created) != 0 {
+			t.Fatalf("%s: adopted %+v", name, f)
+		}
+		h.pass(t)
+		if f := h.stored().Fixtures[0]; len(h.battles.created) != 1 || *f.BattleID != h.battleID(0, 2) {
+			t.Fatalf("%s: retry = %+v", name, f)
+		}
+	}
+}
+
+func TestSchedulePassStopsBattlesLeftInCancelledLeagues(t *testing.T) {
+	h := runningHarness(t)
+	l := h.stored()
+	id := h.ownBattle(0, 1, "running")
+	l.Fixtures[0].Status, l.Fixtures[0].BattleID, l.Status = league.FixtureCancelled, &id, league.StatusCancelled
+	h.battles.stopErrs = map[string]error{id: errDatabase}
+	h.pass(t)
+	h.battles.stopErrs = nil
+	h.pass(t)
+	if fmt.Sprint(h.battles.stopped) != fmt.Sprint([]string{id, id}) || h.repo.battles[id] != "stopped" || h.battles.stoppers[0].Role != authn.Admin {
+		t.Fatalf("stopped %v as %+v, status %s", h.battles.stopped, h.battles.stoppers, h.repo.battles[id])
+	}
+	h.pass(t)
+	if len(h.battles.stopped) != 2 || len(h.battles.created) != 0 {
+		t.Fatalf("stopped %v, created %d after the stop", h.battles.stopped, len(h.battles.created))
 	}
 }
 
@@ -92,11 +151,11 @@ func TestFinishedBattlesCompleteRetryOrVoidTheirFixtures(t *testing.T) {
 	h := runningHarness(t)
 	l := h.stored()
 	running := func(i, attempts int, status string) {
-		id := league.FixtureBattleID(l.Fixtures[i].ID, attempts)
+		id := h.battleID(i, attempts)
 		l.Fixtures[i].Status, l.Fixtures[i].Attempts, l.Fixtures[i].BattleID = league.FixtureRunning, attempts, &id
 		if status != "" {
 			l.Fixtures[i].Battle = &league.BattleOutcome{Status: status}
-			h.repo.battles[id] = status
+			h.ownBattle(i, attempts, status)
 		}
 	}
 	running(0, 1, league.BattleCompleted)
@@ -119,7 +178,7 @@ func TestFinishedBattlesCompleteRetryOrVoidTheirFixtures(t *testing.T) {
 	}
 	delete(h.repo.battles, *got[4].BattleID)
 	h.pass(t)
-	if f := h.stored().Fixtures[1]; len(h.battles.created) != 1 || f.Attempts != 2 || *f.BattleID != league.FixtureBattleID(f.ID, 2) {
+	if f := h.stored().Fixtures[1]; len(h.battles.created) != 1 || f.Attempts != 2 || *f.BattleID != h.battleID(1, 2) {
 		t.Fatalf("retry = %+v", f)
 	}
 }

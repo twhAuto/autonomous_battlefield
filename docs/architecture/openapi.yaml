@@ -853,8 +853,9 @@ paths:
         - {$ref: '#/components/parameters/Origin'}
       description: |
         Admins only. Cancels every unfinished fixture and stops the running battle.
-        Repeating the call on a cancelled league returns `200` with the league; a
-        completed league returns `409 conflict`.
+        Repeating the call on a cancelled league returns `200` with the league and
+        stops any league battle still running; a completed league returns
+        `409 conflict`.
       responses:
         '200':
           description: The cancelled league.
