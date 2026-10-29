@@ -266,8 +266,14 @@ This section owns the coverage rule; other guides link here.
 ```
 
 Jenkins runs `./scripts/test/test-backend.sh` under the same harness, which runs
-`test-go-coverage.sh` and then the Go race checks. Start a focused change with the
-affected package's tests, and run the applicable gate before declaring it complete.
+`test-go-coverage.sh` and then the Go race checks. The race detector reports only
+memory shared between goroutines, so in the race run, engine and catalog tests that
+play a whole battle in one goroutine skip themselves (`skipSequentialBattleUnderRace`
+in `internal/game` and `internal/battle/catalog`), and the parallel map sweep plays
+only each map's first 100 transitions. The coverage run plays all of them in full.
+Mark any new long single-goroutine battle test the same way; under the race detector
+it can take minutes on the shared agent. Start a focused change with the affected
+package's tests, and run the applicable gate before declaring it complete.
 
 Backend Go statement coverage must be at least 80% in aggregate across the
 module, as reported by the `total:` line from `go tool cover`. The gate is a

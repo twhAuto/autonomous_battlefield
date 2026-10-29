@@ -109,6 +109,7 @@ func TestUpgradePurchasesRecordTheirTick(t *testing.T) {
 }
 
 func TestTypeStatisticsAddUpToFactionTotals(t *testing.T) {
+	skipSequentialBattleUnderRace(t)
 	for name, scenario := range map[string]Scenario{"starting units": testScenario(), "scoped upgrades": scopedUpgradeScenario()} {
 		t.Run(name, func(t *testing.T) {
 			match, err := NewMatch("totals", scenario, 1000)
