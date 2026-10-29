@@ -92,7 +92,7 @@ function bracketStages(groupCount: 2 | 4): LeagueStage[] {
   return groupCount === 4 ? ['quarterfinal', 'semifinal', 'final'] : ['semifinal', 'final']
 }
 
-// One match, the home side first, with its winner marked once decided.
+// One match, side 1 (the first spawn) first, with its winner marked once decided.
 function MatchCard({ league, label, home, away, winner }: Readonly<{ league: League; label: string; home: number; away: number; winner: number | null }>) {
   const side = (index: number) => <li className={winner === index ? 'league-tie__winner' : undefined}><Entrant league={league} index={index} />{winner === index && <span className="visually-hidden"> (winner)</span>}</li>
   return <ol className="league-tie" aria-label={label}>{side(home)}{side(away)}</ol>
@@ -121,12 +121,12 @@ export function FixtureList({ league }: Readonly<{ league: League }>) {
       <div className="section-label"><span>FIXTURES</span><span>{league.progress.settled} / {league.progress.total} SETTLED</span></div>
       <table className="history-table league-fixtures">
         <caption className="visually-hidden">Fixtures in play order</caption>
-        <thead><tr><th>#</th><th>Fixture</th><th>Home</th><th>Away</th><th>Map</th><th>Result</th><th><span className="visually-hidden">Battle</span></th></tr></thead>
+        <thead><tr><th>#</th><th>Fixture</th><th>Side 1</th><th>Side 2</th><th>Map</th><th>Result</th><th><span className="visually-hidden">Battle</span></th></tr></thead>
         <tbody>{league.fixtures.map(fixture => <tr key={fixture.id} className={fixture.status === 'running' ? 'league-fixtures__running' : undefined}>
           <td data-label="#">{fixture.sequence + 1}</td>
           <td data-label="Fixture">{fixtureLabel(fixture)}{fixture.attempts > 1 && <small>Retried</small>}</td>
-          <td data-label="Home"><Entrant league={league} index={fixture.homeEntrant} /></td>
-          <td data-label="Away"><Entrant league={league} index={fixture.awayEntrant} /></td>
+          <td data-label="Side 1"><Entrant league={league} index={fixture.homeEntrant} /></td>
+          <td data-label="Side 2"><Entrant league={league} index={fixture.awayEntrant} /></td>
           <td data-label="Map">{fixture.scenarioId}</td>
           <td data-label="Result"><span className="history-status">{fixtureOutcome(league, fixture)}</span>{fixture.status === 'running' && <BattleProgress fixture={fixture} />}</td>
           <td>{fixture.battleId && <Link className="text-link" to={`/battles/${encodeURIComponent(fixture.battleId)}`}>Open battle →</Link>}</td>
