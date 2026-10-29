@@ -51,7 +51,11 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .battle-statistics { padding: 42px 0 14px; }
 .statistics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 22px; }
 .statistics-card { padding: 28px; }
-.statistics-card h2 { margin: 0 0 22px; font-size: 24px; font-weight: 500; letter-spacing: -.03em; }
+.statistics-card h2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin: 0 0 22px; font-size: 24px; font-weight: 500; letter-spacing: -.03em; }
+.statistics-card__winner { align-self: center; padding: 3px 8px; color: var(--ink); background: var(--lime); font: 500 11px 'DM Mono', monospace; letter-spacing: .12em; text-transform: uppercase; }
+/* A faction's model beside its name in the result and the statistics cards. */
+.faction-model { display: inline-block; max-width: 100%; color: #aeb6a9; font: 400 12px/1.4 'DM Mono', monospace; letter-spacing: 0; overflow-wrap: anywhere; }
+.outcome-panel .faction-model { margin-left: 4px; font-size: 11px; }
 .statistics-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin: 0; background: var(--line); }
 .statistics-card dl > div { padding: 16px; background: #151a14; }
 .statistics-card dt { color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .11em; text-transform: uppercase; }
@@ -366,7 +370,9 @@ details.upgrade-chips > summary { flex-wrap: wrap; align-content: center; gap: 2
   .battle-statistics--overlay { position: static; }
   .battle-map-column--results > .map-panel { display: none; }
 }
-.battle-progress-panel > .compact-action { min-height: 32px; margin-top: 8px; }
+.battle-progress-panel__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.battle-progress-panel__actions:empty { display: none; }
+.battle-progress-panel__actions > .compact-action { flex: 1 1 auto; min-height: 32px; }
 
 /* Replay mode: controls above the map. */
 .replay-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 12px; background: #151a14; border: 1px solid var(--line); border-bottom: 0; font: 12px 'DM Mono', monospace; }
