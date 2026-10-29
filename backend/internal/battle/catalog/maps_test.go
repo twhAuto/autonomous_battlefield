@@ -2,6 +2,9 @@
 package catalog
 
 import (
+	"fmt"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/gamedata"
@@ -10,30 +13,63 @@ import (
 )
 
 // Chokepoints and forward deposits can let both sides hold a front for the whole
-// battle, so scripted bots must break through on every map from either side
-// before the shared tick limit.
+// battle, so scripted bots must break through on every map before the shared tick
+// limit. Turn order goes by seat, so swapping the two faction IDs must replay the same
+// battle: each seat holds the same state every tick and the same seat wins.
 func TestScriptedBotsFinishEveryMap(t *testing.T) {
 	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range c.IDs() {
-		for _, sides := range [][2]string{{"a", "b"}, {"b", "a"}} {
-			t.Run(id+"/"+sides[0]+"-left", func(t *testing.T) {
-				t.Parallel()
-				last := playScriptedBattle(t, c, id, sides)
-				if last.Result.WinnerFactionID == nil {
-					t.Fatalf("scripted bots stalemated at tick %d", last.Tick)
-				}
-				t.Logf("winner=%s ticks=%d", *last.Result.WinnerFactionID, last.Tick)
-			})
-		}
+		t.Run(id, func(t *testing.T) {
+			t.Parallel()
+			traces, winners := playBothIDOrders(t, c, id)
+			if t.Failed() {
+				return
+			}
+			last := traces[0][len(traces[0])-1].tick
+			if winners[0] < 0 {
+				t.Fatalf("scripted bots stalemated at tick %d", last)
+			}
+			if tick, differ := firstDifference(traces[0], traces[1]); differ {
+				t.Fatalf("swapping faction IDs changed the battle at tick %d", tick)
+			}
+			if winners[0] != winners[1] {
+				t.Fatalf("swapping faction IDs changed the winning seat from %d to %d", winners[0], winners[1])
+			}
+			t.Logf("winning seat=%d ticks=%d", winners[0], last)
+		})
 	}
 }
 
+// playBothIDOrders plays map id with faction a on the left, then b, as parallel
+// subtests. The group returns once both finish, so every map's battles run at once
+// and the slowest single battle sets the test's duration.
+func playBothIDOrders(t *testing.T, c *Catalog, id string) ([2][]seatTick, [2]int) {
+	traces, winners := [2][]seatTick{}, [2]int{}
+	t.Run("runs", func(t *testing.T) {
+		for run, sides := range [][2]string{{"a", "b"}, {"b", "a"}} {
+			t.Run(sides[0]+"-left", func(t *testing.T) {
+				t.Parallel()
+				traces[run], winners[run] = playScriptedBattle(t, c, id, sides)
+			})
+		}
+	})
+	return traces, winners
+}
+
+// seatTick is one transition's state by seat, without faction IDs, so runs with
+// different faction IDs compare directly. The opening transition has tick 0.
+type seatTick struct {
+	tick  uint64
+	seats string
+}
+
 // playScriptedBattle runs map id to the end with factions sides[0] on the left and
-// sides[1] on the right, and returns the final transition.
-func playScriptedBattle(t *testing.T, c *Catalog, id string, sides [2]string) game.Transition {
+// sides[1] on the right. It returns every transition by seat and the winning seat, or
+// -1 for a draw.
+func playScriptedBattle(t *testing.T, c *Catalog, id string, sides [2]string) ([]seatTick, int) {
 	t.Helper()
 	s, err := c.Resolve(id, [2]service.FactionIdentity{{ID: sides[0], Name: sides[0]}, {ID: sides[1], Name: sides[1]}})
 	if err != nil {
@@ -43,13 +79,55 @@ func playScriptedBattle(t *testing.T, c *Catalog, id string, sides [2]string) ga
 	if err != nil {
 		t.Fatal(err)
 	}
+	trace := []seatTick{}
 	var last game.Transition
 	for !m.Finished() {
 		if last, err = m.Advance(); err != nil {
 			t.Fatal(err)
 		}
+		trace = append(trace, seatTick{last.Tick, seatState(last.State, sides[0]) + " | " + seatState(last.State, sides[1])})
 	}
-	return last
+	if last.Result.WinnerFactionID == nil {
+		return trace, -1
+	}
+	return trace, slices.Index(sides[:], *last.Result.WinnerFactionID)
+}
+
+// firstDifference returns the first transition tick where two runs differ, and false
+// when they match. A run that ends early differs at its partner's next tick.
+func firstDifference(first, second []seatTick) (uint64, bool) {
+	for index := range max(len(first), len(second)) {
+		switch {
+		case index >= len(first):
+			return second[index].tick, true
+		case index >= len(second) || first[index] != second[index]:
+			return first[index].tick, true
+		}
+	}
+	return 0, false
+}
+
+// seatState describes one faction's gold, units and buildings without IDs.
+func seatState(state game.State, factionID string) string {
+	parts := []string{}
+	for _, faction := range state.Factions {
+		if faction.FactionID == factionID {
+			parts = append(parts, fmt.Sprintf("gold %d earned %d spent %d", faction.Gold, faction.GoldEarned, faction.GoldSpent))
+		}
+	}
+	entities := []string{}
+	for _, unit := range state.Units {
+		if unit.FactionID == factionID {
+			entities = append(entities, fmt.Sprintf("%s@%d,%d:%d", unit.Type, unit.Position.X, unit.Position.Y, unit.Health))
+		}
+	}
+	for _, building := range state.Buildings {
+		if building.FactionID == factionID {
+			entities = append(entities, fmt.Sprintf("%s@%d,%d:%d", building.Type, building.Position.X, building.Position.Y, building.Health))
+		}
+	}
+	slices.Sort(entities)
+	return strings.Join(append(parts, entities...), " ")
 }
 
 // Every map gives each castle home mines inside its build range, more mines toward

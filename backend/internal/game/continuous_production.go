@@ -3,7 +3,6 @@ package game
 import (
 	"fmt"
 	"slices"
-	"sort"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
@@ -83,7 +82,7 @@ func (m *Match) runContinuousProduction() []Event {
 	for i := range indices {
 		indices[i] = i
 	}
-	sort.Slice(indices, func(i, j int) bool { return m.state.Buildings[indices[i]].ID < m.state.Buildings[indices[j]].ID })
+	m.sortBuildings(indices)
 	definitions := UnitTypesByID(m.scenario.Ruleset)
 	events := []Event{}
 	for _, i := range indices {

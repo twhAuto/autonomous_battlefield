@@ -11,8 +11,8 @@ import (
 
 func (m *Match) runEconomy(productionWindow bool) []Event {
 	events := make([]Event, 0, 8)
-	for _, setup := range m.scenario.Factions {
-		events = append(events, m.runFactionEconomy(setup.ID, productionWindow)...)
+	for _, factionID := range m.factionOrder() {
+		events = append(events, m.runFactionEconomy(factionID, productionWindow)...)
 	}
 	return events
 }

@@ -171,7 +171,7 @@ Each enabled building repeatedly trains its selected type, paying for exactly on
 unit when training starts. There is one paid unit in progress and no prepaid batch.
 The unit's `trainingTicks` starts advancing on the tick after purchase. A successful
 deployment can buy the next unit that same tick; its training advances next tick.
-Purchases follow building ID order after income, construction/upgrades and training.
+Purchases follow the [tick order](#tick-order) after income, construction/upgrades and training.
 Insufficient gold above `reserveGold` sets `production.waitingForGold`; the building
 stays enabled and retries each tick. No purchase occurs while a paid unit is present.
 The current ruleset caps each faction at 50 units (`maximumUnitCount`; 40 in rulesets
@@ -239,22 +239,31 @@ submit them through the MCP tool schema.
 ## Tick order
 
 Each tick transition runs these steps in order (`AdvanceWithPlans` in
-`backend/internal/game/match.go`):
+`backend/internal/game/match.go`). Where both factions act in turn, they follow the
+tick's **faction order**: on odd ticks the first participant (the first castle spawn)
+goes first, on even ticks the second, so neither a seat nor a faction ID always acts
+first (`backend/internal/game/turn_order.go`). Within a faction, buildings and units
+keep ID order. Rulesets before v12 have no alternating turns: the economy runs in
+participant order, and buildings and units in ID order, so on ties the faction whose
+ID sorts first acts first.
 
 1. **Apply plans** if this transition is a production window.
 2. **Advance the tick** and clear the previous tick's action markers.
-3. **Economy**, per faction in scenario faction order: collect income; at a
+3. **Economy**, per faction in faction order: collect income; at a
    window, also spend in the plan's `spendOrder`.
-4. **Training**, in building-ID order: advance the paid unit (legacy queue head), then release
+4. **Training**, in faction order, then building ID: advance the paid unit (legacy queue head), then release
    at most one unit per building onto the first free traversable neighbor. A ready
    unit waits when all exits are blocked without another charge. In continuous
-   mode, empty enabled sources then buy their next unit in building-ID order.
+   mode, empty enabled sources then buy their next unit in the same order.
 5. **Tactics**, per faction: attack or defend, comparing weighted projected power
    (the sum of attack of living non-support units) for each side, plus target bonuses.
 6. **Aim position attacks:** Catapults fix their target hex before anyone moves.
-7. **Towers** act in stable building-ID order.
-8. **Units** act one at a time, fastest first, ties broken by unit ID. Speed sets
-   turn order, not distance or attacks per tick. Units recruited this tick wait
+7. **Towers** act in faction order, then building ID.
+8. **Units** act one at a time, fastest first. Within a speed, the two factions'
+   units alternate in faction order (the first faction's first unit, then the other
+   faction's first unit, and so on); a side with more units of that speed acts its
+   extras last. Speed sets turn order, not distance or attacks per tick. A unit
+   killed before its turn does not act. Units recruited this tick wait
    until the next. Each unit either treats (Herbalist), retreats (units with a
    minimum range, i.e. Catapults, when an enemy is adjacent and an escape route
    exists), fires at its aimed hex, attacks a target in range, or moves toward

@@ -90,7 +90,7 @@ func (m *Match) runTowers(tactics map[string]string) []Event {
 			indices = append(indices, i)
 		}
 	}
-	sort.Slice(indices, func(i, j int) bool { return m.state.Buildings[indices[i]].ID < m.state.Buildings[indices[j]].ID })
+	m.sortBuildings(indices)
 	events := []Event{}
 	for _, index := range indices {
 		b := &m.state.Buildings[index]
