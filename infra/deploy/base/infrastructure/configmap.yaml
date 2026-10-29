@@ -64,7 +64,7 @@ data:
       # The pre-rename alias Service keeps serving the legacy gateway until the new one
       # is ready; switch to battlefield-ai-gateway when the alias is retired.
       mcpUrl: http://battlefield-mcp:8084/mcp
-      decisionTimeout: 2m
+      decisionTimeout: 3m
       capabilitySecretEnvironmentVariable: BATTLEFIELD_MCP_CAPABILITY_SECRET
       allowedOrigins: []
       profiles:

@@ -66,7 +66,7 @@ CLUSTER_IDENTITY = ['get', 'namespace', 'kube-system', '-o', 'jsonpath={.metadat
 RELEASE_IMAGE = re.compile(r'[a-z0-9][a-z0-9./_-]*@sha256:([0-9a-f]{64})')
 RELEASE_CACHE = HOME / '.cache/autonomous-battlefield/cli-worker'
 RELEASE_MAX_BYTES = 512 * 1024 * 1024
-# Decisions time out after two minutes by default; five minutes also covers a claim in flight.
+# Decisions time out after three minutes by default; five minutes also covers a claim in flight.
 DRAIN_SECONDS = 300
 
 

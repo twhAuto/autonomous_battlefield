@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -269,12 +270,18 @@ func TestCLIRunnerBuildsRestrictedCodexInvocation(t *testing.T) {
 
 func TestAntigravityRunnerUsesIsolatedConfiguration(t *testing.T) {
 	executor := &inspectAntigravityExecutor{t: t}
-	result, err := (CLIRunner{Connector: errorConnector{session: contextFixtureSession{}}, Provider: "antigravity-cli", Model: "gemini-3.8-flash-medium", Executor: executor}).Run(context.Background(), ai.DecisionSession{RequestID: "request", MCPURL: "http://mcp/mcp", CapabilityToken: "secret-token"})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	result, err := (CLIRunner{Connector: errorConnector{session: contextFixtureSession{}}, Provider: "antigravity-cli", Model: "gemini-3.8-flash-medium", Executor: executor}).Run(ctx, ai.DecisionSession{RequestID: "request", MCPURL: "http://mcp/mcp", CapabilityToken: "secret-token"})
 	if err != nil || !result.Accepted || result.Usage.InputTokens != 12 || result.Usage.OutputTokens != 4 {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	if _, err := os.Stat(executor.home); !os.IsNotExist(err) {
 		t.Fatal("temporary home was not cleaned")
+	}
+	// agy's own limit follows the run's deadline instead of a fixed value.
+	if !strings.Contains(executor.args, "--print-timeout 2m59s") && !strings.Contains(executor.args, "--print-timeout 2m58s") {
+		t.Fatalf("print timeout does not follow the deadline: %s", executor.args)
 	}
 	result, err = (CLIRunner{Provider: "codex-cli", Executor: &fakeExecutor{err: errors.New("exit")}}).Run(context.Background(), ai.DecisionSession{})
 	if err == nil || result.ErrorCategory != "cli" {
@@ -306,8 +313,8 @@ func TestCLIRunnerKeepsRateLimitCategoryAndDetailOnFailedExit(t *testing.T) {
 }
 
 type inspectAntigravityExecutor struct {
-	t    *testing.T
-	home string
+	t          *testing.T
+	home, args string
 }
 
 func (e *inspectAntigravityExecutor) Run(_ context.Context, name string, args, env []string, directory string) ([]byte, error) {
@@ -319,6 +326,7 @@ func (e *inspectAntigravityExecutor) Run(_ context.Context, name string, args, e
 	if !strings.Contains(joined, `"targetTick":73`) || !strings.Contains(joined, "BEGIN_BATTLEFIELD_CONTEXT") {
 		e.t.Fatal("authorized context missing from prompt")
 	}
+	e.args = joined
 	if name != "agy" || !strings.Contains(joined, "--model gemini-3.8-flash-medium") || !strings.Contains(joined, "--disable-slash-commands") || strings.Contains(joined, "skip-permissions") || strings.Contains(joined, "secret-token") {
 		e.t.Fatalf("unsafe invocation: %s %v", name, args)
 	}

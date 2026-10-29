@@ -298,7 +298,7 @@ How the plan travels:
    gateway validates the plan and sets the row to `accepted`.
 5. **The engine reads the row.** The engine is never called. It counts the
    window's unresolved rows every 100 ms (`battle_decisions_window_idx`, one query
-   for all factions) until none remain or `ai.decisionTimeout` (2 minutes by
+   for all factions) until none remain or `ai.decisionTimeout` (3 minutes by
    default) passes, then reads the window once and falls back for anything
    unresolved.
 
@@ -743,7 +743,7 @@ Key runtime settings and their defaults:
 | `engine.concurrency` | 4 | Battles one engine runs at once (1–8), one claim loop per slot |
 | `engine.maxAttempts` | 3 | Crashed or lease-expired attempts per battle before `attempts_exhausted`; graceful requeues are refunded |
 | `engine.shutdownTimeout` | 10s | Bound for final writes and requeue during shutdown |
-| `ai.decisionTimeout` | 2m | Engine decision deadline and agent execution timeout |
+| `ai.decisionTimeout` | 3m | Engine decision deadline and agent execution timeout; a battle whose windows all run to it must still end within the one-hour battle limit |
 | `ai.agentConcurrency` | 1 | Execution slots per agent process (1–4) |
 | `resultCache.ttl` / `resultCache.timeout` | 1h / 100ms | Completed-battle cache entry lifetime and per-operation deadline |
 
