@@ -88,6 +88,7 @@ func runBalanceProbe(t *testing.T, scenario game.Scenario, left, right []control
 // The live ruleset's fully upgraded scripted armies must still break a castle
 // before the tick limit, from either side, without exceeding the unit cap.
 func TestLiveFrontierUpgradedBattleFinishes(t *testing.T) {
+	skipSequentialBattleUnderRace(t)
 	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)

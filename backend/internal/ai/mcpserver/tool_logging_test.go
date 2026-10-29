@@ -6,16 +6,19 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	sdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func TestSubmissionSchemaFailuresAreLoggedWithoutPayload(t *testing.T) {
@@ -59,6 +62,31 @@ func TestSubmissionSchemaFailuresAreLoggedWithoutPayload(t *testing.T) {
 	for _, secret := range []string{"untrusted-secret-id", "private-payload-marker"} {
 		if strings.Contains(logs.String(), secret) {
 			t.Fatal("raw input leaked to logs")
+		}
+	}
+}
+
+func TestSubmissionSpanRecordsRejectedRulesAndPlanShape(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdk.NewTracerProvider(sdk.WithSpanProcessor(recorder))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	_, span := provider.Tracer("test").Start(context.Background(), "submit_strategy_plan")
+	orders := []controller.ConstructionOrder{{BuildingType: "defense_tower"}}
+	plan := controller.PlanProposal{SpendOrder: []string{"construction"}, ConstructionOrders: &orders, ConstructionPriorities: []controller.Coordinate{{X: 1, Y: 1}}}
+	recordSubmissionSpan(span, plan, ai.SubmissionResult{Errors: []ai.ValidationIssue{{Field: "plan", Code: "invalid", Message: "private-detail"}, {Field: "plan.spendOrder", Code: "unsupported"}}})
+	span.End()
+	attributes := map[attribute.Key]attribute.Value{}
+	for _, kv := range recorder.Ended()[0].Attributes() {
+		attributes[kv.Key] = kv.Value
+	}
+	if attributes["battlefield.submission.accepted"].AsBool() || attributes["battlefield.plan.construction_orders"].AsInt64() != 1 || attributes["battlefield.plan.construction_priorities"].AsInt64() != 1 ||
+		!slices.Equal(attributes["battlefield.validation.fields"].AsStringSlice(), []string{"plan", "plan.spendOrder"}) ||
+		!slices.Equal(attributes["battlefield.validation.codes"].AsStringSlice(), []string{"invalid", "unsupported"}) {
+		t.Fatalf("attributes = %v", attributes)
+	}
+	for _, kv := range recorder.Ended()[0].Attributes() {
+		if strings.Contains(kv.Value.Emit(), "private-detail") || strings.Contains(kv.Value.Emit(), "defense_tower") {
+			t.Fatal("span recorded a submitted value")
 		}
 	}
 }

@@ -80,6 +80,24 @@ func TestDuplicateListsNameTheirField(t *testing.T) {
 	}
 }
 
+// Each rejection names the one fix, so a model can correct it in a single retry.
+func TestConstructionAndSpendErrorsNameTheFix(t *testing.T) {
+	one := []ConstructionOrder{{BuildingType: "defense_tower", Position: Coordinate{X: 1, Y: 1}}}
+	nine := make([]ConstructionOrder, 9)
+	for i := range nine {
+		nine[i] = ConstructionOrder{BuildingType: "defense_tower", Position: Coordinate{X: i * 2, Y: 0}}
+	}
+	for want, plan := range map[string]PlanProposal{
+		"send constructionPriorities as [] when constructionOrders is supplied": {Name: "p", ConstructionOrders: &one, ConstructionPriorities: []Coordinate{{X: 1, Y: 1}}},
+		"use at most eight constructionOrders per window":                       {Name: "p", ConstructionOrders: &nine},
+		"spendOrder accepts only construction, recruitment and upgrades":        {Name: "p", SpendOrder: []string{"production"}},
+	} {
+		if err := ValidatePlanProposal(plan, []string{"attack"}); !errors.Is(err, ErrInvalidPlan) || !strings.Contains(err.Error(), want) {
+			t.Fatalf("want %q, got %v", want, err)
+		}
+	}
+}
+
 func TestProductionOrderBounds(t *testing.T) {
 	for _, orders := range [][]ProductionOrder{
 		{{UnitType: "vanguard", Enabled: true}},
