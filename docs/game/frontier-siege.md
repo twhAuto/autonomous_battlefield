@@ -264,7 +264,7 @@ Gunners and Heavy Cavalry, and the battle ends with a winner (tick 378).
 map twice, with the two faction IDs swapped between runs. Each seat must hold the same
 state on every tick of both runs, so faction IDs never decide a battle, and every
 battle must end with a winner before the 800-tick limit; current results range from
-tick 210 (Highland Crown) to 610 (Castle Siege). Because both sides run the same bot,
+tick 209 (Highland Crown) to 609 (Castle Siege). Because both sides run the same bot,
 the winning seat shows each map's side bias: the first seat wins Highland Crown and
 River Fords, the second Castle Siege, Frontier Siege and Long March. Narrow chokepoints let both armies hold a front: drafts with one- and
 two-row fords, or a 13-row Long March, reached the limit without a winner. Scarce

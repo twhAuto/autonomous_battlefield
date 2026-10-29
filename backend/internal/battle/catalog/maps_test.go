@@ -26,24 +26,32 @@ func TestScriptedBotsFinishEveryMap(t *testing.T) {
 			t.Parallel()
 			first, firstWinner := playScriptedBattle(t, c, id, [2]string{"a", "b"})
 			second, secondWinner := playScriptedBattle(t, c, id, [2]string{"b", "a"})
+			last := first[len(first)-1].tick
 			if firstWinner < 0 {
-				t.Fatalf("scripted bots stalemated at tick %d", len(first))
+				t.Fatalf("scripted bots stalemated at tick %d", last)
 			}
-			if tick := firstDifference(first, second); tick > 0 {
+			if tick, differ := firstDifference(first, second); differ {
 				t.Fatalf("swapping faction IDs changed the battle at tick %d", tick)
 			}
 			if firstWinner != secondWinner {
 				t.Fatalf("swapping faction IDs changed the winning seat from %d to %d", firstWinner, secondWinner)
 			}
-			t.Logf("winning seat=%d ticks=%d", firstWinner, len(first))
+			t.Logf("winning seat=%d ticks=%d", firstWinner, last)
 		})
 	}
 }
 
+// seatTick is one transition's state by seat, without faction IDs, so runs with
+// different faction IDs compare directly. The opening transition has tick 0.
+type seatTick struct {
+	tick  uint64
+	seats string
+}
+
 // playScriptedBattle runs map id to the end with factions sides[0] on the left and
-// sides[1] on the right. It returns each tick's state by seat, so runs with different
-// faction IDs compare directly, and the winning seat, or -1 for a draw.
-func playScriptedBattle(t *testing.T, c *Catalog, id string, sides [2]string) ([]string, int) {
+// sides[1] on the right. It returns every transition by seat and the winning seat, or
+// -1 for a draw.
+func playScriptedBattle(t *testing.T, c *Catalog, id string, sides [2]string) ([]seatTick, int) {
 	t.Helper()
 	s, err := c.Resolve(id, [2]service.FactionIdentity{{ID: sides[0], Name: sides[0]}, {ID: sides[1], Name: sides[1]}})
 	if err != nil {
@@ -53,13 +61,13 @@ func playScriptedBattle(t *testing.T, c *Catalog, id string, sides [2]string) ([
 	if err != nil {
 		t.Fatal(err)
 	}
-	trace := []string{}
+	trace := []seatTick{}
 	var last game.Transition
 	for !m.Finished() {
 		if last, err = m.Advance(); err != nil {
 			t.Fatal(err)
 		}
-		trace = append(trace, seatState(last.State, sides[0])+" | "+seatState(last.State, sides[1]))
+		trace = append(trace, seatTick{last.Tick, seatState(last.State, sides[0]) + " | " + seatState(last.State, sides[1])})
 	}
 	if last.Result.WinnerFactionID == nil {
 		return trace, -1
@@ -67,14 +75,18 @@ func playScriptedBattle(t *testing.T, c *Catalog, id string, sides [2]string) ([
 	return trace, slices.Index(sides[:], *last.Result.WinnerFactionID)
 }
 
-// firstDifference returns the first tick, from 1, where two traces differ, or 0.
-func firstDifference(first, second []string) int {
-	for tick := range max(len(first), len(second)) {
-		if tick >= len(first) || tick >= len(second) || first[tick] != second[tick] {
-			return tick + 1
+// firstDifference returns the first transition tick where two runs differ, and false
+// when they match. A run that ends early differs at its partner's next tick.
+func firstDifference(first, second []seatTick) (uint64, bool) {
+	for index := range max(len(first), len(second)) {
+		switch {
+		case index >= len(first):
+			return second[index].tick, true
+		case index >= len(second) || first[index] != second[index]:
+			return first[index].tick, true
 		}
 	}
-	return 0
+	return 0, false
 }
 
 // seatState describes one faction's gold, units and buildings without IDs.
