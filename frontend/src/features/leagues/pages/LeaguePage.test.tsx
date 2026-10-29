@@ -29,8 +29,8 @@ function sampleLeague(change: Partial<League> = {}): League {
 
 const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status })
 
-function show(canCancel = true) {
-  return render(<MemoryRouter initialEntries={['/leagues/league-1']}><Routes><Route path="/leagues/:id" element={<LeaguePage canCancel={canCancel} />} /></Routes></MemoryRouter>)
+function show(canManage = true) {
+  return render(<MemoryRouter initialEntries={['/leagues/league-1']}><Routes><Route path="/leagues/:id" element={<LeaguePage canManage={canManage} />} /></Routes></MemoryRouter>)
 }
 
 beforeEach(() => { vi.stubGlobal('fetch', vi.fn()) })
@@ -59,13 +59,15 @@ it('shows group tables, the bracket and fixtures', async () => {
   expect(within(fixtures).getByRole('link', { name: 'Open battle →' })).toHaveAttribute('href', `/battles/${battleID}`)
   expect(screen.getByRole('link', { name: 'STATISTICS →' })).toHaveAttribute('href', '/analytics?leagueId=league-1')
   expect(screen.queryByRole('button', { name: 'CANCEL LEAGUE' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'START AGAIN →' })).not.toBeInTheDocument()
 })
 
-it('names the champion of a completed league', async () => {
+it('names the champion of a completed league and offers Admins a copy of its setup', async () => {
   vi.mocked(fetch).mockImplementation(async () => reply(200, sampleLeague({ status: 'completed', champion: 3 })))
   show()
   expect(await screen.findByText(/Champion:/)).toHaveTextContent('Champion: Dusk')
   expect(screen.queryByRole('button', { name: 'CANCEL LEAGUE' })).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'START AGAIN →' })).toHaveAttribute('href', '/leagues/new?from=league-1')
 })
 
 it('cancels only after confirmation and reports failures', async () => {

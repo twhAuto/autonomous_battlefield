@@ -12,11 +12,23 @@ const scenarios = [
 ]
 const profiles = [{ id: 'claude', displayName: 'Claude', modelLabel: 'sonnet', runtime: 'cli', available: true, modelOptions: [{ id: 'sonnet', reasoningEfforts: ['low', 'high'] }] }]
 const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status })
+const model = (effort: string) => ({ type: 'model', profileId: 'claude', provider: 'anthropic', runtime: 'cli', modelIdentifier: 'sonnet', reasoningEffort: effort })
+// Groups AABBAABB, Claude at high effort on the even entrants, and every setting off its default.
+function sourceLeague(change: Record<string, unknown> = {}) {
+  return {
+    id: 'source-1', name: 'Spring cup', status: 'completed', groupCount: 2,
+    settings: { scenarioIds: ['castle-siege'], tickCount: 400, tickDuration: '2s', decisionIntervalTicks: 20 },
+    entrants: Array.from({ length: 8 }, (_, index) => ({ index, group: index % 4 < 2 ? 'A' : 'B', factionId: `faction-${8 - index}`, factionName: `Faction ${8 - index}`,
+      controller: index % 2 ? { type: 'scripted' } : model('high') })).reverse(),
+    ...change,
+  }
+}
 
-function serve(factionCount = 9, create: () => Response = () => reply(201, { id: leagueID }), scheduling: unknown = { battleSlots: 4, cliSlots: 4 }) {
+function serve(factionCount = 9, create: () => Response = () => reply(201, { id: leagueID }), scheduling: unknown = { battleSlots: 4, cliSlots: 4 }, source: () => Response = () => reply(200, sourceLeague())) {
   vi.mocked(fetch).mockImplementation(async (input, init) => {
     const url = String(input)
     if (init?.method === 'POST') return create()
+    if (url.endsWith('/v1/leagues/source-1')) return source()
     if (url.endsWith('/v1/factions')) return reply(200, { factions: factions(factionCount) })
     if (url.endsWith('/v1/scenarios')) return reply(200, { scenarios })
     if (url.endsWith('/v1/model-profiles')) return reply(200, { profiles })
@@ -25,8 +37,8 @@ function serve(factionCount = 9, create: () => Response = () => reply(201, { id:
   })
 }
 
-function show() {
-  return render(<MemoryRouter initialEntries={['/leagues/new']}><Routes>
+function show(path = '/leagues/new') {
+  return render(<MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/leagues/new" element={<CreateLeaguePage />} />
     <Route path="/leagues/:id" element={<h1>League page</h1>} />
   </Routes></MemoryRouter>)
@@ -124,4 +136,53 @@ it('offers a retry when setup data cannot be loaded', async () => {
   serve()
   await user.click(screen.getByRole('button', { name: 'RETRY' }))
   expect(await screen.findByLabelText('League name')).toBeInTheDocument()
+})
+
+it('starts a new league from a copy of another league', async () => {
+  serve()
+  const user = userEvent.setup()
+  show('/leagues/new?from=source-1')
+  expect(await screen.findByLabelText('League name')).toHaveValue('Spring cup')
+  expect(screen.getByRole('link', { name: 'Spring cup' })).toHaveAttribute('href', '/leagues/source-1')
+  expect(screen.getByRole('checkbox', { name: /castle-siege/ })).toBeChecked()
+  expect(screen.getByRole('checkbox', { name: /frontier-siege/ })).not.toBeChecked()
+  expect(screen.getByLabelText('Maximum ticks per battle')).toHaveValue(400)
+  expect(screen.getByLabelText('Tick duration')).toHaveValue('2s')
+  expect(screen.getByLabelText('Decision interval')).toHaveValue('20')
+  expect(screen.getByLabelText('Faction', { selector: '#entrant-0-faction' })).toHaveValue('faction-8')
+  expect(screen.getByLabelText('Reasoning effort', { selector: '#entrant-0-controller-effort' })).toHaveValue('high')
+  await user.selectOptions(screen.getByLabelText('Faction', { selector: '#entrant-7-faction' }), 'faction-0')
+  await user.click(screen.getByRole('button', { name: /START LEAGUE/ }))
+  expect(await screen.findByRole('heading', { name: 'League page' })).toBeInTheDocument()
+  const body = JSON.parse(String(vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'POST')?.[1]?.body))
+  expect(body).toEqual({
+    id: leagueID, name: 'Spring cup', scenarioIds: ['castle-siege'], tickCount: 400, tickDuration: '2s', decisionIntervalTicks: 20,
+    entrants: Array.from({ length: 8 }, (_, index) => ({ factionId: index === 7 ? 'faction-0' : `faction-${8 - index}`, group: index % 4 < 2 ? 'A' : 'B',
+      controller: index % 2 ? { type: 'scripted' } : { type: 'model', profileId: 'claude', modelIdentifier: 'sonnet', reasoningEffort: 'high' } })),
+  })
+})
+
+it('leaves copied factions, maps and models that no longer exist for the blockers', async () => {
+  const entrants = sourceLeague().entrants.map(entrant => entrant.index === 0 ? { ...entrant, factionId: 'deleted', controller: { ...model('low'), profileId: 'retired' } } : entrant)
+  serve(9, undefined, undefined, () => reply(200, sourceLeague({ entrants, settings: { scenarioIds: ['retired-map'], tickCount: 400, tickDuration: '750ms' } })))
+  show('/leagues/new?from=source-1')
+  expect(await screen.findByLabelText('Faction', { selector: '#entrant-0-faction' })).toHaveValue('')
+  expect(screen.getByLabelText('Controller', { selector: '#entrant-0-controller' })).toHaveDisplayValue('Unavailable controller')
+  expect(screen.getByText('Selected controller is unavailable. Choose an available controller.')).toBeInTheDocument()
+  expect(screen.getByLabelText('Tick duration')).toHaveValue('750ms')
+  expect(screen.getByLabelText('Decision interval')).toHaveValue('')
+  for (const blocker of ['Choose at least one map.', 'Give every entrant a different faction.', 'Choose an available controller for every entrant.']) {
+    expect(screen.getByText(blocker)).toBeInTheDocument()
+  }
+  expect(screen.getByRole('button', { name: /START LEAGUE/ })).toBeDisabled()
+})
+
+it('offers a retry when the league to copy cannot be loaded', async () => {
+  serve(9, undefined, undefined, () => reply(404, {}))
+  const user = userEvent.setup()
+  show('/leagues/new?from=source-1')
+  expect(await screen.findByRole('alert')).toHaveTextContent('the league to copy could not be loaded')
+  serve()
+  await user.click(screen.getByRole('button', { name: 'RETRY' }))
+  expect(await screen.findByLabelText('League name')).toHaveValue('Spring cup')
 })

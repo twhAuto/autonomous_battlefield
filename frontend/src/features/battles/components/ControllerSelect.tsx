@@ -35,6 +35,8 @@ export function ControllerSelect({ id, value, onChange, profiles, selection, onS
   return (
     <><select id={id} value={value} aria-describedby={`${id}-details`} onChange={(event) => onChange(event.target.value)}>
       <option value="scripted">Scripted · deterministic</option>
+      {/* A copied selection whose profile is no longer listed stays visible instead of reading as Scripted. */}
+      {value !== 'scripted' && !selected && <option value={value} disabled>Unavailable controller</option>}
       {profiles.filter(profile => profile.available || profile.id === value).map((profile) => {
         return (
         <option key={profile.id} value={profile.id} disabled={!profile.available}>
