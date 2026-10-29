@@ -7,7 +7,6 @@
 .hero__copy { max-width: 540px; margin: 0; color: #a9afa3; font-size: 16px; line-height: 1.7; }
 .hero__coordinates { position: absolute; right: 0; bottom: 78px; color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .12em; writing-mode: vertical-rl; }
 
-/* Home cards use the same permissions and destinations as the primary navigation. */
 .command-menu { padding: 40px 0 64px; }
 .command-menu__header { margin-bottom: 28px; }
 .command-menu__header h1 { margin: 0 0 10px; font-size: clamp(30px, 4vw, 40px); font-weight: 500; letter-spacing: -.04em; }

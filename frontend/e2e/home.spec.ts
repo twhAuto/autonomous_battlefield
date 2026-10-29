@@ -10,9 +10,11 @@ test('main menu cards support keyboard navigation to every destination', async (
     ['Leagues', '/leagues', 'Leagues'],
     ['Statistics', '/analytics', 'Statistics'],
   ]
+  await page.goto('/')
+  const menu = page.getByRole('region', { name: 'Main menu' })
+  // Allow application startup on the shared CI agent before exercising navigation.
+  await expect(menu).toBeVisible({ timeout: 15_000 })
   for (const [index, [name, path, heading]] of destinations.entries()) {
-    await page.goto('/')
-    const menu = page.getByRole('region', { name: 'Main menu' })
     await expect(menu.getByRole('link')).toHaveCount(5)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await page.locator('#main-content').focus()
@@ -22,6 +24,7 @@ test('main menu cards support keyboard navigation to every destination', async (
     await page.keyboard.press('Enter')
     await expect(page).toHaveURL(path)
     await expect(page.getByRole('heading', { name: heading, exact: true, level: 1 })).toBeVisible()
+    await page.getByRole('link', { name: 'OrdinalFrontier home' }).click()
   }
 })
 
@@ -33,6 +36,7 @@ test('player main menu stays compact at narrow widths', async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/')
     const menu = page.getByRole('region', { name: 'Main menu' })
+    await expect(menu).toBeVisible({ timeout: 15_000 })
     await expect(menu.getByRole('link')).toHaveText([
       /Stage battle/, /Factions/, /Battle history/,
     ])

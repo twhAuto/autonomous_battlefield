@@ -39,9 +39,10 @@ The frontend is a React/Vite single-page application.
 
 ## Routes and session
 
-Home and primary navigation share three destinations in order: Stage battle,
-Factions, Battle history. Developers and Admins also see Leagues and Statistics,
-and Admins see Admin. The compact home has no promotional hero. Factions
+Home and primary navigation share destinations in this order: Stage battle,
+Factions, Battle history, and, for Developers and Admins, Leagues and Statistics.
+Admin appears only in primary navigation for Admins outside role preview.
+The compact home has no promotional hero. Factions
 combines directory access with its Create faction action; the creation and
 editing routes keep the Factions navigation item active.
 
@@ -286,7 +287,7 @@ env files or shell to point it elsewhere. `createApiClient` preserves abort erro
 ## Responsive navigation and forms
 
 `AppLayout` owns the mobile menu, account actions, Escape/focus handling and skip
-link. `useMobile` shares the 780px breakpoint with CSS. `ResponsivePreview` keeps
+link. `useMobile` shares the shell's mobile breakpoint. `ResponsivePreview` keeps
 form previews after the controls and collapses them on mobile. Responsive and interaction rules live with the shell, feature, or shared component
 that owns them; global accessibility defaults live in `shared/styles/accessibility.css`.
 Navigation and preview tests cover disclosure behavior and responsive changes.
@@ -315,14 +316,11 @@ shared rules require desktop/mobile browser checks as well as component tests.
 
 ## Verification
 
-`frontend/e2e/fixtures.ts` intercepts the complete API boundary for Playwright
-tests, which run against a local Vite server in desktop and mobile Chromium:
-
-- `e2e/usability.spec.ts` covers navigation, layout reflow, map controls, replay
-  playback and destructive actions against fixtures only.
-- `e2e/staging.spec.ts` submits the battle setup form end to end, continues into
-  the live battle view, and covers a rejected creation and a retry.
-- `e2e/admin.spec.ts` covers model-access saves and Player role preview.
+The Playwright suite in `frontend/e2e/` runs against a local Vite server in desktop
+and mobile Chromium. `frontend/e2e/fixtures.ts` intercepts the complete API
+boundary; unexpected requests fail the test. Use these fixtures to verify user
+journeys, role visibility, keyboard access and responsive layouts without a live
+backend or production mutations.
 
 See [frontend commands](../../frontend/README.md#commands) for browser setup,
 coverage and reports, and [coverage gate details](ci.md#coverage-gate-details) for
