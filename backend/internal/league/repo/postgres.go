@@ -131,7 +131,7 @@ func loadEntrants(ctx context.Context, db postgres.DBTX, id string) ([]league.En
 func loadFixtures(ctx context.Context, db postgres.DBTX, id string) ([]league.Fixture, error) {
 	rows, err := db.Query(ctx, `
 		SELECT f.id, f.sequence, f.stage, f.group_index, f.round, f.tie, f.leg, f.home_entrant, f.away_entrant, f.scenario_id,
-		       f.status, f.attempts, f.battle_id, b.status, b.result
+		       f.status, f.attempts, f.battle_id, b.status, b.current_tick, b.requested_ticks, b.result
 		FROM league_fixtures f
 		LEFT JOIN battle_runs b ON b.id = f.battle_id
 		WHERE f.league_id = $1 ORDER BY f.sequence`, id)
@@ -153,15 +153,17 @@ func loadFixtures(ctx context.Context, db postgres.DBTX, id string) ([]league.Fi
 func scanFixture(rows pgx.Rows) (league.Fixture, error) {
 	var f league.Fixture
 	var battleStatus *string
+	var currentTick, requestedTicks *int64
 	var result []byte
 	if err := rows.Scan(&f.ID, &f.Sequence, &f.Stage, &f.Group, &f.Round, &f.Tie, &f.Leg, &f.Home, &f.Away, &f.ScenarioID,
-		&f.Status, &f.Attempts, &f.BattleID, &battleStatus, &result); err != nil {
+		&f.Status, &f.Attempts, &f.BattleID, &battleStatus, &currentTick, &requestedTicks, &result); err != nil {
 		return f, err
 	}
+	// The battle columns are null together when the fixture has no battle.
 	if battleStatus == nil {
 		return f, nil
 	}
-	f.Battle = &league.BattleOutcome{Status: *battleStatus}
+	f.Battle = &league.BattleOutcome{Status: *battleStatus, CurrentTick: *currentTick, RequestedTicks: *requestedTicks}
 	if len(result) == 0 || string(result) == "null" {
 		return f, nil
 	}

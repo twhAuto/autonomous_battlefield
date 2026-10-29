@@ -114,9 +114,12 @@ type Fixture struct {
 	Battle     *BattleOutcome
 }
 
-// BattleOutcome is the part of a fixture's current battle that the league scores.
+// BattleOutcome is the part of a fixture's current battle that the league scores and
+// shows: its status and tick progress, then its result once completed.
 type BattleOutcome struct {
 	Status          string
+	CurrentTick     int64
+	RequestedTicks  int64
 	WinnerFactionID *string
 	Reason          string
 	Factions        map[string]FactionScore

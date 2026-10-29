@@ -1,14 +1,46 @@
-// Group tables, knockout bracket and fixture list for one league. Entrants are named
-// by faction with their controller; the top two of each group are marked as qualifying.
+// Running battles, group tables, knockout bracket and fixture list for one league.
+// Entrants are named by faction with their controller; the top two of each group are
+// marked as qualifying, and running fixtures show their battle's tick progress.
 
 import { Link } from 'react-router-dom'
-import type { League, LeagueStage, LeagueTie } from '../api/leagues'
+import type { League, LeagueFixture, LeagueStage, LeagueTie } from '../api/leagues'
 import { controllerName } from '../../../shared/domain/controllers'
 import { entrantName, fixtureLabel, fixtureOutcome, stageLabel } from '../presentation/leagues'
 
 function Entrant({ league, index }: Readonly<{ league: League; index: number }>) {
   const entrant = league.entrants[index]
   return <><strong>{entrantName(league, index)}</strong>{entrant && <small>{controllerName(entrant.controller)}</small>}</>
+}
+
+function BattleProgress({ fixture }: Readonly<{ fixture: LeagueFixture }>) {
+  const progress = fixture.battleProgress
+  if (!progress) return <small>Starting…</small>
+  return <span className="league-battle-progress">
+    <progress className="battle-progress" max={progress.requestedTicks} value={progress.currentTick} aria-label={`${fixtureLabel(fixture)} ticks played`} />
+    <small>Tick {progress.currentTick} of {progress.requestedTicks}</small>
+  </span>
+}
+
+// Every running fixture first, so a viewer finds the live battles without scanning the
+// fixture list. Hidden while nothing runs.
+export function NowPlaying({ league }: Readonly<{ league: League }>) {
+  const running = league.fixtures.filter(fixture => fixture.status === 'running')
+  if (running.length === 0) return null
+  return (
+    <section className="league-live" aria-label="Now playing">
+      <div className="section-label"><span><span className="status-dot" aria-hidden="true" /> NOW PLAYING</span><span>{running.length} RUNNING</span></div>
+      <ul className="league-live__battles">{running.map(fixture => <li key={fixture.id} className="league-live__battle">
+        <span className="league-live__fixture">{fixtureLabel(fixture)} · {fixture.scenarioId}</span>
+        <div className="league-live__sides">
+          <div><Entrant league={league} index={fixture.homeEntrant} /></div>
+          <span aria-hidden="true">VS</span><span className="visually-hidden">versus</span>
+          <div><Entrant league={league} index={fixture.awayEntrant} /></div>
+        </div>
+        <BattleProgress fixture={fixture} />
+        {fixture.battleId && <Link className="compact-action" to={`/battles/${encodeURIComponent(fixture.battleId)}`}>WATCH LIVE →</Link>}
+      </li>)}</ul>
+    </section>
+  )
 }
 
 function signed(value: number) {
@@ -70,13 +102,13 @@ export function FixtureList({ league }: Readonly<{ league: League }>) {
       <table className="history-table league-fixtures">
         <caption className="visually-hidden">Fixtures in play order</caption>
         <thead><tr><th>#</th><th>Fixture</th><th>Home</th><th>Away</th><th>Map</th><th>Result</th><th><span className="visually-hidden">Battle</span></th></tr></thead>
-        <tbody>{league.fixtures.map(fixture => <tr key={fixture.id}>
+        <tbody>{league.fixtures.map(fixture => <tr key={fixture.id} className={fixture.status === 'running' ? 'league-fixtures__running' : undefined}>
           <td data-label="#">{fixture.sequence + 1}</td>
           <td data-label="Fixture">{fixtureLabel(fixture)}{fixture.attempts > 1 && <small>Retried</small>}</td>
           <td data-label="Home">{entrantName(league, fixture.homeEntrant)}</td>
           <td data-label="Away">{entrantName(league, fixture.awayEntrant)}</td>
           <td data-label="Map">{fixture.scenarioId}</td>
-          <td data-label="Result"><span className="history-status">{fixtureOutcome(league, fixture)}</span></td>
+          <td data-label="Result"><span className="history-status">{fixtureOutcome(league, fixture)}</span>{fixture.status === 'running' && <BattleProgress fixture={fixture} />}</td>
           <td>{fixture.battleId && <Link className="text-link" to={`/battles/${encodeURIComponent(fixture.battleId)}`}>Open battle →</Link>}</td>
         </tr>)}</tbody>
       </table>

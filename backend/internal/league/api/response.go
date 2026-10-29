@@ -1,5 +1,6 @@
 // Shapes a league for clients: settings, entrants, ranked group tables, knockout ties and
-// every fixture with its battle and result. Entrants are referred to by index.
+// every fixture with its battle, its progress while running and its result. Entrants are
+// referred to by index.
 
 package api
 
@@ -74,8 +75,15 @@ type fixtureJSON struct {
 	Status     string  `json:"status"`
 	Attempts   int     `json:"attempts"`
 	BattleID   *string `json:"battleId"`
-	// Result is present once the fixture completed; Winner is null for a draw.
-	Result *resultJSON `json:"result,omitempty"`
+	// BattleProgress is present while the fixture runs; Result once it completed, with
+	// Winner null for a draw.
+	BattleProgress *battleProgressJSON `json:"battleProgress,omitempty"`
+	Result         *resultJSON         `json:"result,omitempty"`
+}
+
+type battleProgressJSON struct {
+	CurrentTick    int64 `json:"currentTick"`
+	RequestedTicks int64 `json:"requestedTicks"`
 }
 
 type resultJSON struct {
@@ -118,6 +126,9 @@ func fixtureResponse(l *league.League, f league.Fixture) fixtureJSON {
 	if f.Group != nil {
 		letter := league.GroupLetter(*f.Group)
 		item.Group = &letter
+	}
+	if f.Status == league.FixtureRunning && f.Battle != nil {
+		item.BattleProgress = &battleProgressJSON{CurrentTick: f.Battle.CurrentTick, RequestedTicks: f.Battle.RequestedTicks}
 	}
 	if score, ok := l.Score(f); ok {
 		item.Result = &resultJSON{Winner: score.Winner, Reason: f.Battle.Reason}
