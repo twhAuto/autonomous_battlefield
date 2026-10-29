@@ -56,8 +56,8 @@ func parseAgent(raw fileConfig) (Agent, error) {
 	if raw.AI.AgentConcurrency != nil {
 		concurrency = *raw.AI.AgentConcurrency
 	}
-	if concurrency < 1 || concurrency > 4 {
-		return Agent{}, fmt.Errorf("ai.agentConcurrency must be between 1 and 4")
+	if concurrency < 1 || concurrency > 8 {
+		return Agent{}, fmt.Errorf("ai.agentConcurrency must be between 1 and 8")
 	}
 	secret := os.Getenv(envAgentSecret)
 	if err := requireSecret(envAgentSecret, secret, minimumSecretBytes); err != nil {
