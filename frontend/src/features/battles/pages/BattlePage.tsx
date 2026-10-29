@@ -1,10 +1,10 @@
 // Composes battle polling hooks, map and decision panels, event
 // history, pause/resume/stop controls, after-action results over the map, and replay
-// mode for settled battles.
+// mode and a way back to the league for settled battles.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePermissions } from '../../auth/SessionContext'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { BattleApiError, pauseBattle, resumeBattle, stopBattle, type BattleMap, type BattleRun, type DecisionHistory } from '../api/battles'
 import { HexBattleMap } from '../components/HexBattleMap'
 import { type BattleControlState, type BattleControlAction } from '../types'
@@ -113,7 +113,10 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
           <div className="battle-progress-panel">
             <p>Tick <strong>{battle.currentTick}</strong> of {battle.requestedTicks} maximum</p>
             <progress className="battle-progress" aria-label="Tick limit used" max={battle.requestedTicks} value={battle.currentTick}>{progress}%</progress>
-            {settled && displayView && !replaying && <button className="compact-action" type="button" onClick={() => setReplaying(true)}>WATCH REPLAY</button>}
+            {settled && <div className="battle-progress-panel__actions">
+              {displayView && !replaying && <button className="compact-action" type="button" onClick={() => setReplaying(true)}>WATCH REPLAY</button>}
+              {battle.league && <Link className="compact-action" to={`/leagues/${encodeURIComponent(battle.league.id)}`}>← BACK TO LEAGUE</Link>}
+            </div>}
           </div>
           <aside className={`outcome-panel outcome-panel--${battle.paused ? 'paused' : battle.status}`} aria-label={settled ? 'Battle result' : 'Battle control'}>
             <div className="outcome-panel__summary"><Outcome battle={battle} winnerName={winnerName} /></div>

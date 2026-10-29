@@ -43,7 +43,7 @@
 .league-table th, .league-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
 .league-table thead th { color: var(--muted); font: 400 11px 'DM Mono', monospace; }
 .league-table th[scope="row"], .league-table thead th:nth-child(2) { text-align: left; font-weight: 500; }
-.league-table th[scope="row"] small, .league-tie small { display: block; margin-top: 2px; color: var(--muted); font: 11px 'DM Mono', monospace; }
+.league-table th[scope="row"] small, .league-tie small, .league-fixtures small { display: block; margin-top: 2px; color: var(--muted); font: 11px 'DM Mono', monospace; }
 .league-table abbr { text-decoration: none; }
 .league-table__qualifier td:first-child { box-shadow: inset 2px 0 0 var(--lime); }
 .league-bracket { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 24px; margin: 32px 0; }
@@ -54,6 +54,7 @@
 .league-tie__winner { box-shadow: inset 2px 0 0 var(--lime); }
 .league-tie--pending { padding: 18px 12px; color: var(--muted); font-size: 13px; }
 .league-fixtures { margin-top: 8px; }
+.league-fixtures td > strong { font-weight: 500; }
 @media (max-width: 900px) {
   .league-form { grid-template-columns: 1fr; }
   .league-entrant { grid-template-columns: 1fr 72px; }

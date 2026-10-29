@@ -4,6 +4,7 @@
 import { type ReactNode, type Ref } from 'react'
 import { Link } from 'react-router-dom'
 import { BattleRun } from '../api/battles'
+import { modelLabel } from '../presentation/factions'
 import { type ConnectionState, type BattleControlState, type BattleControlAction } from '../types'
 import { TypeStatistics } from './TypeStatistics'
 
@@ -50,6 +51,7 @@ export function BattleStatistics({ battle, participantNames, onShowMap, showMapR
   showMapRef?: Ref<HTMLButtonElement>
 }>) {
   if (!battle.result) return null
+  const { winnerFactionId } = battle.result
   return (
     <section className={`battle-statistics${onShowMap ? ' battle-statistics--overlay' : ''}`} aria-label="After-action statistics">
       {onShowMap
@@ -61,7 +63,11 @@ export function BattleStatistics({ battle, participantNames, onShowMap, showMapR
       <div className="statistics-grid">
         {battle.result.factions.map((stats) => (
           <article key={stats.factionId} className="statistics-card">
-            <h2>{participantNames.get(stats.factionId) ?? stats.factionId}</h2>
+            <h2>
+              {participantNames.get(stats.factionId) ?? stats.factionId}
+              <FactionModel battle={battle} factionId={stats.factionId} />
+              {stats.factionId === winnerFactionId && <>{' '}<span className="statistics-card__winner">Winner</span></>}
+            </h2>
             <dl>
               <Stat label="Units remaining / started" value={`${stats.unitsRemaining} / ${stats.unitsStarted}`} />
               <Stat label="Castle health" value={stats.castleHealth ?? 0} />
@@ -94,7 +100,7 @@ export function Outcome({ battle, winnerName }: Readonly<{ battle: BattleRun; wi
   if (battle.status === 'completed' && battle.result) {
     return (
       <>
-        <strong>{winnerName ? `${winnerName} wins` : 'Draw'}</strong>
+        <strong>{winnerName ? <>{winnerName} wins<FactionModel battle={battle} factionId={battle.result.winnerFactionId} /></> : 'Draw'}</strong>
         <p>{battle.result.reason === 'castle_destroyed' ? 'The enemy castle was destroyed.' : 'Maximum tick limit reached.'}</p>
       </>
     )
@@ -150,6 +156,12 @@ export function BattleState({ code, title, message, loading, children }: Readonl
       {children}
     </section>
   )
+}
+
+// The faction's model beside its name in results; nothing for scripted factions or players.
+function FactionModel({ battle, factionId }: Readonly<{ battle: BattleRun; factionId: string | null }>) {
+  const model = modelLabel(battle.participants.find((participant) => participant.id === factionId))
+  return model ? <>{' '}<small className="faction-model">{model}</small></> : null
 }
 
 function Stat({ label, value }: Readonly<{ label: string; value: string | number }>) {

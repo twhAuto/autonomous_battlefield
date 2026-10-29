@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import type { BattleParticipant, BattleRun, DecisionHistory } from '../api/battles'
 import { usePermissions } from '../../auth/SessionContext'
-import { factionColors, unknownFactionColor } from '../presentation/factions'
+import { factionColors, modelLabel, unknownFactionColor } from '../presentation/factions'
 import { latestDecision } from './AIDecisionPanel'
 import { ProductionChips } from './BuildingProduction'
 import { playerStatus } from './PlayerStatusPanel'
@@ -20,13 +20,6 @@ function activity(battle: BattleRun, participant: BattleParticipant, decisions: 
     fallback: 'Fallback', failed: 'Decision failed',
   }
   return labels[decision.status]
-}
-
-// Player responses carry only the controller type, so the model stays hidden from them.
-function modelLabel(participant: BattleParticipant) {
-  const controller = participant.controller
-  if (controller?.type !== 'model' || !controller.modelIdentifier) return ''
-  return controller.reasoningEffort ? `${controller.modelIdentifier} · ${controller.reasoningEffort}` : controller.modelIdentifier
 }
 
 // Units count living units plus paid units in training, the total the unit cap limits;
