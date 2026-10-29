@@ -227,8 +227,11 @@ PostgreSQL serializes admission across replicas:
 Workers use the database lease deadline rather than the time a claim arrives, so
 keep host and VM clocks synchronized.
 
-Use the private kubectl context, set `BATTLEFIELD_POSTGRES_POD=battlefield-postgres-0`,
-and run:
+Set `BATTLEFIELD_POSTGRES_POD=battlefield-postgres-0` and `DEPLOY_ENV` to `dev` or
+`production`, and run the commands below. With `DEPLOY_ENV` set, the script uses
+that environment's registered kubeconfig and context and refuses a cluster whose
+identity does not match ([environments](environments.md)); without it, it uses the
+shell's current kubectl context.
 
 ```bash
 scripts/ops/ai-policy.sh status

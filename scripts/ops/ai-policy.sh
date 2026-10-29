@@ -14,4 +14,12 @@ case "${1:-}" in
 esac
 # Select the PostgreSQL pod explicitly; this script never guesses another database.
 : "${BATTLEFIELD_POSTGRES_POD:?Set BATTLEFIELD_POSTGRES_POD in the intended kubectl context}"
-printf '%s\n' "${sql}" | kubectl exec -i --namespace "${KUBERNETES_NAMESPACE:-battlefield}" "${BATTLEFIELD_POSTGRES_POD}" -- sh -c 'exec psql --no-psqlrc --set ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"'
+context=()
+if [[ -n "${DEPLOY_ENV:-}" ]]; then
+  # A named environment uses its registered kubeconfig and context, and refuses a
+  # cluster whose identity does not match, instead of the shell's current context.
+  source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../lib" && pwd)/deployment-environment.sh"
+  battlefield_env_preflight
+  context=(--context "${KUBERNETES_CONTEXT}")
+fi
+printf '%s\n' "${sql}" | kubectl "${context[@]}" exec -i --namespace "${KUBERNETES_NAMESPACE:-battlefield}" "${BATTLEFIELD_POSTGRES_POD}" -- sh -c 'exec psql --no-psqlrc --set ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"'

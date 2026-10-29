@@ -88,13 +88,12 @@ Name a CLI explicitly to see why it was rejected.
 
 The host agent runs `HOST_AGENT_CONCURRENCY` decision slots (default `8`, range
 1–8) shared across the enabled CLIs. A model-vs-model battle needs two at once, so
-eight covers the engine's four concurrent battles. `runtime_policy.cli_concurrency`
-(4 by default) caps executions across all workers and is what the league scheduler
-plans with, so set it to the agent's slots; a lower agent count makes league
-decisions wait for a slot toward the decision timeout. For eight:
+eight covers the engine's four concurrent battles. Set the database CLI limit to
+the same number ([limits and the stop switch](../operations/access.md#limits-and-the-stop-switch)
+explains why):
 
 ```bash
-BATTLEFIELD_POSTGRES_POD=battlefield-postgres-0 ./scripts/ops/ai-policy.sh cli-slots 8
+DEPLOY_ENV=dev BATTLEFIELD_POSTGRES_POD=battlefield-postgres-0 ./scripts/ops/ai-policy.sh cli-slots 8
 ./scripts/dev/run-k8s-cli-agent.sh auto
 ```
 
