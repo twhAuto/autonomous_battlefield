@@ -230,8 +230,9 @@ keep host and VM clocks synchronized.
 Set `BATTLEFIELD_POSTGRES_POD=battlefield-postgres-0` and `DEPLOY_ENV` to `dev` or
 `production`, and run the commands below. With `DEPLOY_ENV` set, the script uses
 that environment's registered kubeconfig and context and refuses a cluster whose
-identity does not match ([environments](environments.md)); without it, it uses the
-shell's current kubectl context.
+identity does not match ([environments](environments.md)). Like rollback, it skips
+the platform-readiness checks, so `stop` still works while an unrelated controller
+is unhealthy. Without `DEPLOY_ENV`, it uses the shell's current kubectl context.
 
 ```bash
 scripts/ops/ai-policy.sh status

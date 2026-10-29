@@ -18,8 +18,10 @@ context=()
 if [[ -n "${DEPLOY_ENV:-}" ]]; then
   # A named environment uses its registered kubeconfig and context, and refuses a
   # cluster whose identity does not match, instead of the shell's current context.
+  # Like rollback, it skips platform readiness so the stop switch works during an
+  # unrelated controller incident.
   source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../lib" && pwd)/deployment-environment.sh"
-  battlefield_env_preflight
+  battlefield_env_preflight verify-recovery
   context=(--context "${KUBERNETES_CONTEXT}")
 fi
 printf '%s\n' "${sql}" | kubectl "${context[@]}" exec -i --namespace "${KUBERNETES_NAMESPACE:-battlefield}" "${BATTLEFIELD_POSTGRES_POD}" -- sh -c 'exec psql --no-psqlrc --set ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"'

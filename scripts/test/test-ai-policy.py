@@ -29,14 +29,15 @@ class AIPolicyTests(unittest.TestCase):
         return subprocess.run(['bash', str(SCRIPT), *args], capture_output=True, text=True, env=env or self.env,
                               stdin=subprocess.DEVNULL)
 
-    def registered_dev(self, **overrides):
+    def registered(self, name='dev', **overrides):
         kubeconfig = Path(self.temp.name) / 'kubeconfig'
         kubeconfig.touch()
+        driver = (f'BF_DRIVER=k3s\nBF_KUBELET_CA_FILE={kubeconfig}\n' if name == 'production'
+                  else 'BF_DOCKER_HOST=unix:///var/run/docker.sock\n')
         profile = Path(self.temp.name) / 'deployment.env'
-        profile.write_text(f'BF_ENV=dev\nBF_CONTEXT=battlefield-dev\nBF_CLUSTER=battlefield\nBF_UID=cluster-dev\n'
-                           f'BF_DOCKER_HOST=unix:///var/run/docker.sock\nBF_URL=http://battlefield.localhost:8888\n'
-                           f'BF_KUBECONFIG={kubeconfig}\nBF_DISPOSABLE=0\n')
-        return {**self.env, 'DEPLOY_ENV': 'dev', 'BATTLEFIELD_ENV_FILE': str(profile), **overrides}, kubeconfig
+        profile.write_text(f'BF_ENV={name}\nBF_CONTEXT=battlefield-{name}\nBF_CLUSTER=battlefield\nBF_UID=cluster-dev\n'
+                           f'{driver}BF_URL=http://battlefield.localhost:8888\nBF_KUBECONFIG={kubeconfig}\nBF_DISPOSABLE=0\n')
+        return {**self.env, 'DEPLOY_ENV': name, 'BATTLEFIELD_ENV_FILE': str(profile), **overrides}, kubeconfig
 
     def test_cli_slots_sets_a_value_from_one_to_eight(self):
         for slots in ('1', '8'):
@@ -57,7 +58,7 @@ class AIPolicyTests(unittest.TestCase):
                 self.assertFalse(self.log.exists())
 
     def test_named_environment_uses_its_registered_kubeconfig_and_context(self):
-        env, kubeconfig = self.registered_dev()
+        env, kubeconfig = self.registered()
         result = self.run_policy('cli-slots', '8', env=env)
         self.assertEqual(result.returncode, 0, result.stderr)
         sent = self.log.read_text()
@@ -65,11 +66,24 @@ class AIPolicyTests(unittest.TestCase):
         self.assertIn(f'KUBECONFIG={kubeconfig}', sent)
 
     def test_named_environment_refuses_another_cluster(self):
-        env, _ = self.registered_dev(TEST_UID='another-cluster')
+        env, _ = self.registered(TEST_UID='another-cluster')
         result = self.run_policy('cli-slots', '8', env=env)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('identity mismatch', result.stderr)
         self.assertFalse(self.log.exists())
+
+    def test_stop_works_while_a_k3s_platform_controller_is_unhealthy(self):
+        # The K3s helper fails its full readiness check but passes the recovery check,
+        # which keeps identity, node and storage verification.
+        helper = Path(self.temp.name) / 'python3'
+        helper.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$HELPER_LOG"\ncase "$2" in verify-recovery) exit 0;; esac\nexit 1\n')
+        helper.chmod(0o755)
+        helper_log = Path(self.temp.name) / 'helper.log'
+        env, _ = self.registered('production', HELPER_LOG=str(helper_log))
+        result = self.run_policy('stop', env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('verify-recovery battlefield-production battlefield', helper_log.read_text())
+        self.assertIn('UPDATE runtime_policy SET ai_enabled=false WHERE id;', self.log.read_text())
 
     def test_requires_an_explicit_pod(self):
         env = {key: value for key, value in self.env.items() if key != 'BATTLEFIELD_POSTGRES_POD'}
