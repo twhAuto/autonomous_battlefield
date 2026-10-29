@@ -298,15 +298,26 @@ missing faction or invalid timing fails the create with the same `404`, `422` or
 `400` a battle would. Repeating an identical request returns `201` with the stored
 league; reusing the `id` for a different request returns `409 already_exists`.
 
-Each group plays every pairing twice, once from each spawn side, on one map;
-pairings rotate through the maps. Group tables rank by points (win 3, draw 1), then
-points among the entrants level on points, castle-health difference, damage
-difference and entry order. The top two of each group play a crossover knockout:
-semifinals A1–B2 and B1–A2 with two groups; with four, quarterfinals A1–B2, B1–A2,
-C1–D2 and D1–C2, arranged so group-mates meet again only in the final. Each tie has
-two legs; its winner has more wins, then the higher castle-health and damage
-differences, then the better group finish, more group points and entry order. A
-league plays 30 fixtures with 8 entrants and 62 with 16.
+Each group of four plays a dual tournament. In the opening matches the group's first
+entrant by entry order meets its fourth, and the second meets the third. The opening
+winners then meet in the winners' match and the losers in the losers' match, and the
+decider pits the winners'-match loser against the losers'-match winner. The
+winners'-match winner places first, the decider's winner second and its loser third,
+and the losers'-match loser fourth. A group opens its next round as soon as its
+current round settles, whatever the other groups are doing. Once every group is
+placed, the top two of each play a crossover knockout: semifinals A1–B2 and B1–A2
+with two groups; with four, quarterfinals A1–B2, B1–A2, C1–D2 and D1–C2, arranged so
+group-mates meet again only in the final. A league plays 13 fixtures with 8 entrants
+and 27 with 16, rotating through the maps group by group and then through the
+knockout.
+
+Every match is one battle. A coin flip decides which entrant takes the first spawn
+side; it derives from the league's secret battle salt and the fixture, so it holds
+across retries and clients cannot predict it. Every match has a winner: the battle's
+winner, or after a tick-limit draw or a void fixture the higher castle-health
+difference, then damage difference, then the higher seed. In a group the higher seed
+is the earlier entrant; in the knockout it is the better group finish, then the
+earlier entrant.
 
 The API starts fixtures in order into free engine slots, so up to `battleSlots`
 battles run at once and a league battle never waits out the one-hour battle timeout
@@ -317,13 +328,14 @@ global limit of unfinished battles, so while they reach it, new Player battles a
 rejected. League battles belong to the creating Admin, skip the battle
 allowances and the decision budget, and appear on `GET /v1/battles/{id}` with a
 `league` field naming the league and fixture. A failed or stopped battle is retried
-once with a new battle; a second failure makes the fixture `void`, which scores for
-nobody. Model access is checked again for every battle, so revoking access
+once with a new battle; a second failure makes the fixture `void`, and the tiebreak
+above decides its match. Model access is checked again for every battle, so revoking access
 mid-league voids that entrant's remaining fixtures.
 
-`GET /v1/leagues/{id}` returns the settings, entrants, ranked `groups`, `knockout`
-ties and every fixture with its battle, progress and result as the
-[`LeagueFixture`](openapi.yaml) schema describes.
+`GET /v1/leagues/{id}` returns the settings, entrants, each group's win and loss
+records with placements once decided, `knockout` ties, and every fixture with its
+match, battle, progress, result and winner as the [`LeagueFixture`](openapi.yaml)
+schema describes.
 `GET /v1/leagues` lists summaries, newest first. `POST /v1/leagues/{id}/cancel`
 cancels unfinished fixtures and stops the running battle; repeating it returns `200`
 and stops any league battle still running. Cancelling a completed league returns

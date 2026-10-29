@@ -15,10 +15,10 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/league"
 )
 
-func runningHarness(t *testing.T) *fixtureHarness {
+func runningHarness(t *testing.T, entrants int) *fixtureHarness {
 	t.Helper()
 	h := newHarness()
-	if _, err := h.service.CreateLeague(actorContext(authn.Admin), validInput(8)); err != nil {
+	if _, err := h.service.CreateLeague(actorContext(authn.Admin), validInput(entrants)); err != nil {
 		t.Fatal(err)
 	}
 	return h
@@ -61,7 +61,7 @@ func (h *fixtureHarness) finish(i int) {
 }
 
 func TestSchedulePassStartsTheFirstFixtureOnAnIdleEngine(t *testing.T) {
-	h := runningHarness(t)
+	h := runningHarness(t, 8)
 	h.pass(t)
 	first := h.stored().Fixtures[0]
 	want := h.battleID(0, 1)
@@ -84,7 +84,7 @@ func TestSchedulePassStartsTheFirstFixtureOnAnIdleEngine(t *testing.T) {
 }
 
 func TestSchedulePassWaitsForTheEngineAndTheLock(t *testing.T) {
-	h := runningHarness(t)
+	h := runningHarness(t, 8)
 	h.repo.battles["someone-elses"] = "running"
 	h.pass(t)
 	h.repo.battles["someone-elses"], h.repo.lockHeld = league.BattleCompleted, true
@@ -95,7 +95,7 @@ func TestSchedulePassWaitsForTheEngineAndTheLock(t *testing.T) {
 }
 
 func TestSchedulePassLinksTheBattleOfAnInterruptedStart(t *testing.T) {
-	h := runningHarness(t)
+	h := runningHarness(t, 8)
 	id := h.ownBattle(0, 1, "running")
 	h.pass(t)
 	if f := h.stored().Fixtures[0]; len(h.battles.created) != 0 || f.Status != league.FixtureRunning || *f.BattleID != id || f.Attempts != 1 {
@@ -113,7 +113,7 @@ func TestSchedulePassNeverAdoptsAForeignBattle(t *testing.T) {
 		"missing factions": func(b *BattleProvenance) { b.FactionIDs = nil },
 	}
 	for name, mutate := range foreign {
-		h := runningHarness(t)
+		h := runningHarness(t, 8)
 		id := h.ownBattle(0, 1, league.BattleCompleted)
 		origin := h.repo.origins[id]
 		mutate(&origin)
@@ -130,7 +130,7 @@ func TestSchedulePassNeverAdoptsAForeignBattle(t *testing.T) {
 }
 
 func TestSchedulePassStopsBattlesLeftInCancelledLeagues(t *testing.T) {
-	h := runningHarness(t)
+	h := runningHarness(t, 8)
 	l := h.stored()
 	id := h.ownBattle(0, 1, "running")
 	l.Fixtures[0].Status, l.Fixtures[0].BattleID, l.Status = league.FixtureCancelled, &id, league.StatusCancelled
@@ -148,7 +148,8 @@ func TestSchedulePassStopsBattlesLeftInCancelledLeagues(t *testing.T) {
 }
 
 func TestFinishedBattlesCompleteRetryOrVoidTheirFixtures(t *testing.T) {
-	h := runningHarness(t)
+	// Sixteen entrants open with eight fixtures, so five can be in play at once.
+	h := runningHarness(t, 16)
 	l := h.stored()
 	running := func(i, attempts int, status string) {
 		id := h.battleID(i, attempts)
@@ -184,7 +185,7 @@ func TestFinishedBattlesCompleteRetryOrVoidTheirFixtures(t *testing.T) {
 }
 
 func TestStartFailuresSpendAttemptsOnlyWhenPermanent(t *testing.T) {
-	h := runningHarness(t)
+	h := runningHarness(t, 8)
 	h.battles.createErr = errDatabase
 	if err := h.service.SchedulePass(context.Background()); !errors.Is(err, errDatabase) || h.stored().Fixtures[0].Attempts != 0 {
 		t.Fatalf("transient err = %v, fixture %+v", err, h.stored().Fixtures[0])
@@ -205,25 +206,27 @@ func TestStartFailuresSpendAttemptsOnlyWhenPermanent(t *testing.T) {
 	}
 }
 
-func TestSchedulePassOpensTheKnockoutAndCrownsTheChampion(t *testing.T) {
-	h := runningHarness(t)
-	for i := range h.stored().Fixtures {
-		h.finish(i)
-	}
-	h.pass(t)
-	l := h.stored()
-	if len(l.Fixtures) != 28 || l.Fixtures[24].Stage != league.StageSemifinal || l.Fixtures[24].Status != league.FixtureRunning {
-		t.Fatalf("after groups: %d fixtures, first semifinal %+v", len(l.Fixtures), l.Fixtures[24])
-	}
-	for stage := 0; stage < 2; stage++ {
+func TestSchedulePassOpensEachRoundAndCrownsTheChampion(t *testing.T) {
+	h := runningHarness(t, 8)
+	// Each pass settles the fixtures finished before it and opens what follows: both
+	// groups' winners' and losers' matches, their deciders, the semifinals and the final.
+	for _, want := range []int{8, 10, 12, 13} {
 		for i := range h.stored().Fixtures {
 			if !h.stored().Fixtures[i].Settled() {
 				h.finish(i)
 			}
 		}
 		h.pass(t)
+		if l := h.stored(); len(l.Fixtures) != want || l.Status != league.StatusRunning {
+			t.Fatalf("%s league has %d fixtures; want %d", l.Status, len(l.Fixtures), want)
+		}
 	}
-	l = h.stored()
+	if l := h.stored(); l.Fixtures[10].Stage != league.StageSemifinal || l.Fixtures[12].Stage != league.StageFinal {
+		t.Fatalf("knockout = %+v", l.Fixtures[10:])
+	}
+	h.finish(12)
+	h.pass(t)
+	l := h.stored()
 	if l.Status != league.StatusCompleted || l.Champion == nil || len(l.Fixtures) != league.TotalFixtures(2) {
 		t.Fatalf("league %s champion %v fixtures %d", l.Status, l.Champion, len(l.Fixtures))
 	}
@@ -235,7 +238,7 @@ func TestSchedulePassOpensTheKnockoutAndCrownsTheChampion(t *testing.T) {
 }
 
 func TestRunSchedulerPassesUntilCancelled(t *testing.T) {
-	h := runningHarness(t)
+	h := runningHarness(t, 8)
 	h.repo.storeErr = errDatabase
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -249,11 +252,12 @@ func TestRunSchedulerPassesUntilCancelled(t *testing.T) {
 	}
 }
 
-// slotHarness runs a league with the given engine slots; Claude entrants are CLI models.
+// slotHarness runs a 16-entrant league with the given engine slots; Claude entrants are
+// CLI models.
 func slotHarness(t *testing.T, slots int) *fixtureHarness {
 	t.Helper()
 	h := newHarnessWith(Options{BattleSlots: slots, Profiles: fakeProfiles{"claude-subscription-local": "cli"}})
-	if _, err := h.service.CreateLeague(actorContext(authn.Admin), validInput(8)); err != nil {
+	if _, err := h.service.CreateLeague(actorContext(authn.Admin), validInput(16)); err != nil {
 		t.Fatal(err)
 	}
 	return h
@@ -270,7 +274,7 @@ func (h *fixtureHarness) running() []int {
 }
 
 // cliFixture reports whether both sides of fixture i are Claude CLI entrants; in
-// validInput the even entrants, which make up group A, are.
+// validInput(16) the even entrants, which make up groups A and C, are.
 func (h *fixtureHarness) cliFixture(i int) bool {
 	return h.stored().Fixtures[i].Home%2 == 0
 }

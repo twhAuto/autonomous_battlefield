@@ -4,6 +4,7 @@
 import { type ReactNode, type Ref } from 'react'
 import { Link } from 'react-router-dom'
 import { BattleRun } from '../api/battles'
+import { matchLabel } from '../../../shared/domain/leagueMatches'
 import { modelLabel } from '../presentation/factions'
 import { type ConnectionState, type BattleControlState, type BattleControlAction } from '../types'
 import { TypeStatistics } from './TypeStatistics'
@@ -27,7 +28,7 @@ export function BattleHeader({ battle, battleTitle, connection, connectionMessag
       <div className="battle-command-bar__meta">
         <div className="battle-meta-row">
           <span>SCENARIO <strong>{battle.scenarioId}</strong></span>
-          {battle.league && <span>LEAGUE <Link className="text-link" to={`/leagues/${encodeURIComponent(battle.league.id)}`}>{battle.league.name}</Link> · {battle.league.group ? `GROUP ${battle.league.group}` : battle.league.stage.toUpperCase()} · LEG {battle.league.leg}</span>}
+          {battle.league && <span>LEAGUE <Link className="text-link" to={`/leagues/${encodeURIComponent(battle.league.id)}`}>{battle.league.name}</Link> · {matchLabel(battle.league).toUpperCase()}</span>}
           {connection !== 'settled' && <ConnectionBadge state={connection} />}
         </div>
         {connectionMessage && (

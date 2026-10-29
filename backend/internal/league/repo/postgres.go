@@ -68,10 +68,10 @@ func (r *Postgres) CreateLeague(ctx context.Context, l league.League) error {
 func insertFixtures(ctx context.Context, db postgres.DBTX, leagueID string, fixtures []league.Fixture) error {
 	for _, f := range fixtures {
 		if _, err := db.Exec(ctx, `
-			INSERT INTO league_fixtures (id, league_id, sequence, stage, group_index, round, tie, leg, home_entrant, away_entrant, scenario_id, status, attempts, battle_id)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			INSERT INTO league_fixtures (id, league_id, sequence, stage, group_index, round, tie, home_entrant, away_entrant, scenario_id, status, attempts, battle_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 			ON CONFLICT (id) DO NOTHING`,
-			f.ID, leagueID, f.Sequence, f.Stage, f.Group, f.Round, f.Tie, f.Leg, f.Home, f.Away, f.ScenarioID, f.Status, f.Attempts, f.BattleID); err != nil {
+			f.ID, leagueID, f.Sequence, f.Stage, f.Group, f.Round, f.Tie, f.Home, f.Away, f.ScenarioID, f.Status, f.Attempts, f.BattleID); err != nil {
 			return fmt.Errorf("create league %q fixture %d: %w", leagueID, f.Sequence, err)
 		}
 	}
@@ -130,7 +130,7 @@ func loadEntrants(ctx context.Context, db postgres.DBTX, id string) ([]league.En
 
 func loadFixtures(ctx context.Context, db postgres.DBTX, id string) ([]league.Fixture, error) {
 	rows, err := db.Query(ctx, `
-		SELECT f.id, f.sequence, f.stage, f.group_index, f.round, f.tie, f.leg, f.home_entrant, f.away_entrant, f.scenario_id,
+		SELECT f.id, f.sequence, f.stage, f.group_index, f.round, f.tie, f.home_entrant, f.away_entrant, f.scenario_id,
 		       f.status, f.attempts, f.battle_id, b.status, b.current_tick, b.requested_ticks, b.result
 		FROM league_fixtures f
 		LEFT JOIN battle_runs b ON b.id = f.battle_id
@@ -155,7 +155,7 @@ func scanFixture(rows pgx.Rows) (league.Fixture, error) {
 	var battleStatus *string
 	var currentTick, requestedTicks *int64
 	var result []byte
-	if err := rows.Scan(&f.ID, &f.Sequence, &f.Stage, &f.Group, &f.Round, &f.Tie, &f.Leg, &f.Home, &f.Away, &f.ScenarioID,
+	if err := rows.Scan(&f.ID, &f.Sequence, &f.Stage, &f.Group, &f.Round, &f.Tie, &f.Home, &f.Away, &f.ScenarioID,
 		&f.Status, &f.Attempts, &f.BattleID, &battleStatus, &currentTick, &requestedTicks, &result); err != nil {
 		return f, err
 	}

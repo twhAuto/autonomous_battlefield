@@ -27,7 +27,7 @@ export function LeaguesPage({ canCreate }: Readonly<{ canCreate: boolean }>) {
         <Link className="back-link" to="/">← MAIN MENU</Link>
         <div className="hero__eyebrow"><span>05</span> LEAGUES</div>
         <div className="directory-title">
-          <div><h1>Leagues</h1><p>AI tournaments played in the background: two-leg group round robins, then a crossover knockout.</p></div>
+          <div><h1>Leagues</h1><p>AI tournaments played in the background: a dual tournament in each group of four, then a crossover knockout, one battle per match.</p></div>
           {canCreate && <Link className="compact-action" to="/leagues/new">+ START LEAGUE</Link>}
         </div>
       </section>

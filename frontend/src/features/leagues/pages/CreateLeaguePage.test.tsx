@@ -60,9 +60,9 @@ it('starts a league with every entrant and the chosen settings', async () => {
   expect(screen.getByRole('radio', { name: /16 entrants/ })).toBeDisabled()
   await user.selectOptions(screen.getByLabelText('Controller', { selector: '#entrant-1-controller' }), 'claude')
   const estimate = screen.getByRole('region', { name: 'League estimate' })
-  expect(within(estimate).getByText('30')).toBeInTheDocument()
-  // One model entrant can play six group battles and four knockout legs, 51 decisions each.
-  expect(within(estimate).getByText('up to 510')).toBeInTheDocument()
+  expect(within(estimate).getByText('13')).toBeInTheDocument()
+  // One model entrant can play three group battles and two knockout battles, 51 decisions each.
+  expect(within(estimate).getByText('up to 255')).toBeInTheDocument()
   expect(within(estimate).getByText(/^Up to 4 league battles run at once\./)).toBeInTheDocument()
   await user.click(start)
   expect(await screen.findByRole('heading', { name: 'League page' })).toBeInTheDocument()
