@@ -1,11 +1,12 @@
-// One league: progress, champion, running battles, each group's table and matches, the
-// knockout bracket and fixtures. Refreshes while the league runs. Admins can cancel it
-// after confirming, or start a new league from a copy of its setup.
+// One league: progress, champion, running battles, disqualifications, each group's table
+// and matches, the knockout bracket and fixtures. Refreshes while the league runs. Admins
+// can cancel it or disqualify an entrant after confirming, or start a new league from a
+// copy of its setup.
 
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { cancelLeague, getLeague, LeagueApiError, type League } from '../api/leagues'
-import { FixtureList, GroupStage, KnockoutBracket, NowPlaying } from '../components/LeagueStandings'
+import { Disqualifications, FixtureList, GroupStage, KnockoutBracket, NowPlaying, type EntrantManagement } from '../components/LeagueStandings'
 import { entrantName } from '../presentation/leagues'
 
 export const leagueRefreshMs = 10_000
@@ -17,6 +18,7 @@ export function LeaguePage({ canManage }: Readonly<{ canManage: boolean }>) {
   const [version, setVersion] = useState(0)
   const [confirming, setConfirming] = useState(false)
   const [cancelError, setCancelError] = useState('')
+  const [disqualifying, setDisqualifying] = useState<number | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -34,6 +36,11 @@ export function LeaguePage({ canManage }: Readonly<{ canManage: boolean }>) {
     const timer = window.setInterval(() => setVersion(value => value + 1), leagueRefreshMs)
     return () => window.clearInterval(timer)
   }, [running])
+
+  const manage: EntrantManagement | undefined = canManage && running ? {
+    confirming: disqualifying, start: setDisqualifying, close: () => setDisqualifying(null),
+    done: updated => { setLeague(updated); setDisqualifying(null) },
+  } : undefined
 
   async function cancel() {
     setCancelError('')
@@ -75,7 +82,8 @@ export function LeaguePage({ canManage }: Readonly<{ canManage: boolean }>) {
       {league.champion !== null && <output className="league-champion">Champion: <strong>{entrantName(league, league.champion)}</strong></output>}
       <progress className="battle-progress" max={league.progress.total} value={league.progress.settled} aria-label="League progress" />
       <NowPlaying league={league} />
-      <GroupStage league={league} />
+      <Disqualifications league={league} />
+      <GroupStage league={league} manage={manage} />
       <KnockoutBracket league={league} />
       <FixtureList league={league} />
     </>
