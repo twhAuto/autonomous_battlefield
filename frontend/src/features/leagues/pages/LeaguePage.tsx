@@ -1,11 +1,11 @@
-// One league: progress, champion, group tables, knockout bracket and fixtures. Refreshes
-// while the league runs. Admins can cancel it after confirming, or start a new league
-// from a copy of its setup.
+// One league: progress, champion, running battles, group tables, knockout bracket and
+// fixtures. Refreshes while the league runs. Admins can cancel it after confirming, or
+// start a new league from a copy of its setup.
 
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { cancelLeague, getLeague, LeagueApiError, type League } from '../api/leagues'
-import { FixtureList, GroupTables, KnockoutBracket } from '../components/LeagueStandings'
+import { FixtureList, GroupTables, KnockoutBracket, NowPlaying } from '../components/LeagueStandings'
 import { entrantName } from '../presentation/leagues'
 
 export const leagueRefreshMs = 10_000
@@ -74,6 +74,7 @@ export function LeaguePage({ canManage }: Readonly<{ canManage: boolean }>) {
       </section>
       {league.champion !== null && <output className="league-champion">Champion: <strong>{entrantName(league, league.champion)}</strong></output>}
       <progress className="battle-progress" max={league.progress.total} value={league.progress.settled} aria-label="League progress" />
+      <NowPlaying league={league} />
       <GroupTables league={league} />
       <KnockoutBracket league={league} />
       <FixtureList league={league} />

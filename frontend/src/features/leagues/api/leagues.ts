@@ -19,6 +19,8 @@ export interface LeagueTie { stage: LeagueStage; tie: number; homeEntrant: numbe
 export interface LeagueFixture {
   id: string; sequence: number; stage: LeagueStage; group?: GroupLetter; round: number; tie?: number; leg: 1 | 2
   homeEntrant: number; awayEntrant: number; scenarioId: string; status: FixtureStatus; attempts: number; battleId: string | null
+  /** Present while the fixture runs: its battle's tick and tick limit. */
+  battleProgress?: { currentTick: number; requestedTicks: number }
   /** Present once completed; winner is null for a draw. */
   result?: { winner: number | null; reason: string }
 }
