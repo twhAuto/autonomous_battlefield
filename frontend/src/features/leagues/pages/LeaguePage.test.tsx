@@ -59,6 +59,32 @@ it('shows group tables, the bracket and fixtures', async () => {
   expect(within(fixtures).getByRole('link', { name: 'Open battle →' })).toHaveAttribute('href', `/battles/${battleID}`)
   expect(screen.getByRole('link', { name: 'STATISTICS →' })).toHaveAttribute('href', '/analytics?leagueId=league-1')
   expect(screen.queryByRole('button', { name: 'CANCEL LEAGUE' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: 'Now playing' })).not.toBeInTheDocument()
+})
+
+it('puts running battles first with their tick progress', async () => {
+  const running = '22222222-2222-4222-8222-222222222222'
+  const league = sampleLeague()
+  league.fixtures.push(
+    { id: 'x3', sequence: 2, stage: 'group', group: 'A', round: 2, leg: 1, homeEntrant: 0, awayEntrant: 2, scenarioId: 'castle-siege', status: 'running', attempts: 1, battleId: running, battleProgress: { currentTick: 120, requestedTicks: 500 } },
+    { id: 'x4', sequence: 3, stage: 'group', group: 'B', round: 2, leg: 1, homeEntrant: 1, awayEntrant: 3, scenarioId: 'frontier-siege', status: 'running', attempts: 1, battleId: null },
+  )
+  vi.mocked(fetch).mockImplementation(async () => reply(200, league))
+  show(false)
+  const live = await screen.findByRole('region', { name: 'Now playing' })
+  expect(live).toHaveTextContent('2 RUNNING')
+  const [first, second] = within(live).getAllByRole('listitem')
+  expect(first).toHaveTextContent(/Group A · round 2 · leg 1 · castle-siege.*Amber.*sonnet · low.*Cinder.*Scripted/)
+  expect(within(first).getByRole('progressbar', { name: 'Group A · round 2 · leg 1 ticks played' })).toHaveValue(120)
+  expect(first).toHaveTextContent('Tick 120 of 500')
+  expect(within(first).getByRole('link', { name: 'WATCH LIVE →' })).toHaveAttribute('href', `/battles/${running}`)
+  expect(second).toHaveTextContent('Starting…')
+  expect(within(second).queryByRole('link')).not.toBeInTheDocument()
+
+  const rows = within(screen.getByRole('table', { name: 'Fixtures in play order' })).getAllByRole('row')
+  expect(rows[3]).toHaveClass('league-fixtures__running')
+  expect(rows[3]).toHaveTextContent('Tick 120 of 500')
+  expect(rows[2]).not.toHaveClass('league-fixtures__running')
 })
 
 it('names the champion of a completed league', async () => {

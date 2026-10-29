@@ -140,7 +140,7 @@ func TestSchedulerStoreAgainstPostgres(t *testing.T) {
 	battleID := league.FixtureBattleID(l.BattleSalt, l.Fixtures[0].ID, 1)
 	schedule(t, repo, startFirstFixture(t, db, l, battleID))
 	home, away := l.Entrants[l.Fixtures[0].Home].FactionID, l.Entrants[l.Fixtures[0].Away].FactionID
-	if _, err := db.Exec(ctx, `UPDATE battle_runs SET status='completed', completed_at=now(), result=$2 WHERE id=$1`, battleID,
+	if _, err := db.Exec(ctx, `UPDATE battle_runs SET status='completed', completed_at=now(), current_tick=90, result=$2 WHERE id=$1`, battleID,
 		fmt.Sprintf(`{"winnerFactionId":%q,"reason":"castle_destroyed","ticksRun":90,"factions":[{"factionId":%q,"castleHealth":120,"damageDealt":400},{"factionId":%q,"castleHealth":0,"damageDealt":150}]}`, home, home, away)); err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestSchedulerStoreAgainstPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	outcome := got.Fixtures[0].Battle
-	if got.Fixtures[0].Status != league.FixtureRunning || outcome == nil || outcome.Status != "completed" || *outcome.WinnerFactionID != home ||
+	if got.Fixtures[0].Status != league.FixtureRunning || outcome == nil || outcome.Status != "completed" || outcome.CurrentTick != 90 || outcome.RequestedTicks != 500 || *outcome.WinnerFactionID != home ||
 		outcome.Reason != "castle_destroyed" || outcome.Factions[home].CastleHealth != 120 || outcome.Factions[away].DamageDealt != 150 {
 		t.Fatalf("fixture outcome = %+v", outcome)
 	}

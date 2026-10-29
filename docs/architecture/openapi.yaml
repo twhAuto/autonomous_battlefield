@@ -2031,6 +2031,13 @@ components:
         status: {type: string, enum: [pending, running, completed, void, cancelled]}
         attempts: {type: integer, minimum: 0, maximum: 2}
         battleId: {type: [string, 'null'], format: uuid}
+        battleProgress:
+          description: Present while the fixture is running and its battle exists.
+          type: object
+          required: [currentTick, requestedTicks]
+          properties:
+            currentTick: {type: integer, minimum: 0}
+            requestedTicks: {type: integer, minimum: 1}
         result:
           description: Present once the fixture completed.
           type: object
