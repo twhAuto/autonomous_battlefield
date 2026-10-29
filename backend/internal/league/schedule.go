@@ -68,7 +68,7 @@ func (l *League) newFixture(sequence int, f Fixture, first, second int) Fixture 
 		group := *f.Group
 		f.Group = &group
 	}
-	f.ID, f.Sequence, f.Status = fixtureID(l.ID, sequence), sequence, FixturePending
+	f.ID, f.Sequence, f.Status = fixtureID(l.ID, f), sequence, FixturePending
 	f.Home, f.Away = first, second
 	if !homeFirst(l.BattleSalt, f.ID) {
 		f.Home, f.Away = second, first

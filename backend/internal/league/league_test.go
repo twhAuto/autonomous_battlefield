@@ -136,6 +136,27 @@ func TestEachGroupOpensItsNextRoundOnItsOwn(t *testing.T) {
 	}
 }
 
+// A pass can create a match's battle and then roll back the match. If another group
+// becomes ready before the retry, the match opens at a later sequence, but keeps its ID,
+// and so its battle and sides.
+func TestFixtureIDsDependOnTheMatchNotThePlayOrder(t *testing.T) {
+	l := testLeague(2)
+	settle(l, 2, 1, 50, 50)
+	settle(l, 3, 3, 50, 50)
+	rolledBack, _ := l.Advance()
+	settle(l, 0, 0, 50, 50)
+	settle(l, 1, 2, 50, 50)
+	retried := advance(l)
+	if len(rolledBack) != 2 || rolledBack[0].Sequence != 4 || len(retried) != 4 || *retried[0].Group != 0 || retried[2].Sequence != 6 {
+		t.Fatalf("rolled back %+v, retried %+v", rolledBack, retried)
+	}
+	for i, f := range rolledBack {
+		if again := retried[2+i]; again.ID != f.ID || again.Home != f.Home || again.Away != f.Away || again.ScenarioID != f.ScenarioID {
+			t.Fatalf("group B match %d changed from %+v to %+v", i, f, again)
+		}
+	}
+}
+
 func requireStandings(t *testing.T, got []Standing, want string) {
 	t.Helper()
 	if fmt.Sprint(got) != want {

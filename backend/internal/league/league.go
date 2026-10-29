@@ -204,8 +204,16 @@ func FixtureBattleID(salt, fixtureID string, attempt int) string {
 	return DerivedID("league-fixture-battle", salt, fixtureID, fmt.Sprint(attempt))
 }
 
-func fixtureID(leagueID string, sequence int) string {
-	return DerivedID("league-fixture", leagueID, fmt.Sprint(sequence))
+// fixtureID derives a fixture's ID from its place in the league rather than its play
+// order. Groups advance independently, so a pass that rolls back after creating a battle
+// may open the same match at another sequence next time; the match keeps its ID and
+// finds that battle.
+func fixtureID(leagueID string, f Fixture) string {
+	group := ""
+	if f.Group != nil {
+		group = fmt.Sprint(*f.Group)
+	}
+	return DerivedID("league-fixture", leagueID, f.Stage, group, fmt.Sprint(f.Round), fmt.Sprint(f.Tie))
 }
 
 // homeFirst is a match's coin flip: whether its first-named entrant takes the first

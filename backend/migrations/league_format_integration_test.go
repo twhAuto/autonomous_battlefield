@@ -1,7 +1,7 @@
-// Checks migration 00024: it refuses to run while a league is running, deletes leagues
-// in the earlier format while keeping their battles, drops fixture legs, accepts only
-// dual-tournament and single-tie fixture numbers, and its downgrade refuses running
-// leagues too.
+// Checks migration 00024: it refuses to run while a league is running or a league
+// battle has yet to stop, deletes leagues in the earlier format while keeping their
+// battles, drops fixture legs, accepts only dual-tournament and single-tie fixture
+// numbers, and its downgrade refuses running leagues too.
 
 package migrations_test
 
@@ -57,6 +57,12 @@ func TestLeagueFormatMigrationDropsEarlierLeagues(t *testing.T) {
 		t.Fatal("the format change dropped a running league")
 	}
 	execSQL(t, db, `UPDATE leagues SET status='cancelled', completed_at=now() WHERE id=$1`, old)
+	// The cancelled league's battle has not stopped yet, so the scheduler still needs its
+	// fixture to retry the stop.
+	if _, err = provider.UpByOne(ctx); err == nil {
+		t.Fatal("the format change dropped a cancelled league whose battle still runs")
+	}
+	execSQL(t, db, `UPDATE battle_runs SET status='stopped', completed_at=now() WHERE id=$1`, battle)
 	if _, err = provider.UpByOne(ctx); err != nil {
 		t.Fatalf("format change with only settled leagues: %v", err)
 	}
