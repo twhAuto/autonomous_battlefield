@@ -24,21 +24,39 @@ func TestScriptedBotsFinishEveryMap(t *testing.T) {
 	for _, id := range c.IDs() {
 		t.Run(id, func(t *testing.T) {
 			t.Parallel()
-			first, firstWinner := playScriptedBattle(t, c, id, [2]string{"a", "b"})
-			second, secondWinner := playScriptedBattle(t, c, id, [2]string{"b", "a"})
-			last := first[len(first)-1].tick
-			if firstWinner < 0 {
+			traces, winners := playBothIDOrders(t, c, id)
+			if t.Failed() {
+				return
+			}
+			last := traces[0][len(traces[0])-1].tick
+			if winners[0] < 0 {
 				t.Fatalf("scripted bots stalemated at tick %d", last)
 			}
-			if tick, differ := firstDifference(first, second); differ {
+			if tick, differ := firstDifference(traces[0], traces[1]); differ {
 				t.Fatalf("swapping faction IDs changed the battle at tick %d", tick)
 			}
-			if firstWinner != secondWinner {
-				t.Fatalf("swapping faction IDs changed the winning seat from %d to %d", firstWinner, secondWinner)
+			if winners[0] != winners[1] {
+				t.Fatalf("swapping faction IDs changed the winning seat from %d to %d", winners[0], winners[1])
 			}
-			t.Logf("winning seat=%d ticks=%d", firstWinner, last)
+			t.Logf("winning seat=%d ticks=%d", winners[0], last)
 		})
 	}
+}
+
+// playBothIDOrders plays map id with faction a on the left, then b, as parallel
+// subtests. The group returns once both finish, so every map's battles run at once
+// and the slowest single battle sets the test's duration.
+func playBothIDOrders(t *testing.T, c *Catalog, id string) ([2][]seatTick, [2]int) {
+	traces, winners := [2][]seatTick{}, [2]int{}
+	t.Run("runs", func(t *testing.T) {
+		for run, sides := range [][2]string{{"a", "b"}, {"b", "a"}} {
+			t.Run(sides[0]+"-left", func(t *testing.T) {
+				t.Parallel()
+				traces[run], winners[run] = playScriptedBattle(t, c, id, sides)
+			})
+		}
+	})
+	return traces, winners
 }
 
 // seatTick is one transition's state by seat, without faction IDs, so runs with
