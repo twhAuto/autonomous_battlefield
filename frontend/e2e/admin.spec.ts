@@ -26,7 +26,13 @@ test('admin model access saves and role preview works on desktop and mobile', as
   await previewRead
   await expect(page.getByRole('status')).toContainText('Viewing as Player')
   await expect(page.getByRole('link', { name: 'Admin', exact: true })).toHaveCount(0)
+  await page.getByRole('link', { name: 'OrdinalFrontier home' }).click()
+  const menu = page.getByRole('region', { name: 'Main menu' })
+  await expect(menu.getByRole('link')).toHaveCount(3)
+  await expect(menu.getByRole('link', { name: 'Leagues' })).toHaveCount(0)
+  await expect(menu.getByRole('link', { name: 'Statistics' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Exit preview' }).click()
+  await expect(menu.getByRole('link')).toHaveCount(5)
   if (await page.getByRole('button', { name: 'Menu', exact: true }).isVisible()) await page.getByRole('button', { name: 'Menu', exact: true }).click()
   await expect(page.getByRole('link', { name: 'Admin', exact: true })).toBeVisible()
 })

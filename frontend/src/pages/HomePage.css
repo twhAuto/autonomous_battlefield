@@ -7,38 +7,45 @@
 .hero__copy { max-width: 540px; margin: 0; color: #a9afa3; font-size: 16px; line-height: 1.7; }
 .hero__coordinates { position: absolute; right: 0; bottom: 78px; color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .12em; writing-mode: vertical-rl; }
 
-.command-menu { padding: 70px 0 100px; }
-.command-menu > h2 { margin: 38px 0 28px; font-size: clamp(34px, 4vw, 52px); font-weight: 500; letter-spacing: -.04em; }
-.menu-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.menu-card { position: relative; min-height: 330px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; padding: 34px; color: inherit; background: #151a14; border: 1px solid var(--line); text-decoration: none; transition: border-color .2s, transform .2s, background .2s; }
-.menu-card::before { position: absolute; top: -90px; right: -80px; width: 250px; height: 250px; border: 1px solid rgba(216,255,104,.12); border-radius: 50%; box-shadow: 0 0 0 34px rgba(216,255,104,.025), 0 0 0 68px rgba(216,255,104,.018); content: ''; transition: transform .3s; }
-.menu-card:hover { border-color: rgba(216,255,104,.6); background: #192017; transform: translateY(-3px); }
-.menu-card:hover::before { transform: scale(1.08); }
-.menu-card--primary { background: linear-gradient(150deg, rgba(216,255,104,.12), transparent 55%), #151a14; }
-.menu-card--battle { background: linear-gradient(150deg, rgba(120,232,255,.1), transparent 55%), #151a14; }
-.menu-card__number { position: absolute; top: 28px; left: 32px; color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .15em; }
-.menu-card__eyebrow { color: var(--lime); font: 12px 'DM Mono', monospace; letter-spacing: .18em; }
-.menu-card h3 { margin: 12px 0 12px; font-size: clamp(28px, 3vw, 42px); line-height: 1; font-weight: 500; letter-spacing: -.04em; }
-.menu-card p { max-width: 380px; margin: 0; color: #aeb6a9; font-size: 14px; line-height: 1.65; }
-.menu-card__arrow { position: absolute; right: 32px; bottom: 31px; color: var(--lime); font-size: 25px; }
+.command-menu { padding: 40px 0 64px; }
+.command-menu__header { margin-bottom: 28px; }
+.command-menu__header h1 { margin: 0 0 10px; font-size: clamp(30px, 4vw, 40px); font-weight: 500; letter-spacing: -.04em; }
+.command-menu__header p { margin: 0; color: var(--muted); }
+.menu-grid { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 16px; }
+.menu-grid--play { grid-template-columns: 1.15fr 2fr; }
+.menu-card { position: relative; min-width: 0; display: flex; flex-direction: column; gap: 30px; padding: 26px; color: inherit; background: #151a14; border: 1px solid var(--line); text-decoration: none; transition: border-color .2s, background .2s; }
+.menu-card:hover, .menu-card:focus-visible { border-color: var(--lime); background-color: #1b2317; }
+.menu-card__top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.menu-card__number { color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .15em; }
+.menu-card__eyebrow { color: var(--lime); font: 11px 'DM Mono', monospace; letter-spacing: .12em; }
+.menu-card__icon { width: 26px; height: 26px; color: #bac5af; }
+.menu-card__body { margin-top: auto; padding-right: 24px; }
+.menu-card h2 { margin: 0 0 10px; font-size: 25px; font-weight: 500; letter-spacing: -.035em; }
+.menu-card p { max-width: 380px; margin: 0; color: #aeb6a9; }
+.menu-card__arrow { position: absolute; right: 24px; bottom: 24px; color: var(--lime); font-size: 24px; }
+.menu-card--battle { grid-row: span 2; gap: 24px; background: linear-gradient(155deg, rgba(216,255,104,.1), transparent 65%), #151a14; border-color: rgba(216,255,104,.35); }
+.menu-card--battle h2 { font-size: clamp(32px, 3.2vw, 42px); }
+.menu-card--battle .menu-card__body { padding-right: 0; }
+.menu-card__map { width: 100%; max-width: 340px; align-self: center; color: var(--lime); }
+.menu-card__contour { stroke: currentColor; opacity: .18; }
+.menu-card__route { stroke: currentColor; stroke-dasharray: 4 5; opacity: .5; }
+.menu-card__castle { stroke: currentColor; stroke-width: 1.5; fill: #24301b; }
+.menu-card__action { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 20px; border-top: 1px solid rgba(216,255,104,.2); color: var(--lime); font: 12px 'DM Mono', monospace; }
+.menu-card__action > span { font-size: 24px; }
 
-@media (max-width: 780px) {
-  .hero { padding: 68px 0 54px; }
-  .hero__coordinates { display: none; }
-  .menu-grid { grid-template-columns: 1fr; }
-  .menu-card { min-height: 280px; }
+@media (max-width: 1000px) {
+  .menu-grid, .menu-grid--play { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .menu-card--battle { grid-row: auto; grid-column: 1 / -1; padding-right: 45%; }
+  .menu-card__map { position: absolute; width: 36%; right: 5%; top: 50%; transform: translateY(-50%); }
 }
 
-@media (max-width: 460px) {
-  .hero h1 { font-size: 46px; }
-}
-.command-menu--compact { padding-top: 32px; }
-.command-menu--compact > h1 { margin: 0 0 24px; font-size: 32px; }
-.command-menu--compact .menu-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.command-menu--compact .menu-card { min-height: 230px; }
-.command-menu--compact .menu-card h2 { margin: 0 0 12px; font-size: 28px; }
-@media (max-width: 780px) {
-  .command-menu--compact .menu-grid { grid-template-columns: 1fr; }
-  .command-menu--compact .menu-card { min-height: 180px; }
-  .hero { padding: 24px 0; }
+@media (max-width: 600px) {
+  .command-menu { padding: 28px 0 40px; }
+  .command-menu__header { margin-bottom: 22px; }
+  .menu-grid, .menu-grid--play { grid-template-columns: 1fr; gap: 12px; }
+  .menu-card { gap: 20px; padding: 22px; }
+  .menu-card--battle { gap: 26px; }
+  .menu-card__map { display: none; }
+  .menu-card h2 { font-size: 24px; }
+  .menu-card--battle h2 { font-size: 32px; }
 }

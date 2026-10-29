@@ -48,8 +48,8 @@ On a fresh Linux machine, provision browser libraries once with
 `npx playwright show-report` opens `playwright-report/`; failed tests retain
 screenshots and traces in `test-results/`. Both folders are ignored by Git.
 
-Navigation is Stage battle, Factions, then Battle history. The home page opens
-directly with these actions; Factions contains the Create faction action.
+See [routes and session](../docs/developer/frontend-guide.md#routes-and-session)
+for home cards, navigation destinations and role visibility.
 Mobile navigation uses a Menu disclosure; creation forms precede collapsed
 previews. The inline map permits page scrolling on mobile; Expand map opens its
 interactive modal. Key events filters loaded history by default. Identifiers and
