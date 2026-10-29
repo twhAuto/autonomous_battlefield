@@ -67,8 +67,8 @@ offers no economy buildings. The live ruleset v13 sets no building limits, 50 un
 and references core v10, which includes the late-game unlocks.
 `alternatingTurns: true` orders each tick by seat rather than faction ID (see
 [tick order](../game/game-rules.md#tick-order)); absent or false keeps the ID order of
-frozen older battles. `alternatingWindows: true` requires `alternatingTurns` and also
-alternates the first seat between decision windows (same section).
+frozen older battles. `alternatingWindows: true` requires `alternatingTurns`; see
+[tick order](../game/game-rules.md#tick-order) for its behavior and compatibility.
 `continuousProduction: true` enables continuous AI-selected unit production; absent
 or false selects the batch purchases of frozen older battles. The archived `content/core-v9.yaml`, `content/core-v8.yaml` and `content/core-v7.yaml`
 are the authored references for earlier active libraries, and `content/core-v6.yaml` for the
