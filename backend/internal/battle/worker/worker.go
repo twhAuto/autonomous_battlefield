@@ -54,7 +54,7 @@ func NewWithLogger(repository Repository, decisions DecisionRepository, config C
 		return nil, err
 	}
 	if config.DecisionTimeout == 0 {
-		config.DecisionTimeout = 2 * time.Minute
+		config.DecisionTimeout = 3 * time.Minute
 	}
 	if config.Concurrency == 0 {
 		config.Concurrency = 1

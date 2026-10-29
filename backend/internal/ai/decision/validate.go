@@ -4,6 +4,7 @@
 package decision
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -104,7 +105,7 @@ func validateOpeningForMode(plan controller.PlanProposal, continuous bool) []ai.
 	}
 	for _, kind := range plan.SpendOrder {
 		if kind == "construction" {
-			issues = append(issues, ai.ValidationIssue{Field: "plan.spendOrder", Code: "unsupported", Message: "Construction is unavailable during opening."})
+			issues = append(issues, ai.ValidationIssue{Field: "plan.spendOrder", Code: "unsupported", Message: "Remove construction from spendOrder: the opening has no construction."})
 		}
 	}
 	return issues
@@ -146,36 +147,75 @@ func validateConstruction(legal ai.LegalChoices, opening, goldMines bool, plan c
 	for _, building := range legal.Buildings {
 		buildings[building.ID] = true
 	}
-	sites, economySites, hint := coordinateSet(legal.EconomySites), coordinateSet(legal.EconomySites), ""
+	sites := siteList{name: "legal.economySites", sites: legal.EconomySites}
+	economySites := sites
 	if goldMines {
-		economySites, hint = coordinateSet(legal.GoldMineSites), "; economy needs a site from legal.goldMineSites and other buildings one from legal.economySites"
+		economySites = siteList{name: "legal.goldMineSites", sites: legal.GoldMineSites}
 	}
 	for _, site := range plan.ConstructionPriorities {
-		if !economySites[site] {
-			issues = append(issues, ai.ValidationIssue{Field: "plan.constructionPriorities", Code: "unsupported", Message: fmt.Sprintf("site (%d,%d) is not legal%s", site.X, site.Y, hint)})
+		if !economySites.has(site) {
+			issues = append(issues, ai.ValidationIssue{Field: "plan.constructionPriorities", Code: "unsupported", Message: fmt.Sprintf("site (%d,%d) is not in %s%s", site.X, site.Y, economySites.name, economySites.nearest(site))})
 		}
 	}
 	if plan.ConstructionOrders == nil {
 		return issues
 	}
 	for _, order := range *plan.ConstructionOrders {
-		legalSites := sites
-		if order.BuildingType == game.BuildingEconomy {
-			legalSites = economySites
-		}
-		if opening || !buildings[order.BuildingType] || !legalSites[order.Position] {
-			issues = append(issues, ai.ValidationIssue{Field: fieldConstructionOrders, Code: "unsupported", Message: fmt.Sprintf("construction %q at (%d,%d) is not legal%s", order.BuildingType, order.Position.X, order.Position.Y, hint)})
+		if message := constructionOrderProblem(order, opening, buildings, sites, economySites); message != "" {
+			issues = append(issues, ai.ValidationIssue{Field: fieldConstructionOrders, Code: "unsupported", Message: message})
 		}
 	}
 	return issues
 }
 
-func coordinateSet(coordinates []controller.Coordinate) map[controller.Coordinate]bool {
-	set := make(map[controller.Coordinate]bool, len(coordinates))
-	for _, coordinate := range coordinates {
-		set[coordinate] = true
+// constructionOrderProblem names what makes an order illegal and how to fix it, or
+// returns "" for a legal order.
+func constructionOrderProblem(order controller.ConstructionOrder, opening bool, buildings map[string]bool, sites, economySites siteList) string {
+	if opening {
+		return "construction is unavailable during the opening; send constructionOrders as []"
 	}
-	return set
+	if !buildings[order.BuildingType] {
+		return fmt.Sprintf("construction %q is not in legal.buildings", order.BuildingType)
+	}
+	legal := sites
+	if order.BuildingType == game.BuildingEconomy {
+		legal = economySites
+	}
+	if legal.has(order.Position) {
+		return ""
+	}
+	return fmt.Sprintf("construction %q at (%d,%d) is not in %s%s", order.BuildingType, order.Position.X, order.Position.Y, legal.name, legal.nearest(order.Position))
+}
+
+// siteList is one list of legal construction coordinates and the context field it
+// comes from, so a rejection can name the list to choose from.
+type siteList struct {
+	name  string
+	sites []controller.Coordinate
+}
+
+func (l siteList) has(site controller.Coordinate) bool { return slices.Contains(l.sites, site) }
+
+// nearestSiteSuggestions bounds the alternatives a rejection lists.
+const nearestSiteSuggestions = 3
+
+// nearest suggests the legal sites closest to a rejected one, so a model can move the
+// order instead of decoding the whole list again.
+func (l siteList) nearest(site controller.Coordinate) string {
+	if len(l.sites) == 0 {
+		return "; none is left, so send []"
+	}
+	target := game.Position{X: site.X, Y: site.Y}
+	distance := func(c controller.Coordinate) int { return game.HexDistance(game.Position{X: c.X, Y: c.Y}, target) }
+	candidates := slices.Clone(l.sites)
+	slices.SortStableFunc(candidates, func(a, b controller.Coordinate) int {
+		return cmp.Or(cmp.Compare(distance(a), distance(b)), cmp.Compare(a.Y, b.Y), cmp.Compare(a.X, b.X))
+	})
+	suggestions := make([]string, 0, nearestSiteSuggestions)
+	for _, candidate := range candidates[:min(len(candidates), nearestSiteSuggestions)] {
+		suggestions = append(suggestions, fmt.Sprintf("(%d,%d)", candidate.X, candidate.Y))
+	}
+	return "; nearest legal: " + strings.Join(suggestions, ", ")
 }
 
 // Older observations without current counts report zero and are never rejected here.

@@ -245,7 +245,19 @@ func TestFactionViewShowsAllEnemiesAndCastle(t *testing.T) {
 	}
 }
 
+// skipSequentialBattleUnderRace skips a battle played in one goroutine when the race
+// detector is on: it reports only conflicting access between goroutines, so the
+// replay would cost minutes on a shared CI agent and check nothing. The coverage pass
+// still plays it.
+func skipSequentialBattleUnderRace(t *testing.T) {
+	t.Helper()
+	if raceEnabled {
+		t.Skip("one-goroutine battle; the coverage pass plays it")
+	}
+}
+
 func TestCompleteLocalMatchReachesTerminalResult(t *testing.T) {
+	skipSequentialBattleUnderRace(t)
 	match, err := NewMatch("complete", testScenario(), 1000)
 	if err != nil {
 		t.Fatal(err)

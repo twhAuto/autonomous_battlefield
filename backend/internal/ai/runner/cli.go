@@ -155,12 +155,22 @@ func (r CLIRunner) prepareInvocation(ctx context.Context, session ai.DecisionSes
 		if err != nil {
 			return cliInvocation{}, "cli_isolation", err
 		}
-		args = withModel([]string{"--print", prompt, "--output-format", "json", "--disable-slash-commands", "--print-timeout", "2m"}, r.Model)
+		args = withModel([]string{"--print", prompt, "--output-format", "json", "--disable-slash-commands", "--print-timeout", antigravityPrintTimeout(ctx)}, r.Model)
 
 	default:
 		return cliInvocation{}, "cli_provider", fmt.Errorf("unsupported CLI provider %q", r.Provider)
 	}
 	return cliInvocation{args: args, environment: environment, prompt: prompt}, "", nil
+}
+
+// antigravityPrintTimeout ends agy's print mode at the run's deadline. Its default, 0s,
+// waits for the turn however long it takes.
+func antigravityPrintTimeout(ctx context.Context) string {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return "0s"
+	}
+	return max(time.Second, time.Until(deadline).Truncate(time.Second)).String()
 }
 
 func (r CLIRunner) contextDelivery(session ai.DecisionSession) string {

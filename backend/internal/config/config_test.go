@@ -282,7 +282,7 @@ func TestEngineWorkerIDUsesEnvironmentOrHost(t *testing.T) {
 
 func TestParseModelsDefaultsProfilesAndValidation(t *testing.T) {
 	configuration, err := parseModels(fileConfig{}, false)
-	if err != nil || configuration.Environment != "local" || configuration.DecisionTimeout != 2*time.Minute {
+	if err != nil || configuration.Environment != "local" || configuration.DecisionTimeout != 3*time.Minute {
 		t.Fatalf("Models=%#v err=%v", configuration, err)
 	}
 	valid := func() fileConfig {
@@ -558,9 +558,10 @@ func TestAgentConcurrencyConfiguration(t *testing.T) {
 	}{
 		{"default", "ai: {}", 1, false},
 		{"four", "ai: {agentConcurrency: 4}", 4, false},
+		{"eight", "ai: {agentConcurrency: 8}", 8, false},
 		{"zero", "ai: {agentConcurrency: 0}", 0, true},
 		{"negative", "ai: {agentConcurrency: -1}", 0, true},
-		{"too many", "ai: {agentConcurrency: 5}", 0, true},
+		{"too many", "ai: {agentConcurrency: 9}", 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg, err := LoadAgent(writeConfigFile(t, tc.yaml))

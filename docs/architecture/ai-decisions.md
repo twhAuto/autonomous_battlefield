@@ -61,12 +61,20 @@ another resolution.
 ## Model execution
 
 `internal/ai/agent` (`agent.Executor`) owns decision claims, concurrency, timeouts
-and outcome reporting. A worker runs `ai.agentConcurrency` jobs at once (1–4, 1
+and outcome reporting. A worker runs `ai.agentConcurrency` jobs at once (1–8, 1
 when omitted). CLI jobs also need one of the `runtime_policy.cli_concurrency`
-leases (1–4, default 4), which PostgreSQL shares across every worker, battle
+leases (1–8, default 4), which PostgreSQL shares across every worker, battle
 decision and generation job; API jobs take no CLI lease. A lease is held until the
 worker reports completion or its execution deadline passes, even after the plan is
-accepted. Claims carry the database lease deadline, so network delay never extends
+accepted. A claim's lease counts from the decision row's creation, not from the
+claim: it ends the worker's `ai.decisionTimeout` plus five seconds after creation, so
+a decision that waited for a slot runs only for the window it has left. The engine
+starts its own `ai.decisionTimeout` wait once it has created the window's decisions,
+so with the same setting on both sides a run ends at most five seconds after the
+engine falls back. A decision with less than ten seconds of lease left (half the
+lease, for leases under twenty seconds) is not claimed and falls back at the
+deadline. Pausing a battle extends the engine's wait but not a claimed lease. Claims carry the database lease
+deadline, which also bounds the request capability, so network delay never extends
 a worker's time; keep the database, AI gateway and VM clocks synchronized.
 [CLI worker operations](../operations/cli-worker.md) give the production worker's
 current setting.
@@ -354,7 +362,8 @@ building limit is full, and under contested territory both site lists leave out
 ground inside an enemy's territory. When `view.state.goldMines` is present, those sites exclude
 mines and every hex beside a mine with gold left, `legal.goldMineSites` lists the mines with gold left where an economy building
 may go, and the validator rejects economy orders elsewhere and other structures on
-mines, naming both lists in its message. Model submissions whose construction orders exceed the
+mines. A rejected construction site names the list the order must use and its three
+nearest legal coordinates, or says none is left. Model submissions whose construction orders exceed the
 remaining `maximumBuildings - currentBuildings` slots, or the remaining economy slots,
 are rejected with `limit_reached` and a message naming the counts. Scripted default
 construction draws from the same legal sites, so it never orders at a full shared
@@ -376,7 +385,14 @@ validators insert submitted text, is masked as `"…"`, text after an unbalanced
 is dropped, and the result is cut to 240 bytes, so submitted text such as building
 types, IDs and upgrade names is never logged. Numbers in the template (coordinates,
 counts) and the event's request ID, target tick and expected version remain. The
-model still receives the full message.
+model still receives the full message. Every submission's `decision_plan_submitted`
+log also counts the entries in each plan list (`spend_order`, `construction_orders`,
+`construction_priorities`, `production_orders`, `recruitment_orders`,
+`recruitment_priorities`, `upgrade_orders`). The `submit_strategy_plan` span records
+the same counts as `battlefield.plan.*` attributes and, for a rejection, each issue's
+field and code in `battlefield.validation.fields` and `battlefield.validation.codes`,
+so Langfuse shows which rules a model broke. Counts, fields and codes carry no
+submitted value.
 
 | Error category | Raised by | Meaning |
 | --- | --- | --- |
