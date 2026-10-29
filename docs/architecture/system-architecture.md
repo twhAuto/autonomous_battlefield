@@ -744,7 +744,7 @@ Key runtime settings and their defaults:
 | `engine.maxAttempts` | 3 | Crashed or lease-expired attempts per battle before `attempts_exhausted`; graceful requeues are refunded |
 | `engine.shutdownTimeout` | 10s | Bound for final writes and requeue during shutdown |
 | `ai.decisionTimeout` | 2m | Engine decision deadline and agent execution timeout |
-| `ai.agentConcurrency` | 1 | Execution slots per agent process (1–4) |
+| `ai.agentConcurrency` | 1 | Execution slots per agent process (1–8) |
 | `resultCache.ttl` / `resultCache.timeout` | 1h / 100ms | Completed-battle cache entry lifetime and per-operation deadline |
 
 `backend/config.yaml` is the reference for all keys; unknown keys fail startup.

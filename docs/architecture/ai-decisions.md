@@ -61,9 +61,9 @@ another resolution.
 ## Model execution
 
 `internal/ai/agent` (`agent.Executor`) owns decision claims, concurrency, timeouts
-and outcome reporting. A worker runs `ai.agentConcurrency` jobs at once (1–4, 1
+and outcome reporting. A worker runs `ai.agentConcurrency` jobs at once (1–8, 1
 when omitted). CLI jobs also need one of the `runtime_policy.cli_concurrency`
-leases (1–4, default 4), which PostgreSQL shares across every worker, battle
+leases (1–8, default 4), which PostgreSQL shares across every worker, battle
 decision and generation job; API jobs take no CLI lease. A lease is held until the
 worker reports completion or its execution deadline passes, even after the plan is
 accepted. Claims carry the database lease deadline, so network delay never extends

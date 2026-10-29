@@ -18,13 +18,13 @@ kube_context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"
 namespace="${KUBERNETES_NAMESPACE:-battlefield}"
 gateway_port="${HOST_AI_GATEWAY_PORT:-18084}"
 health_port="${HOST_AGENT_HEALTH_PORT:-18083}"
-# Concurrent decision slots across all enabled CLIs. Two lets both factions of a
-# model-vs-model battle decide at once; the worker accepts 1-4, and the database
-# runtime_policy.cli_concurrency still caps executions across all workers.
-agent_concurrency="${HOST_AGENT_CONCURRENCY:-2}"
+# Concurrent decision slots across all enabled CLIs. Eight lets both factions of four
+# concurrent model-vs-model battles decide at once; the worker accepts 1-8, and the
+# database runtime_policy.cli_concurrency still caps executions across all workers.
+agent_concurrency="${HOST_AGENT_CONCURRENCY:-8}"
 validate_agent_concurrency() {
-  if [[ ! "${agent_concurrency}" =~ ^[1-4]$ ]]; then
-    echo "HOST_AGENT_CONCURRENCY must be 1, 2, 3, or 4." >&2
+  if [[ ! "${agent_concurrency}" =~ ^[1-8]$ ]]; then
+    echo "HOST_AGENT_CONCURRENCY must be a whole number from 1 to 8." >&2
     exit 2
   fi
 }

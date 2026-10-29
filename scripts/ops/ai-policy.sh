@@ -5,8 +5,12 @@ case "${1:-}" in
   stop) sql='UPDATE runtime_policy SET ai_enabled=false WHERE id;';;
   start) sql='UPDATE runtime_policy SET ai_enabled=true WHERE id;';;
   status) sql='SELECT * FROM runtime_policy; SELECT count(*) AS active_cli_leases FROM agent_execution_leases WHERE expires_at>now();';;
+  cli-slots)
+    # The league scheduler plans with this many CLI sides; match the agents' combined slots.
+    [[ "${2:-}" =~ ^[1-8]$ ]] || { echo 'cli-slots needs a whole number from 1 to 8' >&2; exit 2; }
+    sql="UPDATE runtime_policy SET cli_concurrency=${2} WHERE id; SELECT cli_concurrency FROM runtime_policy;";;
   usage) sql="SELECT identity,profile_id,count(*) AS records,sum(COALESCE((usage->>'requests')::bigint,0)) AS requests,sum(COALESCE((usage->>'inputTokens')::bigint,0)) AS input_tokens,sum(COALESCE((usage->>'outputTokens')::bigint,0)) AS output_tokens FROM friend_ai_usage WHERE created_at >= date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' GROUP BY identity,profile_id;";;
-  *) echo 'Usage: ai-policy.sh stop|start|status|usage' >&2; exit 2;;
+  *) echo 'Usage: ai-policy.sh stop|start|status|usage|cli-slots N' >&2; exit 2;;
 esac
 # Select the PostgreSQL pod explicitly; this script never guesses another database.
 : "${BATTLEFIELD_POSTGRES_POD:?Set BATTLEFIELD_POSTGRES_POD in the intended kubectl context}"

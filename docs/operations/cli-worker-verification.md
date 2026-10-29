@@ -356,8 +356,9 @@ and the generator replace ad hoc unit-file editing, not the verification gates.
 ## Concurrent decisions
 
 `ai.agentConcurrency` sets how many independent jobs one worker runs, across all
-enabled CLI providers rather than per provider. Values outside 1–4 are rejected,
-and an omitted value means one slot. The VM template sets 4, but the managed VM
+enabled CLI providers rather than per provider. The worker accepts 1–8 and an
+omitted value means one slot; the managed VM settings accept 1–4 until more slots
+are verified on the VM. The VM template sets 4, but the managed VM
 currently omits it ([`managed-settings.json`](../../infra/deploy/agent-vm/managed-settings.json)
 has `agentConcurrency: null`), so it runs one job at a time. The database caps CLI
 executions across all workers, decisions and background jobs at
@@ -380,11 +381,9 @@ its plan is accepted. While testing, watch
 `systemctl status battlefield-worker.service` and the journal for OOM failures.
 Lower the value the same way.
 
-For a fleet-wide reduction, a database administrator can run
-`UPDATE runtime_policy SET cli_concurrency = 1 WHERE id;` through the private
-database administration connection (values 1–4), and restore four with
-`UPDATE runtime_policy SET cli_concurrency = 4 WHERE id;`. Lowering the limit
-blocks new claims until capacity frees; it does not cancel active jobs.
+For a fleet-wide reduction, set the database limit with
+`scripts/ops/ai-policy.sh cli-slots 1` and restore it the same way; see
+[limits and the stop switch](access.md#limits-and-the-stop-switch).
 
 Transport errors, HTTP 429 and server errors during claiming retry after
 `PollInterval` without cancelling sibling jobs. Authentication and protocol errors
