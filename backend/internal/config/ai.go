@@ -48,7 +48,7 @@ func parseModels(raw fileConfig, production bool) (Models, error) {
 }
 
 func parseDecisionTimeout(raw fileConfig) (time.Duration, error) {
-	return parseOptionalDuration("ai.decisionTimeout", raw.AI.DecisionTimeout, 2*time.Minute)
+	return parseOptionalDuration("ai.decisionTimeout", raw.AI.DecisionTimeout, 3*time.Minute)
 }
 
 func parseAgent(raw fileConfig) (Agent, error) {

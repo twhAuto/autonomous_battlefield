@@ -221,7 +221,7 @@ write_agent_config() {
     printf '  environment: local\n'
     printf '  agentHealthAddress: "127.0.0.1:%s"\n' "${health_port}"
     printf '  mcpUrl: "http://127.0.0.1:%s/mcp"\n' "${gateway_port}"
-    printf '  decisionTimeout: 2m\n'
+    printf '  decisionTimeout: 3m\n'
     printf '  agentConcurrency: %s\n' "${agent_concurrency}"
     printf '  profiles:\n'
     if [[ "${use_codex}" == "1" ]]; then

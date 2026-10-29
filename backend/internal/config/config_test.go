@@ -282,7 +282,7 @@ func TestEngineWorkerIDUsesEnvironmentOrHost(t *testing.T) {
 
 func TestParseModelsDefaultsProfilesAndValidation(t *testing.T) {
 	configuration, err := parseModels(fileConfig{}, false)
-	if err != nil || configuration.Environment != "local" || configuration.DecisionTimeout != 2*time.Minute {
+	if err != nil || configuration.Environment != "local" || configuration.DecisionTimeout != 3*time.Minute {
 		t.Fatalf("Models=%#v err=%v", configuration, err)
 	}
 	valid := func() fileConfig {
