@@ -10,8 +10,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -144,4 +147,49 @@ func boundedLogText(text string, limit int) string {
 		cut--
 	}
 	return text[:cut] + "…"
+}
+
+// planList is how many entries a submitted plan list holds.
+type planList struct {
+	name  string
+	count int
+}
+
+// planShape counts each plan list, so the logs and traces of a rejection show what a
+// model sent (for example priorities alongside typed orders) without any submitted value.
+func planShape(plan controller.PlanProposal) []planList {
+	return []planList{
+		{"spend_order", len(plan.SpendOrder)},
+		{"construction_orders", listLength(plan.ConstructionOrders)},
+		{"construction_priorities", len(plan.ConstructionPriorities)},
+		{"production_orders", listLength(plan.ProductionOrders)},
+		{"recruitment_orders", listLength(plan.RecruitmentOrders)},
+		{"recruitment_priorities", len(plan.RecruitmentPriorities)},
+		{"upgrade_orders", len(plan.UpgradeOrders)},
+	}
+}
+
+func listLength[T any](list *[]T) int {
+	if list == nil {
+		return 0
+	}
+	return len(*list)
+}
+
+// recordSubmissionSpan records the outcome on the submit tool's span. Rejections add
+// each issue's field and code, server-defined names that carry no submitted value, so
+// traces show which rules a model broke.
+func recordSubmissionSpan(span trace.Span, plan controller.PlanProposal, result ai.SubmissionResult) {
+	attributes := []attribute.KeyValue{attribute.Bool("battlefield.submission.accepted", result.Accepted)}
+	for _, list := range planShape(plan) {
+		attributes = append(attributes, attribute.Int("battlefield.plan."+list.name, list.count))
+	}
+	if len(result.Errors) > 0 {
+		fields, codes := make([]string, 0, len(result.Errors)), make([]string, 0, len(result.Errors))
+		for _, issue := range result.Errors {
+			fields, codes = append(fields, issue.Field), append(codes, issue.Code)
+		}
+		attributes = append(attributes, attribute.StringSlice("battlefield.validation.fields", fields), attribute.StringSlice("battlefield.validation.codes", codes))
+	}
+	span.SetAttributes(attributes...)
 }

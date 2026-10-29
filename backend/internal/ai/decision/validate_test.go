@@ -164,3 +164,40 @@ func TestConstructionRespectsFrozenBuildingLimits(t *testing.T) {
 		t.Fatal("observations without limits must not be rejected", issues)
 	}
 }
+
+// A rejected site names the list to choose from and its closest legal entries, so a
+// model can move the order in one retry.
+func TestConstructionRejectionsNameTheListAndNearestSites(t *testing.T) {
+	mines := []controller.Coordinate{{X: 20, Y: 10}, {X: 4, Y: 10}, {X: 5, Y: 9}, {X: 12, Y: 8}}
+	legal := ai.LegalChoices{ActionKinds: []string{"attack"}, Buildings: []game.BuildingType{{ID: "defense_tower"}, {ID: game.BuildingEconomy}},
+		EconomySites: []controller.Coordinate{{X: 9, Y: 7}}, GoldMineSites: mines}
+	r := ai.DecisionRecord{Version: 1, TargetTick: 10, Observation: ai.DecisionContext{Legal: legal, View: game.View{State: game.State{GoldMines: []game.GoldMine{{}}}}}}
+	construction := []controller.ConstructionOrder{
+		{BuildingType: game.BuildingEconomy, Position: controller.Coordinate{X: 4, Y: 9}},
+		{BuildingType: "wall", Position: controller.Coordinate{X: 9, Y: 7}},
+	}
+	s := ai.PlanSubmission{ExpectedVersion: 1, TargetTick: 10, IdempotencyKey: "once", Plan: controller.PlanProposal{Name: "expand", ConstructionOrders: &construction}}
+	issues := ValidateSubmission(r, s)
+	want := []string{
+		`construction "economy" at (4,9) is not in legal.goldMineSites; nearest legal: (5,9), (4,10), (12,8)`,
+		`construction "wall" is not in legal.buildings`,
+	}
+	if len(issues) != len(want) || issues[0].Message != want[0] || issues[1].Message != want[1] {
+		t.Fatalf("issues = %+v", issues)
+	}
+	r.Observation.Legal.GoldMineSites = nil
+	construction = construction[:1]
+	if issues := ValidateSubmission(r, s); len(issues) != 1 || issues[0].Message != `construction "economy" at (4,9) is not in legal.goldMineSites; none is left, so send []` {
+		t.Fatalf("issues with no sites left = %+v", issues)
+	}
+	r.Observation.Opening = true
+	s.Plan.SpendOrder = []string{"construction"}
+	issues = ValidateSubmission(r, s)
+	messages := map[string]bool{}
+	for _, issue := range issues {
+		messages[issue.Message] = true
+	}
+	if !messages["Remove construction from spendOrder: the opening has no construction."] || !messages["construction is unavailable during the opening; send constructionOrders as []"] {
+		t.Fatalf("opening issues = %+v", issues)
+	}
+}

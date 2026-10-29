@@ -16,7 +16,6 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -178,11 +177,14 @@ func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest,
 		if result.Accepted {
 			level = slog.LevelInfo
 		}
-		s.logger.LogAttrs(ctx, level, "decision_plan_submitted",
-			slog.String("request_id", input.RequestID), slog.Uint64("target_tick", input.TargetTick), slog.Bool("accepted", result.Accepted),
-			slog.String("decision_status", result.Status), slog.Int("validation_error_count", len(result.Errors)))
+		attrs := []slog.Attr{slog.String("request_id", input.RequestID), slog.Uint64("target_tick", input.TargetTick), slog.Bool("accepted", result.Accepted),
+			slog.String("decision_status", result.Status), slog.Int("validation_error_count", len(result.Errors))}
+		for _, list := range planShape(plan) {
+			attrs = append(attrs, slog.Int(list.name, list.count))
+		}
+		s.logger.LogAttrs(ctx, level, "decision_plan_submitted", attrs...)
 	}
-	trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("battlefield.submission.accepted", result.Accepted))
+	recordSubmissionSpan(trace.SpanFromContext(ctx), plan, result)
 	tracing.AIOutcome(trace.SpanFromContext(ctx), err != nil || !result.Accepted, "submission_rejected")
 	return nil, result, err
 }
