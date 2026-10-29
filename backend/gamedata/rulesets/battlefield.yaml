@@ -1,8 +1,9 @@
 id: battlefield
-version: "11"
+version: "12"
 startingGold: 220
 maximumUnitCount: 50
 continuousProduction: true
+alternatingTurns: true
 library:
   id: core
   version: "10"

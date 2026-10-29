@@ -58,7 +58,8 @@ Placement, spacing, mine and activation rules are in
 | Gunner | 120 | 38 | 24 | 2 | 3 | 1 | 2 | 6 | Requires Gunpowder; highest troop attack |
 | Heavy Cavalry | 150 | 130 | 17 | 7 | 7 | 2 | 1 | 9 | Requires Knighthood; +8 attack vs infantry |
 
-Speed determines turn order, not distance or attacks per tick. Units move or act
+Speed determines turn order, not distance or attacks per tick (see
+[tick order](game-rules.md#tick-order)). Units move or act
 once per tick; recruits first act on the following tick. Bonus attack is added
 before defense and the existing faction tactic modifiers. There is no splash
 damage or friendly fire. Both factions see every battlefield action. Faction economic totals remain private.
@@ -145,7 +146,7 @@ for that turn. Arsenal never grants Engineers an attack; Plating still applies.
 | Siege Workshop | 120 | 100 | 3 | 3 | Catapult, Battering Ram, Engineer, Cannon |
 | Infirmary | 80 | 100 | 3 | 3 | Herbalist |
 
-Castles and towers act in stable building-ID order before unit turns. They use the same
+Castles and towers act before unit turns, in [tick order](game-rules.md#tick-order). They use the same
 distance/health/ID target tie breakers and faction damage modifiers as ordinary
 attacks, award normal loot, and cannot attack buildings. At 60 gold, a tower has
 more base HP per gold than any unit, making stationary defense economical.
@@ -250,19 +251,22 @@ probe builds no economy and the hexes beside mines would otherwise decide where 
 buildings stand. Both sides build the same four training buildings on mirrored sites
 in front of their castles and buy every general upgrade level; one side also buys
 both unlocks and trains Gunners, Heavy Cavalry and Cannons instead of Crossbowmen,
-Raider Cavalry and Catapults. The classic mirror ends at tick 183, while the unlocked
-side wins from either map side by tick 84, and an unlocked mirror ends by tick 119.
+Raider Cavalry and Catapults. The classic mirror ends at tick 174, while the unlocked
+side wins from either map side by tick 78, and an unlocked mirror ends by tick 146.
 Results depend on where the training buildings stand: with a source behind its
 castle the classic army can win, so the probe compares units, not placement. `TestFrontierUpgradeBalanceProbe` compares a
 level-I upgrade plus troops with an equal-cost army at the opening; both draw.
 `TestScriptedBotsUnlockAndTrainLateGameUnits` runs the scripted bots on the live
 ruleset: both claim home and mid-field mines, buy both unlocks after level II, train
-Gunners and Heavy Cavalry, and the battle ends with a winner (tick 201).
+Gunners and Heavy Cavalry, and the battle ends with a winner (tick 378).
 
-`TestScriptedBotsFinishEveryMap` plays the scripted bots on every map with each
-faction on each side. Every battle must end with a winner before the 800-tick limit;
-current results range from tick 183 (Frontier Siege and Highland Crown) to 500
-(River Fords). Narrow chokepoints let both armies hold a front: drafts with one- and
+`TestScriptedBotsFinishEveryMap` plays the scripted bots against each other on every
+map twice, with the two faction IDs swapped between runs. Each seat must hold the same
+state on every tick of both runs, so faction IDs never decide a battle, and every
+battle must end with a winner before the 800-tick limit; current results range from
+tick 210 (Highland Crown) to 610 (Castle Siege). Because both sides run the same bot,
+the winning seat shows each map's side bias: the first seat wins Highland Crown and
+River Fords, the second Castle Siege, Frontier Siege and Long March. Narrow chokepoints let both armies hold a front: drafts with one- and
 two-row fords, or a 13-row Long March, reached the limit without a winner. Scarce
 gold has the same effect at chokepoints, because once the mines are empty both sides
 fight on castle income alone; River Fords at 1,500 gold per mine stalled, so it

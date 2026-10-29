@@ -25,21 +25,6 @@ func (m *Match) runUnits(tactics map[string]string) ([]Event, *string) {
 	return events, nil
 }
 
-func (m *Match) unitTurnOrder() []int {
-	indices := make([]int, 0, len(m.state.Units))
-	for index := range m.state.Units {
-		indices = append(indices, index)
-	}
-	sort.Slice(indices, func(i, j int) bool {
-		left, right := m.state.Units[indices[i]], m.state.Units[indices[j]]
-		if left.Speed != right.Speed {
-			return left.Speed > right.Speed
-		}
-		return left.ID < right.ID
-	})
-	return indices
-}
-
 func (m *Match) runUnit(unit *Unit, tactics map[string]string) ([]Event, *string) {
 	if unit.RepairAmount > 0 {
 		return m.runEngineer(unit), nil

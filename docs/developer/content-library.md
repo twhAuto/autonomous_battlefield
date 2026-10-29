@@ -59,12 +59,15 @@ The shared ruleset points to the library using `library.id`, `library.version`,
 (`buildings.maximumBuildingCount` and `maximumEconomyCount`, each 0–16; 0 is
 unlimited), the default gold per mine (`buildings.goldMineReserve`, 0–1,000,000),
 whether overlapping territory is closed to construction (`buildings.contestedTerritory`), the
-per-faction `maximumUnitCount` (0–200; 0 is unlimited), combat percentages and
-`continuousProduction`. A positive `goldMineReserve` turns every `g` hex into a
+per-faction `maximumUnitCount` (0–200; 0 is unlimited), combat percentages,
+`continuousProduction` and `alternatingTurns`. A positive `goldMineReserve` turns every `g` hex into a
 finite gold mine that economy buildings require; without it, `maximumEconomyCount: 0`
-offers no economy buildings. The live ruleset v11 sets no building limits, 50 units,
-2,000 gold per mine and contested territory, and references core v10, which includes
-the late-game unlocks.
+offers no economy buildings. The live ruleset v12 sets no building limits, 50 units,
+2,000 gold per mine, contested territory and alternating turns, and references core
+v10, which includes the late-game unlocks.
+`alternatingTurns: true` orders each tick by seat rather than faction ID (see
+[tick order](../game/game-rules.md#tick-order)); absent or false keeps the ID order of
+frozen older battles.
 `continuousProduction: true` enables continuous AI-selected unit production; absent
 or false selects the batch purchases of frozen older battles. The archived `content/core-v9.yaml`, `content/core-v8.yaml` and `content/core-v7.yaml`
 are the authored references for earlier active libraries, and `content/core-v6.yaml` for the

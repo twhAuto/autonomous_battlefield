@@ -1,7 +1,5 @@
 package game
 
-import "sort"
-
 const MaximumTrainingQueue = 12
 
 // MaximumUnitCountLimit bounds authored per-faction unit caps.
@@ -36,7 +34,7 @@ func (m *Match) runTraining() []Event {
 	for i := range indices {
 		indices[i] = i
 	}
-	sort.Slice(indices, func(i, j int) bool { return m.state.Buildings[indices[i]].ID < m.state.Buildings[indices[j]].ID })
+	m.sortBuildings(indices)
 	definitions := UnitTypesByID(m.scenario.Ruleset)
 	events := []Event{}
 	for _, i := range indices {
