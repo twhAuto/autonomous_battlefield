@@ -74,6 +74,24 @@ func TestCompletedBattleStandsWhenItsEntrantIsDisqualified(t *testing.T) {
 	}
 }
 
+func TestFinalistsCannotBeDisqualifiedOnceTheFinalBattleCompleted(t *testing.T) {
+	l := testLeague(2)
+	playGroups(l, func(e int) int { return e })
+	settleBy(l, func(e int) int { return e })
+	advance(l)
+	// The final is 0 v 1; 0 won the battle, which the scheduler has not recorded yet.
+	final := len(l.Fixtures) - 1
+	battleID := "battle"
+	l.Fixtures[final].Status, l.Fixtures[final].BattleID = FixtureRunning, &battleID
+	l.Fixtures[final].Battle = &BattleOutcome{Status: BattleCompleted, WinnerFactionID: &l.Entrants[0].FactionID}
+	if _, err := l.Disqualify(1, Disqualification{}); !errors.Is(err, ErrEntrantEliminated) {
+		t.Fatalf("losing finalist err = %v", err)
+	}
+	if _, err := l.Disqualify(0, Disqualification{}); !errors.Is(err, ErrLastContender) || l.Disqualified(0) {
+		t.Fatalf("winning finalist err = %v", err)
+	}
+}
+
 func TestDisqualifyRefusesWhatItCannotDo(t *testing.T) {
 	l := testLeague(2)
 	settleBy(l, func(e int) int { return e })

@@ -64,10 +64,12 @@ func (l *League) Disqualified(entrant int) bool {
 }
 
 // Eliminated returns the entrants who can no longer win the league: two group losses,
-// or one in the knockout.
+// or one in the knockout. A battle that completed counts before the scheduler records
+// it, so its loser is out and its winner, if disqualified now, cannot be crowned.
 func (l *League) Eliminated() map[int]bool {
 	losses, eliminated := map[int]int{}, map[int]bool{}
 	for _, f := range l.Fixtures {
+		f = recorded(f)
 		if l.MatchWinner(f) < 0 {
 			continue
 		}
@@ -95,7 +97,17 @@ func (l *League) otherContender(entrant int, eliminated map[int]bool) bool {
 // its battle has not completed. A completed battle's result stands even before the
 // scheduler records it.
 func (f Fixture) open() bool {
-	return f.Status == FixturePending || (f.Status == FixtureRunning && (f.Battle == nil || f.Battle.Status != BattleCompleted))
+	status := recorded(f).Status
+	return status == FixturePending || status == FixtureRunning
+}
+
+// recorded is a fixture as the scheduler will record it: running with a completed
+// battle counts as completed.
+func recorded(f Fixture) Fixture {
+	if f.Status == FixtureRunning && f.Battle != nil && f.Battle.Status == BattleCompleted {
+		f.Status = FixtureCompleted
+	}
+	return f
 }
 
 // forfeit settles a fixture against its disqualified side, or both sides.

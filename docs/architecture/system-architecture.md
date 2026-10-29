@@ -422,7 +422,7 @@ pass interrupted after creating a battle adopts it on the next pass
 same lock, cancels unfinished fixtures and then stops the league's running battles.
 Disqualification waits for the lock too. It records the entrant, forfeits its open
 fixtures and adds the matches that follow; after committing, it stops the forfeited
-battles.
+battles, including one an interrupted pass created for a pending fixture.
 
 Battle creation goes through the same service as `POST /v1/battles`, as the
 league's Admin owner, so model access, faction existence and timing are rechecked

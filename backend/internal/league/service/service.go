@@ -319,17 +319,48 @@ func disqualify(ctx context.Context, store SchedulerStore, id string, entrant in
 	if err := store.Disqualify(ctx, id, entrant, d); err != nil {
 		return nil, err
 	}
-	active := []string{}
-	for _, f := range forfeited {
-		if err := store.SaveFixture(ctx, f); err != nil {
-			return nil, err
-		}
-		if f.Battle != nil && (f.Battle.Status == "queued" || f.Battle.Status == "running") {
-			active = append(active, *f.BattleID)
-		}
+	active, err := saveForfeits(ctx, store, l, forfeited)
+	if err != nil {
+		return nil, err
 	}
 	slog.InfoContext(ctx, "league_entrant_disqualified", "league_id", id, "entrant", entrant, "forfeited_fixtures", len(forfeited), "active_battles", len(active))
 	return active, settle(ctx, store, l)
+}
+
+// saveForfeits stores forfeited fixtures and returns the battles to stop: those still
+// queued or running, and any a pass created for a pending fixture before it rolled back.
+func saveForfeits(ctx context.Context, store SchedulerStore, l *league.League, forfeited []league.Fixture) ([]string, error) {
+	active := []string{}
+	for _, f := range forfeited {
+		f, err := linkInterruptedStart(ctx, store, l, f)
+		if err != nil {
+			return nil, err
+		}
+		if err := store.SaveFixture(ctx, f); err != nil {
+			return nil, err
+		}
+		if f.BattleID != nil && (f.Battle == nil || f.Battle.Status == "queued" || f.Battle.Status == "running") {
+			active = append(active, *f.BattleID)
+		}
+	}
+	return active, nil
+}
+
+// linkInterruptedStart links a pending fixture to the battle a scheduling pass created
+// for its next attempt before rolling back. The scheduler adopts such a battle only for
+// a pending fixture, so a forfeit links it instead and the battle is stopped.
+func linkInterruptedStart(ctx context.Context, store SchedulerStore, l *league.League, f league.Fixture) (league.Fixture, error) {
+	if f.BattleID != nil {
+		return f, nil
+	}
+	battleID := league.FixtureBattleID(l.BattleSalt, f.ID, f.Attempts+1)
+	existing, err := store.Battle(ctx, battleID)
+	if err != nil || existing == nil || !createdFor(l, f, *existing) {
+		return f, err
+	}
+	f.Attempts++
+	f.BattleID = &battleID
+	return f, nil
 }
 
 func (s *Service) stopBattle(ctx context.Context, leagueID, battleID string) {

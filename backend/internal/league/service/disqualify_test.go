@@ -77,6 +77,29 @@ func TestDisqualifyEntrantRefusals(t *testing.T) {
 	}
 }
 
+func TestDisqualifyEntrantStopsTheBattleOfAnInterruptedStart(t *testing.T) {
+	h := runningHarness(t, 8)
+	// A pass created fixture 0's battle, then rolled back before linking it.
+	battle := h.ownBattle(0, 1, "queued")
+	if _, err := h.service.DisqualifyEntrant(actorContext(authn.Admin), leagueID, h.stored().Fixtures[0].Away, ""); err != nil {
+		t.Fatal(err)
+	}
+	f := h.stored().Fixtures[0]
+	if f.Status != league.FixtureForfeited || f.BattleID == nil || *f.BattleID != battle || f.Attempts != 1 ||
+		fmt.Sprint(h.battles.stopped) != fmt.Sprint([]string{battle}) || h.repo.battles[battle] != "stopped" {
+		t.Fatalf("fixture %+v, stopped %v", f, h.battles.stopped)
+	}
+	// A foreign battle holding the next opening's ID is neither linked nor stopped.
+	other := h.ownBattle(1, 1, "running")
+	h.repo.origins[other] = BattleProvenance{OwnerID: "intruder"}
+	if _, err := h.service.DisqualifyEntrant(actorContext(authn.Admin), leagueID, h.stored().Fixtures[1].Away, ""); err != nil {
+		t.Fatal(err)
+	}
+	if f := h.stored().Fixtures[1]; f.Status != league.FixtureForfeited || f.BattleID != nil || len(h.battles.stopped) != 1 {
+		t.Fatalf("fixture %+v, stopped %v", f, h.battles.stopped)
+	}
+}
+
 func TestSchedulePassRetriesTheStopOfAForfeitedBattle(t *testing.T) {
 	h := runningHarness(t, 8)
 	h.pass(t)
