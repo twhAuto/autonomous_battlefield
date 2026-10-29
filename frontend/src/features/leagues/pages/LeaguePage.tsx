@@ -1,5 +1,6 @@
 // One league: progress, champion, running battles, group tables, knockout bracket and
-// fixtures. Refreshes while the league runs; Admins can cancel it after confirming.
+// fixtures. Refreshes while the league runs. Admins can cancel it after confirming, or
+// start a new league from a copy of its setup.
 
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -9,7 +10,7 @@ import { entrantName } from '../presentation/leagues'
 
 export const leagueRefreshMs = 10_000
 
-export function LeaguePage({ canCancel }: Readonly<{ canCancel: boolean }>) {
+export function LeaguePage({ canManage }: Readonly<{ canManage: boolean }>) {
   const { id = '' } = useParams()
   const [league, setLeague] = useState<League | null>(null)
   const [error, setError] = useState('')
@@ -62,8 +63,9 @@ export function LeaguePage({ canCancel }: Readonly<{ canCancel: boolean }>) {
           </div>
           <div className="league-actions">
             <Link className="compact-action" to={`/analytics?leagueId=${encodeURIComponent(league.id)}`}>STATISTICS →</Link>
-            {canCancel && running && !confirming && <button className="compact-action" type="button" onClick={() => setConfirming(true)}>CANCEL LEAGUE</button>}
-            {canCancel && running && confirming && <><button className="compact-action compact-action--danger" type="button" onClick={cancel}>CONFIRM CANCEL</button>
+            {canManage && <Link className="compact-action" to={`/leagues/new?from=${encodeURIComponent(league.id)}`}>START AGAIN →</Link>}
+            {canManage && running && !confirming && <button className="compact-action" type="button" onClick={() => setConfirming(true)}>CANCEL LEAGUE</button>}
+            {canManage && running && confirming && <><button className="compact-action compact-action--danger" type="button" onClick={cancel}>CONFIRM CANCEL</button>
               <button className="compact-action" type="button" onClick={() => setConfirming(false)}>KEEP RUNNING</button></>}
           </div>
         </div>
