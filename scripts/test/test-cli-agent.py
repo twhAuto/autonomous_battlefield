@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise host profile selection and generated configuration without a cluster."""
+import json
 import os
 from pathlib import Path
 import re
@@ -83,6 +84,31 @@ set_profile_flags false false false
                 self.assertEqual(result.returncode, 0 if valid else 2, result.stderr)
                 if not valid:
                     self.assertIn('HOST_AGENT_CONCURRENCY must be a whole number from 1 to 8.', result.stderr)
+
+    def run_functions(self, script, **env):
+        return subprocess.run(['bash', '-euo', 'pipefail', '-c', FUNCTIONS + '\n' + script],
+                              capture_output=True, text=True, env={**BASE_ENV, **env})
+
+    def test_served_profiles_lists_served_ids_and_reports_dropped_ones(self):
+        status = json.dumps({'draining': False, 'active': 0, 'concurrency': 8,
+                             'profiles': ['claude-subscription-local', 'codex-subscription-local'],
+                             'unavailable': {'gemini-subscription-local': 'agy CLI version is not supported'}})
+        result = self.run_functions('served_profiles <<<"$STATUS"', STATUS=status)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.split(), ['claude-subscription-local', 'codex-subscription-local'])
+        self.assertIn('cannot serve gemini-subscription-local: agy CLI version is not supported', result.stderr)
+        empty = self.run_functions('served_profiles <<<\'{"profiles": []}\'')
+        self.assertEqual((empty.returncode, empty.stdout), (0, ''))
+
+    def test_keep_served_profiles_advertises_only_what_the_agent_serves(self):
+        script = 'use_codex=1; use_gemini=1; use_claude=1\nset +e; keep_served_profiles "$SERVED"; code=$?; set -e\necho "$code $use_codex $use_gemini $use_claude"'
+        dropped = self.run_functions(script, SERVED='codex-subscription-local\nclaude-subscription-local')
+        self.assertEqual(dropped.stdout.split(), ['1', '1', '0', '1'], dropped.stderr)
+        served = self.run_functions(script, SERVED='codex-subscription-local\ngemini-subscription-local\nclaude-subscription-local')
+        self.assertEqual(served.stdout.split(), ['0', '1', '1', '1'], served.stderr)
+        # A profile ID must match a whole line, not a prefix of another ID.
+        partial = self.run_functions(script, SERVED='codex-subscription-local-old')
+        self.assertEqual(partial.stdout.split(), ['1', '0', '0', '0'], partial.stderr)
 
     def test_default_version_prefixes_match_backend_config(self):
         result = self.run_profile('all', 'codex gemini claude')

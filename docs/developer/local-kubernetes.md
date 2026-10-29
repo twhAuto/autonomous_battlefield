@@ -102,7 +102,11 @@ To reduce load, run fewer slots, for example `HOST_AGENT_CONCURRENCY=2`, and set
 
 The helper checks the CLI version policy and the existing host login, forwards
 only the internal AI gateway service to loopback, runs the decision agent on the
-host, and makes the connected profiles selectable through the API while it runs.
+host, and makes selectable through the API, while it runs, only the profiles the
+agent's `/status` reports it serves. It prints each profile the agent dropped with
+the agent's reason. A CLI that updated itself after the helper checked its version
+fails the agent's own check, so the helper then re-pins the installed versions and
+restarts the agent once; it exits if the agent serves none of the selected CLIs.
 No CLI login directory or provider credential is mounted into the cluster. Keep it
 running for the whole battle and press Ctrl+C afterwards. The generated host
 profile passes `--model gpt-5.6-luna` to Codex, `--model gemini-3.8-flash-medium`
