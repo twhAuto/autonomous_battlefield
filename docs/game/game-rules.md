@@ -222,7 +222,7 @@ both factions' totals in the full battle snapshot:
 - A **scripted** controller submits its deterministic plan immediately.
 - A **model** controller receives the observation through MCP tools and must
   submit a valid plan with `submit_strategy_plan` before the engine's decision
-  timeout (`decisionTimeout`, 2 minutes in `backend/config.yaml`). Invalid plans
+  timeout (`decisionTimeout`, 3 minutes in `backend/config.yaml`). Invalid plans
   are rejected with validation errors; the model may correct them within its
   submission limit.
 - If no valid plan arrives in time, the engine applies a **fallback**: at the
