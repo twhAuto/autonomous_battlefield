@@ -94,7 +94,7 @@ func seed(t *testing.T, db *pgxpool.Pool) {
 	exec(t, db, reused, "00000000-0000-4000-8000-00000000d005", recentBattle, factionA, 40, "retry_reuse", created)
 	exec(t, db, `INSERT INTO leagues(id,owner_id,name,request_digest,battle_salt,scenario_ids,requested_ticks,group_count) VALUES($1,'admin','Cup','d',repeat('a',32),'{frontier-siege}',500,2)`, leagueID)
 	exec(t, db, `INSERT INTO league_entrants(league_id,entrant_index,group_index,faction_id,faction_name,controller) VALUES($1,0,0,$2,'Amber','{}'),($1,1,0,$3,'Basalt','{}')`, leagueID, factionA, factionB)
-	exec(t, db, `INSERT INTO league_fixtures(id,league_id,sequence,stage,group_index,round,leg,home_entrant,away_entrant,scenario_id,status,attempts,battle_id)
+	exec(t, db, `INSERT INTO league_fixtures(id,league_id,sequence,stage,group_index,round,tie,home_entrant,away_entrant,scenario_id,status,attempts,battle_id)
 		VALUES('00000000-0000-4000-8000-00000000f001',$1,0,'group',0,1,1,0,1,'frontier-siege','completed',1,$2)`, leagueID, recentBattle)
 }
 

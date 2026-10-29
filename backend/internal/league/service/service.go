@@ -78,7 +78,7 @@ func New(repo Repository, battles Battles, factions Factions, options Options) *
 }
 
 // CreateLeague validates every entrant against every chosen map, then stores the league
-// with its group schedule. Repeating the same request returns the stored league.
+// with its opening matches. Repeating the same request returns the stored league.
 func (s *Service) CreateLeague(ctx context.Context, input CreateInput) (*league.League, error) {
 	if err := requireAdmin(ctx); err != nil {
 		return nil, err
@@ -195,7 +195,7 @@ func (s *Service) newLeague(ctx context.Context, input CreateInput, groupCount i
 		}
 		created.Entrants = append(created.Entrants, league.Entrant{Index: index, Group: entrant.Group, FactionID: stored.ID, FactionName: stored.Name, Controller: entrant.Controller})
 	}
-	created.Fixtures = league.GroupFixtures(created.ID, created.Entrants, groupCount, created.Settings.ScenarioIDs)
+	created.Fixtures = created.OpeningFixtures()
 	return created, nil
 }
 

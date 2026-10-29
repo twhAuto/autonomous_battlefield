@@ -377,8 +377,8 @@ segment contract.
 ### 5.7 Play a league
 
 An Admin's `POST /v1/leagues` checks every entrant on every map with the battle
-service's validation, then stores the league, its entrants and the full group
-schedule. Every API replica runs the league scheduler every 10 seconds; a pass holds
+service's validation, then stores the league, its entrants and each group's opening
+matches. Every API replica runs the league scheduler every 10 seconds; a pass holds
 a transaction advisory lock, so one replica schedules at a time and the others skip.
 
 ```mermaid
@@ -388,7 +388,7 @@ sequenceDiagram
     participant B as Battle service
     participant E as Engine
     S->>DB: lock, read running leagues and fixture battles
-    S->>DB: settle finished fixtures, add the next knockout stage or complete
+    S->>DB: settle finished fixtures, add the matches that follow or complete
     S->>DB: count unfinished battles and their CLI model sides
     loop each pending fixture that fits a free engine slot and the free CLI slots
         S->>B: CreateBattle as the league owner (budget-exempt)
@@ -400,9 +400,10 @@ sequenceDiagram
 
 A pass first stops any battle still running in a cancelled league, so a failed stop
 is retried. It then settles running fixtures from their battles, retrying or voiding
-failed ones as the [league rules](api.md#leagues) describe. When every fixture so
-far is settled it adds the next knockout stage, or records the champion after the
-final. Finally it starts pending fixtures, oldest running league first and in fixture
+failed ones as the [league rules](api.md#leagues) describe. It adds each group's
+next round once that group's fixtures have settled, the knockout once every group is
+placed, each later knockout stage once the previous one has settled, and records the
+champion after the final. Finally it starts pending fixtures, oldest running league first and in fixture
 order, while battles of any owner leave an engine slot free: the scheduler reads the
 slot count from `engine.concurrency`, the same setting the engine uses, so a league
 battle never waits in the queue, where its one-hour timeout already counts. A fixture

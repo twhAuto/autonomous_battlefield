@@ -58,7 +58,7 @@ must supply the restricted login
 | `battle_decisions` | One strategy decision window: frozen observation and hash, controller, profile, model and `reasoning_effort` (empty for the model default), lease, lifecycle timestamps, resolved plan, fallback source, error category, usage, provider metadata, trace context | Unique per `(battle_id, attempt, faction_id, target_tick)`. Status `pending`, `running`, `accepted`, `fallback` or `failed`. `version` guards resolution; `idempotency_key` deduplicates submissions. `faction_id` is snapshot data, not a foreign key |
 | `leagues` | One AI league: owner, name, status, request digest, secret battle-ID salt, maps, battle timing, group count, champion | Status `running`, `completed` or `cancelled`; `completed_at` is set exactly when it is not running, and a champion only when completed |
 | `league_entrants` | One competitor per league: entry index, group, faction ID, faction name copied at creation, requested controller | Primary key `(league_id, entrant_index)`; one entrant per faction per league. No foreign key to `factions`, so deleting a faction never breaks a league |
-| `league_fixtures` | One battle slot: play sequence, stage, group, round, tie, leg, home and away entrants, map, status, attempts, current battle | IDs are derived from the league and sequence, so repeated writes are no-ops. Status `pending`, `running`, `completed`, `void` or `cancelled`; a running fixture has a battle. `battle_id` is unique and set to null if that battle is deleted. Results are read from the battle, not copied |
+| `league_fixtures` | One match, played as one battle: play sequence, stage, group, round, tie, home and away entrants, map, status, attempts, current battle | IDs are derived from the league and sequence, so repeated writes are no-ops. Group fixtures are rounds 1–3 with ties 1–2; knockout fixtures are round 1. Status `pending`, `running`, `completed`, `void` or `cancelled`; a running fixture has a battle. `battle_id` is unique and set to null if that battle is deleted. Results are read from the battle, not copied |
 | `faction_generation_accounts` | Per-actor row used as a generation lock | Locked `FOR UPDATE` while creating a job |
 | `faction_background_generations` | Durable background-draft jobs | Unique `(actor_id, idempotency_key)`; a partial unique index allows one queued or running job per actor. Status `queued`, `running`, `succeeded`, `failed` or `expired` |
 | `runtime_policy` | Singleton: AI stop switch, battle allowances, per-battle model budget, CLI concurrency | Row lock serializes every admission decision |
@@ -70,7 +70,7 @@ must supply the restricted login
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
 These diagrams show every column of every table, generated from the schema after
-migration `00023` with keys marked `PK` and `FK`. Update them with any schema
+migration `00024` with keys marked `PK` and `FK`. Update them with any schema
 change. Battles snapshot faction data instead of referencing `factions`, so
 deleting a faction never changes a battle. Gameplay content lives in the frozen
 scenario and state JSON of `battle_runs`, not in relational columns: each battle
@@ -208,7 +208,6 @@ erDiagram
         int group_index
         int round
         int tie
-        int leg
         int home_entrant FK
         int away_entrant FK
         text scenario_id

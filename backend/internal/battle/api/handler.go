@@ -16,6 +16,7 @@ import (
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
+	"github.com/twh09/autonomous_battlefield/backend/internal/league"
 )
 
 const (
@@ -323,12 +324,15 @@ func battleResponse(run *battleservice.BattleRun) any {
 	}
 }
 
-// leagueFor keeps the field absent, not null, for battles outside a league.
+// leagueFor keeps the field absent, not null, for battles outside a league, and names a
+// group fixture's match.
 func leagueFor(run *battleservice.BattleRun) any {
 	if run.League == nil {
 		return nil
 	}
-	return run.League
+	link := *run.League
+	link.Match = league.MatchName(link.Stage, link.Round, link.Tie)
+	return link
 }
 
 func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {

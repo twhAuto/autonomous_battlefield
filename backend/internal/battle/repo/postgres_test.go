@@ -70,12 +70,12 @@ func TestGetBattleDecodesStoredRun(t *testing.T) {
 	scenarioJSON, _ := json.Marshal(scenario)
 	resultJSON, _ := json.Marshal(result)
 	stateJSON, _ := json.Marshal(battle.State{BattleID: "battle-1", Tick: 4})
-	leagueID, leagueName, fixtureID, stage, round, tie, leg := "league-1", "Cup", "fixture-1", "semifinal", 1, 2, 1
+	leagueID, leagueName, fixtureID, stage, round, tie := "league-1", "Cup", "fixture-1", "semifinal", 1, 2
 	db := &battleDB{row: battleRow(func(destinations ...any) error {
 		values := []any{
 			"battle-1", "scenario-1", "digest", scenarioJSON, uint64(10), stateJSON, stateJSON, uint64(4),
 			"completed", false, 2, resultJSON, &errorCode, &errorMessage, now, &started, &completed, "legacy-admin",
-			&leagueID, &leagueName, &fixtureID, &stage, (*int)(nil), &round, &tie, &leg,
+			&leagueID, &leagueName, &fixtureID, &stage, (*int)(nil), &round, &tie,
 		}
 		return assignBattleValues(destinations, values)
 	})}
@@ -457,7 +457,7 @@ func storedBattleRow(snapshot, result []byte) battleRow {
 		return assignBattleValues(destinations, []any{
 			"battle-1", "scenario-1", "digest", snapshot, uint64(10), state, state, uint64(0),
 			"queued", false, 1, result, (*string)(nil), (*string)(nil), time.Now(), (*time.Time)(nil), (*time.Time)(nil), "legacy-admin",
-			(*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil), (*int)(nil), (*int)(nil), (*int)(nil), (*int)(nil),
+			(*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil), (*int)(nil), (*int)(nil), (*int)(nil),
 		})
 	}
 }

@@ -804,9 +804,9 @@ paths:
         Admins only. 8 entrants form groups A and B; 16 form groups A to D, four per
         group, each with a distinct faction. Every entrant is checked on every map
         with the same rules as battle creation, including model access and timing.
-        The API then plays the fixtures in the background: each group pairing once
-        from each spawn side, then a crossover knockout of the top two per group,
-        every tie over two legs. League battles are owned by the creating Admin, skip
+        The API then plays the fixtures in the background: each group plays a dual
+        tournament, then the top two per group meet in a crossover knockout, every
+        match one battle. League battles are owned by the creating Admin, skip
         the battle allowances and the per-battle model decision budget, and keep the
         one-hour battle timeout.
 
@@ -1851,16 +1851,24 @@ components:
 
     BattleLeague:
       type: object
-      required: [id, name, fixtureId, stage, round, leg]
+      required: [id, name, fixtureId, stage, round, tie]
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
         fixtureId: {type: string, format: uuid}
         stage: {$ref: '#/components/schemas/LeagueStage'}
         group: {type: string, enum: [A, B, C, D], description: Group-stage fixtures only.}
-        round: {type: integer, minimum: 1}
-        tie: {type: integer, minimum: 1, description: Knockout fixtures only.}
-        leg: {type: integer, enum: [1, 2]}
+        round: {type: integer, minimum: 1, maximum: 3}
+        tie: {type: integer, minimum: 1}
+        match: {$ref: '#/components/schemas/LeagueMatch'}
+
+    LeagueMatch:
+      description: |
+        A group fixture's match in its dual tournament, absent for knockout fixtures:
+        round 1 holds the two `opening` matches, round 2 the `winners` (tie 1) and
+        `losers` (tie 2) matches, and round 3 the `decider`.
+      type: string
+      enum: [opening, winners, losers, decider]
 
     LeagueStage: {type: string, enum: [group, quarterfinal, semifinal, final]}
 
@@ -1872,7 +1880,7 @@ components:
         id: {type: string, format: uuid, description: Client-generated; see the idempotency rules.}
         name: {type: string, minLength: 1, maxLength: 80}
         scenarioIds:
-          description: One to five distinct maps. Group pairings rotate through them in schedule order and keep one map for both legs.
+          description: One to five distinct maps. Matches rotate through them, each group's five in turn and then the knockout ties.
           type: array
           minItems: 1
           maxItems: 5
@@ -1881,7 +1889,7 @@ components:
         tickDuration: {type: [string, 'null'], description: As for battle creation.}
         decisionIntervalTicks: {type: [integer, 'null'], minimum: 1, maximum: 100, description: As for battle creation.}
         entrants:
-          description: 8 or 16 entrants, four per group. Entry order is the final tiebreak.
+          description: 8 or 16 entrants, four per group. Entry order seeds each group's opening matches and is the final tiebreak.
           type: array
           minItems: 8
           maxItems: 16
@@ -1907,7 +1915,7 @@ components:
       required: [settled, total]
       properties:
         settled: {type: integer, description: Fixtures completed, void or cancelled.}
-        total: {type: integer, description: Fixtures the league plays when nothing is cancelled, 30 or 62.}
+        total: {type: integer, description: Fixtures the league plays when nothing is cancelled, 13 or 27.}
 
     LeagueSummary:
       type: object
@@ -1964,9 +1972,8 @@ components:
               controller: {$ref: '#/components/schemas/Controller'}
         groups:
           description: |
-            Each group ranked by points (win 3, draw 1), then points from matches
-            among the entrants level on points, castle-health difference, damage
-            difference, and entry order. Void fixtures count for nobody.
+            Each group's records, ordered by wins, then fewer losses, then entry
+            order, which is also the order of their placements.
           type: array
           items:
             type: object
@@ -1978,10 +1985,8 @@ components:
                 items: {$ref: '#/components/schemas/LeagueStanding'}
         knockout:
           description: |
-            Ties in stage order. A tie's winner has more wins over its two legs, then
-            the higher castle-health and damage differences, then the better group
-            finish, more group points and entry order. `winner` is null until both
-            legs settle.
+            Ties in stage order, each one match. `winner` is null until the match is
+            completed or void.
           type: array
           items:
             type: object
@@ -1989,7 +1994,7 @@ components:
             properties:
               stage: {$ref: '#/components/schemas/LeagueStage'}
               tie: {type: integer, minimum: 1}
-              homeEntrant: {type: integer, description: Home side of the first leg.}
+              homeEntrant: {type: integer, description: Takes the first spawn side.}
               awayEntrant: {type: integer}
               winner: {type: [integer, 'null']}
         fixtures:
@@ -2000,32 +2005,28 @@ components:
 
     LeagueStanding:
       type: object
-      required: [entrant, position, played, won, drawn, lost, points, castleDifference, damageDifference]
+      required: [entrant, placement, won, lost]
       properties:
         entrant: {type: integer}
-        position: {type: integer, minimum: 1, maximum: 4}
-        played: {type: integer}
-        won: {type: integer}
-        drawn: {type: integer}
+        placement: {type: [integer, 'null'], minimum: 1, maximum: 4, description: Null until the group decides it.}
+        won: {type: integer, description: Matches won, including by tiebreak.}
         lost: {type: integer}
-        points: {type: integer}
-        castleDifference: {type: integer}
-        damageDifference: {type: integer}
 
     LeagueFixture:
       description: |
-        One battle slot; the home entrant takes the first spawn side. A failed or
-        stopped battle is retried once with a new battle, then the fixture is void.
+        One match, played as one battle; the home entrant, chosen by a coin flip,
+        takes the first spawn side. A failed or stopped battle is retried once with a
+        new battle, then the fixture is void.
       type: object
-      required: [id, sequence, stage, round, leg, homeEntrant, awayEntrant, scenarioId, status, attempts, battleId]
+      required: [id, sequence, stage, round, tie, homeEntrant, awayEntrant, scenarioId, status, attempts, battleId, winner]
       properties:
         id: {type: string, format: uuid}
         sequence: {type: integer, minimum: 0, description: Play order.}
         stage: {$ref: '#/components/schemas/LeagueStage'}
         group: {type: string, enum: [A, B, C, D]}
-        round: {type: integer, minimum: 1}
+        round: {type: integer, minimum: 1, maximum: 3}
         tie: {type: integer, minimum: 1}
-        leg: {type: integer, enum: [1, 2]}
+        match: {$ref: '#/components/schemas/LeagueMatch'}
         homeEntrant: {type: integer}
         awayEntrant: {type: integer}
         scenarioId: {type: string}
@@ -2044,8 +2045,11 @@ components:
           type: object
           required: [winner, reason]
           properties:
-            winner: {type: [integer, 'null'], description: Null for a draw.}
+            winner: {type: [integer, 'null'], description: The battle's winner; null for a draw.}
             reason: {type: string, examples: [castle_destroyed, tick_limit]}
+        winner:
+          type: [integer, 'null']
+          description: The match winner once the fixture is completed or void, by the league tiebreak where the battle had none; null before.
 
     AnalyticsController:
       description: 'A model controller, or `{type: scripted}`.'

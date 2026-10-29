@@ -1,5 +1,6 @@
-// Checks the league rules: the group schedule, standings tiebreakers, crossover
-// seeding, two-leg ties and progression from the groups to a champion.
+// Checks the league rules: opening matches, the coin flip for spawn sides, each group's
+// dual tournament and placements, the match tiebreak, crossover seeding and progression
+// to a champion.
 
 package league
 
@@ -13,11 +14,11 @@ func testLeague(groupCount int, scenarios ...string) *League {
 	if len(scenarios) == 0 {
 		scenarios = []string{"frontier-siege"}
 	}
-	l := &League{ID: "league", Status: StatusRunning, GroupCount: groupCount, Settings: Settings{ScenarioIDs: scenarios, TickCount: 500}}
+	l := &League{ID: "league", Status: StatusRunning, BattleSalt: "salt", GroupCount: groupCount, Settings: Settings{ScenarioIDs: scenarios, TickCount: 500}}
 	for i := range groupCount * GroupSize {
 		l.Entrants = append(l.Entrants, Entrant{Index: i, Group: i % groupCount, FactionID: fmt.Sprintf("faction-%02d", i)})
 	}
-	l.Fixtures = GroupFixtures(l.ID, l.Entrants, groupCount, scenarios)
+	l.Fixtures = l.OpeningFixtures()
 	return l
 }
 
@@ -41,62 +42,226 @@ func settleBy(l *League, rank func(int) int) {
 		if f.Settled() {
 			continue
 		}
-		winner := f.Home
-		if rank(f.Away) < rank(f.Home) {
-			winner = f.Away
-		}
-		settle(l, i, winner, 50, 50)
+		settle(l, i, pick(rank(f.Away) < rank(f.Home), f.Away, f.Home), 50, 50)
 	}
 }
 
-func TestGroupFixturesPlayEveryPairingOnceFromEachSide(t *testing.T) {
-	for groups, want := range map[int]int{2: 24, 4: 48} {
-		l := testLeague(groups, "a", "b", "c")
-		if len(l.Fixtures) != want || TotalFixtures(groups) != map[int]int{2: 30, 4: 62}[groups] {
-			t.Fatalf("%d groups: %d fixtures, total %d", groups, len(l.Fixtures), TotalFixtures(groups))
+// advance adds the fixtures Advance opens and returns them.
+func advance(l *League) []Fixture {
+	next, _ := l.Advance()
+	l.Fixtures = append(l.Fixtures, next...)
+	return next
+}
+
+// playGroups settles every group match by rank, leaving the first knockout stage open.
+func playGroups(l *League, rank func(int) int) []Fixture {
+	for {
+		settleBy(l, rank)
+		if next := advance(l); len(next) == 0 || next[0].Stage != StageGroup {
+			return next
 		}
-		requireFixtureOrder(t, l)
-		if pairings := requireBothSidesOnOneMap(t, l); pairings != groups*PairingsPerGroup {
-			t.Fatalf("%d pairings, want %d", pairings, groups*PairingsPerGroup)
+	}
+}
+
+// pairOf is a fixture's sides in entry order, whichever took the first spawn side.
+func pairOf(f Fixture) [2]int { return [2]int{min(f.Home, f.Away), max(f.Home, f.Away)} }
+
+func TestOpeningFixturesMatchFirstWithFourthAndSecondWithThird(t *testing.T) {
+	for groups, total := range map[int]int{2: 13, 4: 27} {
+		l := testLeague(groups, "a", "b", "c")
+		if len(l.Fixtures) != 2*groups || TotalFixtures(groups) != total {
+			t.Fatalf("%d groups: %d openings, total %d", groups, len(l.Fixtures), TotalFixtures(groups))
+		}
+		ids := map[string]bool{}
+		for i, f := range l.Fixtures {
+			group := i / 2
+			members := GroupMembers(l.Entrants, group)
+			want := [][2]int{{members[0], members[3]}, {members[1], members[2]}}[i%2]
+			if f.Sequence != i || f.Status != FixturePending || *f.Group != group || f.Round != 1 || f.Tie != 1+i%2 || pairOf(f) != want || ids[f.ID] ||
+				MatchName(f.Stage, f.Round, f.Tie) != MatchOpening || f.ScenarioID != []string{"a", "b", "c"}[(group*MatchesPerGroup+i%2)%3] {
+				t.Fatalf("%d groups, fixture %d = %+v", groups, i, f)
+			}
+			ids[f.ID] = true
 		}
 	}
 	first, again := testLeague(2), testLeague(2)
-	if first.Fixtures[5].ID != again.Fixtures[5].ID {
-		t.Fatal("fixture IDs must be stable for retries")
+	for i, f := range first.Fixtures {
+		if g := again.Fixtures[i]; g.ID != f.ID || g.Home != f.Home || g.Away != f.Away || g.ScenarioID != f.ScenarioID {
+			t.Fatalf("opening fixture %d changed between identical leagues: %+v, %+v", i, f, g)
+		}
 	}
 }
 
-// requireFixtureOrder checks sequences, unique IDs, and that both sides share a group.
-func requireFixtureOrder(t *testing.T, l *League) {
-	t.Helper()
-	ids := map[string]bool{}
-	for i, f := range l.Fixtures {
-		if f.Sequence != i || f.Status != FixturePending || *f.Group != l.Entrants[f.Home].Group || *f.Group != l.Entrants[f.Away].Group || ids[f.ID] {
-			t.Fatalf("fixture %d = %+v", i, f)
+func TestCoinFlipChoosesSidesFromTheSecretSalt(t *testing.T) {
+	sides := map[bool]int{}
+	for i := range 64 {
+		l := testLeague(2)
+		l.BattleSalt = fmt.Sprint("salt-", i)
+		f := l.OpeningFixtures()[0]
+		sides[f.Home == 0]++
+		if again := l.OpeningFixtures()[0]; again.Home != f.Home || again.Away != f.Away {
+			t.Fatalf("salt %q flipped differently for the same match", l.BattleSalt)
 		}
-		ids[f.ID] = true
+	}
+	if sides[true] == 0 || sides[false] == 0 {
+		t.Fatalf("the first seed took the first side %d of 64 times", sides[true])
 	}
 }
 
-// requireBothSidesOnOneMap checks every pairing is played once from each side on one
-// map, and returns the number of pairings.
-func requireBothSidesOnOneMap(t *testing.T, l *League) int {
+func TestEachGroupOpensItsNextRoundOnItsOwn(t *testing.T) {
+	l := testLeague(2)
+	// Group A is entrants 0, 2, 4, 6: 0 meets 6 and 2 meets 4, the lower index winning.
+	settle(l, 0, 0, 50, 50)
+	if next, _ := l.Advance(); len(next) != 0 {
+		t.Fatalf("opened %+v before group A's openings settled", next)
+	}
+	settle(l, 1, 2, 50, 50)
+	round := advance(l)
+	if len(round) != 2 || *round[0].Group != 0 || pairOf(round[0]) != [2]int{0, 2} || pairOf(round[1]) != [2]int{4, 6} ||
+		MatchName(round[0].Stage, round[0].Round, round[0].Tie) != MatchWinners || MatchName(round[1].Stage, round[1].Round, round[1].Tie) != MatchLosers ||
+		round[0].Sequence != 4 || round[1].Sequence != 5 {
+		t.Fatalf("group A round 2 = %+v", round)
+	}
+	settle(l, 4, 0, 50, 50)
+	settle(l, 5, 4, 50, 50)
+	decider := advance(l)
+	if len(decider) != 1 || pairOf(decider[0]) != [2]int{2, 4} || MatchName(decider[0].Stage, decider[0].Round, decider[0].Tie) != MatchDecider {
+		t.Fatalf("group A decider = %+v", decider)
+	}
+	settle(l, 6, 4, 50, 50)
+	requireStandings(t, l.GroupStandings(0), "[{0 0 1 2 0} {4 0 2 2 1} {2 0 3 1 2} {6 0 4 0 2}]")
+	requireStandings(t, l.GroupStandings(1), "[{1 1 0 0 0} {3 1 0 0 0} {5 1 0 0 0} {7 1 0 0 0}]")
+	if next, _ := l.Advance(); len(next) != 0 {
+		t.Fatalf("opened %+v while group B has not played", next)
+	}
+}
+
+func requireStandings(t *testing.T, got []Standing, want string) {
 	t.Helper()
-	sides, maps := map[[2]int]int{}, map[[2]int]string{}
-	for _, f := range l.Fixtures {
-		sides[[2]int{f.Home, f.Away}]++
-		pair := [2]int{min(f.Home, f.Away), max(f.Home, f.Away)}
-		if previous, seen := maps[pair]; seen && previous != f.ScenarioID {
-			t.Fatalf("pairing %v changes map between legs", pair)
-		}
-		maps[pair] = f.ScenarioID
+	if fmt.Sprint(got) != want {
+		t.Fatalf("standings = %v, want %s", got, want)
 	}
-	for side, count := range sides {
-		if count != 1 || sides[[2]int{side[1], side[0]}] != 1 {
-			t.Fatalf("pairing %v played %d times from this side", side, count)
+}
+
+func TestStandingsPlaceEntrantsAsTheirMatchesSettle(t *testing.T) {
+	l := testLeague(2)
+	settleBy(l, func(e int) int { return e })
+	advance(l)
+	// Only group A's winners' match has settled: 0 is first, the others unplaced.
+	settle(l, 4, 0, 50, 50)
+	requireStandings(t, l.GroupStandings(0), "[{0 0 1 2 0} {2 0 0 1 1} {4 0 0 0 1} {6 0 0 0 1}]")
+	settle(l, 5, 4, 50, 50)
+	requireStandings(t, l.GroupStandings(0), "[{0 0 1 2 0} {2 0 0 1 1} {4 0 0 1 1} {6 0 4 0 2}]")
+	if placements := l.Placements(); placements[0] != 1 || placements[6] != 4 || placements[2] != 0 || placements[1] != 0 {
+		t.Fatalf("placements = %v", placements)
+	}
+}
+
+func TestMatchWinnerBreaksDrawsAndVoidFixtures(t *testing.T) {
+	l := testLeague(2)
+	f := l.Fixtures[0]
+	cases := map[string]struct {
+		decide func()
+		want   int
+	}{
+		"battle winner":      {func() { settle(l, 0, 6, 0, 300) }, 6},
+		"home castle margin": {func() { settle(l, 0, -1, 30, 0) }, f.Home},
+		"away castle margin": {func() { settle(l, 0, -1, 0, 40) }, f.Away},
+		"damage margin": {func() {
+			settle(l, 0, -1, 0, 0)
+			l.Fixtures[0].Battle.Factions[l.Entrants[f.Away].FactionID] = FactionScore{DamageDealt: 500}
+		}, f.Away},
+		"void falls back to entry order": {func() { l.Fixtures[0].Status, l.Fixtures[0].Battle = FixtureVoid, nil }, 0},
+		"cancelled has no winner":        {func() { l.Fixtures[0].Status, l.Fixtures[0].Battle = FixtureCancelled, nil }, -1},
+		"pending has no winner":          {func() { l.Fixtures[0].Status, l.Fixtures[0].Battle = FixturePending, nil }, -1},
+	}
+	for name, test := range cases {
+		test.decide()
+		if got := l.MatchWinner(l.Fixtures[0]); got != test.want {
+			t.Errorf("%s: winner %d, want %d", name, got, test.want)
 		}
 	}
-	return len(maps)
+}
+
+func TestVoidKnockoutMatchGoesToTheBetterGroupFinish(t *testing.T) {
+	l := testLeague(2)
+	// The higher index is stronger: group A places 6, 4, 2, 0 and group B 7, 5, 3, 1.
+	semis := playGroups(l, func(e int) int { return -e })
+	if pairOf(semis[0]) != [2]int{5, 6} || pairOf(semis[1]) != [2]int{4, 7} {
+		t.Fatalf("semifinals = %+v", semis)
+	}
+	for i := range semis {
+		l.Fixtures[len(l.Fixtures)-2+i].Status = FixtureVoid
+	}
+	// 6 won group A, so it beats B's runner-up 5 despite entering later.
+	ties := l.Ties()
+	if *ties[0].Winner != 6 || *ties[1].Winner != 7 {
+		t.Fatalf("ties = %+v", ties)
+	}
+	final := advance(l)
+	l.Fixtures[len(l.Fixtures)-1].Status = FixtureVoid
+	// Both group winners: the earlier entrant wins.
+	if _, champion := l.Advance(); pairOf(final[0]) != [2]int{6, 7} || champion == nil || *champion != 6 {
+		t.Fatalf("final %+v, champion %v", final, champion)
+	}
+}
+
+func TestTwoGroupKnockoutCrossesOverAndCrownsAChampion(t *testing.T) {
+	l := testLeague(2)
+	semis := playGroups(l, func(e int) int { return e }) // lower entrant index is stronger
+	// Group A places 0, 2, 4, 6 and group B 1, 3, 5, 7.
+	if len(semis) != 2 || semis[0].Stage != StageSemifinal || pairOf(semis[0]) != [2]int{0, 3} || pairOf(semis[1]) != [2]int{1, 2} ||
+		semis[0].Sequence != 10 || semis[1].Tie != 2 || semis[0].Group != nil {
+		t.Fatalf("semifinals = %+v", semis)
+	}
+	if next, _ := l.Advance(); next != nil {
+		t.Fatal("advanced before the semifinals settled")
+	}
+	settleBy(l, func(e int) int { return e })
+	final := advance(l)
+	if len(final) != 1 || final[0].Stage != StageFinal || pairOf(final[0]) != [2]int{0, 1} {
+		t.Fatalf("final = %+v", final)
+	}
+	settleBy(l, func(e int) int { return -e }) // the underdog wins the final
+	if next, champion := l.Advance(); next != nil || champion == nil || *champion != 1 || len(l.Fixtures) != TotalFixtures(2) {
+		t.Fatalf("champion = %v, next = %+v, %d fixtures", champion, next, len(l.Fixtures))
+	}
+	if ties := l.Ties(); len(ties) != 3 || *ties[2].Winner != 1 || ties[0].Stage != StageSemifinal {
+		t.Fatalf("ties = %+v", ties)
+	}
+}
+
+func TestFourGroupBracketKeepsGroupMatesApartUntilTheFinal(t *testing.T) {
+	l := testLeague(4, "a", "b")
+	quarters := playGroups(l, func(e int) int { return e })
+	// Groups A-D are led by 0-3, with runners-up 4-7.
+	want := [][2]int{{0, 5}, {1, 4}, {2, 7}, {3, 6}}
+	for i, pair := range want {
+		if f := quarters[i]; f.Stage != StageQuarterfinal || pairOf(f) != pair || f.Sequence != 20+i {
+			t.Fatalf("quarterfinal %d = %+v", i, f)
+		}
+	}
+	settleBy(l, func(e int) int { return e })
+	semis := advance(l)
+	if len(semis) != 2 || pairOf(semis[0]) != [2]int{0, 2} || pairOf(semis[1]) != [2]int{1, 3} {
+		t.Fatalf("semifinals = %+v", semis)
+	}
+	if semis[0].ScenarioID == semis[1].ScenarioID {
+		t.Fatal("knockout maps should keep rotating")
+	}
+	settleBy(l, func(e int) int { return e })
+	advance(l)
+	settleBy(l, func(e int) int { return e })
+	if _, champion := l.Advance(); champion == nil || *champion != 0 || len(l.Fixtures) != TotalFixtures(4) {
+		t.Fatalf("champion %v after %d fixtures", champion, len(l.Fixtures))
+	}
+}
+
+func TestMatchNames(t *testing.T) {
+	got := []string{MatchName(StageGroup, 1, 2), MatchName(StageGroup, 2, 1), MatchName(StageGroup, 2, 2), MatchName(StageGroup, 3, 1), MatchName(StageFinal, 1, 1)}
+	if fmt.Sprint(got) != "[opening winners losers decider ]" {
+		t.Fatalf("names = %q", got)
+	}
 }
 
 func TestDerivedIDsAreUUIDs(t *testing.T) {
@@ -107,183 +272,6 @@ func TestDerivedIDsAreUUIDs(t *testing.T) {
 	}
 	if FixtureBattleID("other-salt", "fixture", 1) == first {
 		t.Fatal("battle IDs must depend on the league's salt")
-	}
-}
-
-func TestStandingsRankByPointsThenHeadToHeadThenDifferences(t *testing.T) {
-	l := testLeague(2)
-	// Group A is entrants 0, 2, 4, 6. Entrant 6 wins everything. 2 and 4 finish level on
-	// 7 points; 4 took more points head to head, although 2 has the better castle
-	// difference. One 0-4 leg is void.
-	for i, f := range l.Fixtures {
-		if *f.Group != 0 {
-			continue
-		}
-		pair := [2]int{min(f.Home, f.Away), max(f.Home, f.Away)}
-		switch {
-		case f.Home == 6 || f.Away == 6:
-			settle(l, i, 6, 10, 10)
-		case pair == [2]int{2, 4} && f.Leg == 1:
-			settle(l, i, 4, 1, 1)
-		case pair == [2]int{2, 4}:
-			settle(l, i, -1, 0, 0)
-		case pair == [2]int{0, 2}:
-			settle(l, i, 2, castleFor(f.Home, 2), castleFor(f.Away, 2))
-		case f.Leg == 1:
-			settle(l, i, 4, 1, 1)
-		default:
-			l.Fixtures[i].Status = FixtureVoid
-		}
-	}
-	got := l.GroupStandings(0)
-	order := []int{got[0].Entrant, got[1].Entrant, got[2].Entrant, got[3].Entrant}
-	if fmt.Sprint(order) != "[6 4 2 0]" || got[0].Points != 18 || got[1].Points != 7 || got[2].Points != 7 || got[2].Drawn != 1 || got[1].Played != 5 {
-		t.Fatalf("standings = %+v", got)
-	}
-	if got[2].CastleDifference <= got[1].CastleDifference {
-		t.Fatalf("test needs 2 ahead on castle difference: %+v", got)
-	}
-	empty := testLeague(2).GroupStandings(1)
-	if empty[0].Entrant != 1 || empty[3].Entrant != 7 || empty[0].Position != 1 {
-		t.Fatalf("unplayed group falls back to entry order: %+v", empty)
-	}
-}
-
-// castleFor gives the favored entrant a full castle and its opponent none.
-func castleFor(side, favored int) int64 {
-	if side == favored {
-		return 300
-	}
-	return 0
-}
-
-func TestStandingsFallBackToDifferencesAndEntryOrder(t *testing.T) {
-	l := testLeague(2)
-	for i, f := range l.Fixtures {
-		if *f.Group == 1 {
-			// Every match is drawn, and entrant 7 always keeps more castle when at home.
-			castle := int64(0)
-			if f.Home == 7 {
-				castle = 20
-			}
-			settle(l, i, -1, castle, 0)
-		}
-	}
-	got := l.GroupStandings(1)
-	if got[0].Entrant != 7 || got[1].Entrant != 1 || got[3].Entrant != 5 || got[0].Points != 6 {
-		t.Fatalf("standings = %+v", got)
-	}
-}
-
-func TestTwoGroupKnockoutCrossesOverAndCrownsAChampion(t *testing.T) {
-	l := testLeague(2)
-	settleBy(l, func(e int) int { return e }) // lower entrant index is stronger
-	next, champion := l.Advance()
-	if champion != nil {
-		t.Fatalf("champion %v after the groups", champion)
-	}
-	// Group A order is 0, 2, 4, 6 and group B order 1, 3, 5, 7.
-	requireKnockout(t, next, StageSemifinal, 24, [][2]int{{0, 3}, {1, 2}, {3, 0}, {2, 1}})
-	l.Fixtures = append(l.Fixtures, next...)
-	if next, _ := l.Advance(); next != nil {
-		t.Fatal("advanced before the semifinals settled")
-	}
-	settleBy(l, func(e int) int { return e })
-	final, _ := l.Advance()
-	if len(final) != 2 || final[0].Stage != StageFinal || final[0].Home != 0 || final[0].Away != 1 {
-		t.Fatalf("final = %+v", final)
-	}
-	l.Fixtures = append(l.Fixtures, final...)
-	settleBy(l, func(e int) int { return -e }) // the underdog wins both legs
-	if next, champion := l.Advance(); next != nil || champion == nil || *champion != 1 {
-		t.Fatalf("champion = %v, next = %+v", champion, next)
-	}
-	if ties := l.Ties(); len(ties) != 3 || *ties[2].Winner != 1 || ties[0].Stage != StageSemifinal {
-		t.Fatalf("ties = %+v", ties)
-	}
-}
-
-// requireKnockout checks a stage's fixtures: both legs of each tie in order, with sides
-// swapped on the second leg.
-func requireKnockout(t *testing.T, got []Fixture, stage string, firstSequence int, sides [][2]int) {
-	t.Helper()
-	if len(got) != len(sides) {
-		t.Fatalf("%s: %d fixtures, want %d", stage, len(got), len(sides))
-	}
-	ties := len(sides) / 2
-	for i, f := range got {
-		if f.Stage != stage || [2]int{f.Home, f.Away} != sides[i] || f.Sequence != firstSequence+i || f.Leg != 1+i/ties || f.Tie != 1+i%ties {
-			t.Fatalf("%s %d = %+v", stage, i, f)
-		}
-	}
-}
-
-func TestFourGroupBracketKeepsGroupMatesApartUntilTheFinal(t *testing.T) {
-	l := testLeague(4, "a", "b")
-	settleBy(l, func(e int) int { return e })
-	quarters, _ := l.Advance()
-	// Groups A-D are led by 0-3, with runners-up 4-7.
-	want := [][2]int{{0, 5}, {1, 4}, {2, 7}, {3, 6}}
-	for i, pair := range want {
-		if f := quarters[i]; f.Stage != StageQuarterfinal || [2]int{f.Home, f.Away} != pair {
-			t.Fatalf("quarterfinal %d = %+v", i, f)
-		}
-	}
-	l.Fixtures = append(l.Fixtures, quarters...)
-	settleBy(l, func(e int) int { return e })
-	semis, _ := l.Advance()
-	if len(semis) != 4 || semis[0].Home != 0 || semis[0].Away != 2 || semis[1].Home != 1 || semis[1].Away != 3 {
-		t.Fatalf("semifinals = %+v", semis)
-	}
-	if semis[0].ScenarioID == semis[1].ScenarioID {
-		t.Fatal("knockout maps should keep rotating")
-	}
-	l.Fixtures = append(l.Fixtures, semis...)
-	settleBy(l, func(e int) int { return e })
-	final, _ := l.Advance()
-	l.Fixtures = append(l.Fixtures, final...)
-	settleBy(l, func(e int) int { return e })
-	if _, champion := l.Advance(); champion == nil || *champion != 0 || len(l.Fixtures) != TotalFixtures(4) {
-		t.Fatalf("champion %v after %d fixtures", champion, len(l.Fixtures))
-	}
-}
-
-func TestTieWinnerTiebreaks(t *testing.T) {
-	setup := func() *League {
-		l := testLeague(2)
-		settleBy(l, func(e int) int { return e })
-		next, _ := l.Advance()
-		l.Fixtures = append(l.Fixtures, next...)
-		return l
-	}
-	// Tie 1 is 0 v 3: leg 1 at index 24 (0 home), leg 2 at index 26 (3 home).
-	cases := map[string]struct {
-		decide func(*League)
-		want   int
-	}{
-		"more wins":     {func(l *League) { settle(l, 24, 3, 0, 10); settle(l, 26, 3, 10, 0) }, 3},
-		"castle margin": {func(l *League) { settle(l, 24, 0, 90, 0); settle(l, 26, 3, 30, 0) }, 0},
-		"away castle":   {func(l *League) { settle(l, 24, -1, 0, 0); settle(l, 26, -1, 40, 0) }, 3},
-		"void legs fall back to group finish": {func(l *League) {
-			l.Fixtures[24].Status, l.Fixtures[26].Status = FixtureVoid, FixtureVoid
-		}, 0},
-	}
-	for name, test := range cases {
-		l := setup()
-		test.decide(l)
-		if got := l.TieWinner(StageSemifinal, 1); got != test.want {
-			t.Errorf("%s: winner %d, want %d", name, got, test.want)
-		}
-	}
-	l := setup()
-	settle(l, 24, -1, 0, 0)
-	settle(l, 26, -1, 0, 0)
-	l.Fixtures[26].Battle.Factions[l.Entrants[3].FactionID] = FactionScore{DamageDealt: 500}
-	if got := l.TieWinner(StageSemifinal, 1); got != 3 {
-		t.Errorf("damage margin: winner %d, want 3", got)
-	}
-	if got := l.TieWinner(StageFinal, 1); got != -1 {
-		t.Errorf("missing tie: %d", got)
 	}
 }
 

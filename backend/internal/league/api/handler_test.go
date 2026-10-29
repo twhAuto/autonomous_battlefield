@@ -80,20 +80,23 @@ func createdHarness(t *testing.T) (*harness, map[string]any) {
 func TestCreateLeagueRouteReturnsTheSchedule(t *testing.T) {
 	_, body := createdHarness(t)
 	groups, fixtures, entrants := body["groups"].([]any), body["fixtures"].([]any), body["entrants"].([]any)
-	if body["status"] != "running" || len(groups) != 2 || len(fixtures) != 24 || len(entrants) != 8 || len(body["knockout"].([]any)) != 0 {
+	if body["status"] != "running" || len(groups) != 2 || len(fixtures) != 4 || len(entrants) != 8 || len(body["knockout"].([]any)) != 0 {
 		t.Fatalf("league = %v", body)
 	}
-	if progress := body["progress"].(map[string]any); progress["settled"] != 0.0 || progress["total"] != 30.0 {
+	if progress := body["progress"].(map[string]any); progress["settled"] != 0.0 || progress["total"] != 13.0 {
 		t.Fatalf("progress = %v", progress)
 	}
 	if entrant := entrants[1].(map[string]any); entrant["group"] != "B" || entrant["factionName"] != "Faction" {
 		t.Fatalf("entrant = %v", entrant)
 	}
-	if fixture := fixtures[0].(map[string]any); fixture["group"] != "A" || fixture["status"] != "pending" || fixture["battleId"] != nil || fixture["result"] != nil {
+	fixture := fixtures[1].(map[string]any)
+	if _, hasLeg := fixture["leg"]; hasLeg || fixture["group"] != "A" || fixture["match"] != "opening" || fixture["round"] != 1.0 || fixture["tie"] != 2.0 ||
+		fixture["status"] != "pending" || fixture["battleId"] != nil || fixture["result"] != nil || fixture["winner"] != nil {
 		t.Fatalf("fixture = %v", fixture)
 	}
-	if standings := groups[0].(map[string]any)["standings"].([]any); len(standings) != 4 || standings[0].(map[string]any)["position"] != 1.0 {
-		t.Fatalf("standings = %v", standings)
+	standing := groups[0].(map[string]any)["standings"].([]any)[0].(map[string]any)
+	if len(groups[0].(map[string]any)["standings"].([]any)) != 4 || standing["placement"] != nil || standing["won"] != 0.0 || standing["lost"] != 0.0 {
+		t.Fatalf("standing = %v", standing)
 	}
 }
 
@@ -104,10 +107,23 @@ func TestGetLeagueRouteShowsFixtureResults(t *testing.T) {
 	battleID, winner := "11111111-1111-4111-8111-111111111111", stored.Entrants[f.Home].FactionID
 	f.Status, f.BattleID = league.FixtureCompleted, &battleID
 	f.Battle = &league.BattleOutcome{Status: league.BattleCompleted, WinnerFactionID: &winner, Reason: "castle_destroyed"}
+	// A void fixture has no result, but its match goes to the earlier entrant.
+	void := &stored.Fixtures[1]
+	void.Status = league.FixtureVoid
 	read := h.do(authn.Developer, http.MethodGet, "/v1/leagues/"+testLeagueID, "")
-	result := decode(t, read)["fixtures"].([]any)[0].(map[string]any)["result"].(map[string]any)
-	if read.Code != http.StatusOK || result["winner"] != float64(f.Home) || result["reason"] != "castle_destroyed" {
-		t.Fatalf("read = %d, result %v", read.Code, result)
+	body := decode(t, read)
+	fixtures := body["fixtures"].([]any)
+	completed, voided := fixtures[0].(map[string]any), fixtures[1].(map[string]any)
+	result := completed["result"].(map[string]any)
+	if read.Code != http.StatusOK || result["winner"] != float64(f.Home) || result["reason"] != "castle_destroyed" || completed["winner"] != float64(f.Home) {
+		t.Fatalf("read = %d, fixture %v", read.Code, completed)
+	}
+	if voided["result"] != nil || voided["winner"] != float64(min(void.Home, void.Away)) {
+		t.Fatalf("void fixture = %v", voided)
+	}
+	standings := body["groups"].([]any)[0].(map[string]any)["standings"].([]any)
+	if first := standings[0].(map[string]any); first["won"] != 1.0 || first["placement"] != nil {
+		t.Fatalf("standings = %v", standings)
 	}
 }
 

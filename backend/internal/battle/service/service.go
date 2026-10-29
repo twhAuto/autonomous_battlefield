@@ -94,7 +94,8 @@ type BattleRun struct {
 	League           *BattleLeague `json:"league,omitempty"`
 }
 
-// BattleLeague places a league battle in its league; it never changes once set.
+// BattleLeague places a league battle in its league; it never changes once set. Match
+// names a group fixture's match; the HTTP API fills it in.
 type BattleLeague struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
@@ -102,8 +103,8 @@ type BattleLeague struct {
 	Stage     string  `json:"stage"`
 	Group     *string `json:"group,omitempty"`
 	Round     int     `json:"round"`
-	Tie       int     `json:"tie,omitempty"`
-	Leg       int     `json:"leg"`
+	Tie       int     `json:"tie"`
+	Match     string  `json:"match,omitempty"`
 }
 
 type StoredBattleEvent struct {

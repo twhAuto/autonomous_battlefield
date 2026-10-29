@@ -78,7 +78,7 @@ func sampleLeague(t *testing.T) league.League {
 		controller := game.ControllerConfig{Type: "model", ProfileID: "claude-subscription-local", ModelIdentifier: "sonnet", ReasoningEffort: "low"}
 		l.Entrants = append(l.Entrants, league.Entrant{Index: i, Group: i % 2, FactionID: uuid(t), FactionName: fmt.Sprintf("Faction %d", i), Controller: controller})
 	}
-	l.Fixtures = league.GroupFixtures(l.ID, l.Entrants, 2, l.Settings.ScenarioIDs)
+	l.Fixtures = l.OpeningFixtures()
 	return l
 }
 
@@ -123,8 +123,9 @@ func TestLeagueRoundTripAgainstPostgres(t *testing.T) {
 	if len(got.Entrants) != 8 || got.Entrants[5] != l.Entrants[5] {
 		t.Fatalf("entrant = %+v, want %+v", got.Entrants[5], l.Entrants[5])
 	}
-	if len(got.Fixtures) != 24 || got.Fixtures[7].ID != l.Fixtures[7].ID || *got.Fixtures[7].Group != *l.Fixtures[7].Group || got.Fixtures[7].Battle != nil {
-		t.Fatalf("fixture = %+v", got.Fixtures[7])
+	if len(got.Fixtures) != 4 || got.Fixtures[3].ID != l.Fixtures[3].ID || *got.Fixtures[3].Group != *l.Fixtures[3].Group || got.Fixtures[3].Tie != 2 ||
+		got.Fixtures[3].Home != l.Fixtures[3].Home || got.Fixtures[3].Battle != nil {
+		t.Fatalf("fixture = %+v", got.Fixtures[3])
 	}
 	if _, err := repo.GetLeague(ctx, uuid(t)); !errors.Is(err, leagueservice.ErrLeagueNotFound) {
 		t.Fatalf("missing err = %v", err)
@@ -153,7 +154,7 @@ func TestSchedulerStoreAgainstPostgres(t *testing.T) {
 		outcome.Reason != "castle_destroyed" || outcome.Factions[home].CastleHealth != 120 || outcome.Factions[away].DamageDealt != 150 {
 		t.Fatalf("fixture outcome = %+v", outcome)
 	}
-	semifinals := []league.Fixture{{ID: uuid(t), Sequence: 24, Stage: league.StageSemifinal, Round: 1, Tie: 1, Leg: 1, Home: 0, Away: 3, ScenarioID: "frontier-siege", Status: league.FixturePending}}
+	semifinals := []league.Fixture{{ID: uuid(t), Sequence: 4, Stage: league.StageSemifinal, Round: 1, Tie: 1, Home: 0, Away: 3, ScenarioID: "frontier-siege", Status: league.FixturePending}}
 	schedule(t, repo, func(ctx context.Context, store leagueservice.SchedulerStore) error {
 		for range 2 {
 			if err := store.AddFixtures(ctx, l.ID, semifinals); err != nil {
@@ -163,7 +164,7 @@ func TestSchedulerStoreAgainstPostgres(t *testing.T) {
 		return store.CompleteLeague(ctx, l.ID, 3)
 	})
 	got, err = repo.GetLeague(ctx, l.ID)
-	if err != nil || len(got.Fixtures) != 25 || got.Fixtures[24].Group != nil || got.Status != league.StatusCompleted || *got.Champion != 3 || got.CompletedAt == nil {
+	if err != nil || len(got.Fixtures) != 5 || got.Fixtures[4].Group != nil || got.Status != league.StatusCompleted || *got.Champion != 3 || got.CompletedAt == nil {
 		t.Fatalf("completed league = %+v, %v", got, err)
 	}
 	summaries, err := repo.ListLeagues(ctx, 10)
@@ -177,7 +178,7 @@ func TestSchedulerStoreAgainstPostgres(t *testing.T) {
 func startFirstFixture(t *testing.T, db *pgxpool.Pool, l league.League, battleID string) func(context.Context, leagueservice.SchedulerStore) error {
 	return func(ctx context.Context, store leagueservice.SchedulerStore) error {
 		running, err := store.RunningLeagues(ctx)
-		if err != nil || len(running) != 1 || len(running[0].Fixtures) != 24 || running[0].BattleSalt != l.BattleSalt {
+		if err != nil || len(running) != 1 || len(running[0].Fixtures) != 4 || running[0].BattleSalt != l.BattleSalt {
 			t.Fatalf("running = %d leagues, %v", len(running), err)
 		}
 		requireEngine(t, ctx, store, battleID, false)
@@ -349,7 +350,7 @@ func TestBattleReadShowsItsLeague(t *testing.T) {
 		t.Fatalf("league battle = %+v, %v", run, err)
 	}
 	f := l.Fixtures[3]
-	if got := run.League; got.ID != l.ID || got.Name != l.Name || got.FixtureID != f.ID || got.Stage != league.StageGroup || *got.Group != league.GroupLetter(*f.Group) || got.Round != f.Round || got.Leg != f.Leg {
+	if got := run.League; got.ID != l.ID || got.Name != l.Name || got.FixtureID != f.ID || got.Stage != league.StageGroup || *got.Group != league.GroupLetter(*f.Group) || got.Round != f.Round || got.Tie != f.Tie {
 		t.Fatalf("battle league = %+v", got)
 	}
 	if run, err := battles.GetBattle(ctx, outside); err != nil || run.League != nil {
