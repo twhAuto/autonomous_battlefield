@@ -1,20 +1,23 @@
 // Pure league presentation: labels, battle counts and the setup form's estimates.
 
-import type { GroupLetter, League, LeagueFixture, LeagueScheduling, LeagueStage } from '../api/leagues'
+import type { GroupLetter, League, LeagueFixture, LeagueScheduling } from '../api/leagues'
+import { matchLabel } from '../../../shared/domain/leagueMatches'
 
 export const groupLetters: GroupLetter[] = ['A', 'B', 'C', 'D']
 
-/** Fixtures a league plays when nothing is cancelled: group pairings twice, then two-leg ties. */
+/** Fixtures a league plays when nothing is cancelled: five per group, then one per knockout tie. */
 export function totalFixtures(entrants: 8 | 16) {
-  return entrants === 8 ? 30 : 62
+  return entrants === 8 ? 13 : 27
 }
 
 /** Measured decision waits per model window (API about 13 s, CLI about 35 s). */
 const decisionSeconds = { low: 13, high: 35 }
 
-// Each entrant plays every group rival twice (six battles); each knockout stage holds
-// this many entrants, each playing two legs.
-const groupBattlesPerEntrant = 6
+// A group's five matches give its entrants ten sides: two or three battles each, three
+// for the two who reach the decider. Each knockout stage holds this many entrants, one
+// battle each.
+const groupBattlesAtMost = 3
+const groupSidesPerEntrant = 2.5
 const knockoutStageEntrants = { 8: [4, 2], 16: [8, 4, 2] }
 
 /** Assumed when the API does not report its capacity: one battle at a time. */
@@ -42,15 +45,16 @@ export interface LeagueEstimate {
   leagueHours: { low: number; high: number }
 }
 
-/** Battles model entrants can play at most: all group battles, plus two legs per knockout stage they could reach. */
+/** Battles model entrants can play at most: three group battles each, up to every group side, plus each knockout stage they could reach. */
 function modelSideBattles(entrants: 8 | 16, modelEntrants: number) {
-  return modelEntrants * groupBattlesPerEntrant + knockoutStageEntrants[entrants].reduce((sum, stage) => sum + 2 * Math.min(modelEntrants, stage), 0)
+  const group = Math.min(modelEntrants * groupBattlesAtMost, entrants * groupSidesPerEntrant)
+  return group + knockoutStageEntrants[entrants].reduce((sum, stage) => sum + Math.min(modelEntrants, stage), 0)
 }
 
-/** Rounds of battles a league needs when this many run at once; each stage waits for the one before. */
+/** Rounds of battles a league needs when this many run at once: the groups' three rounds, then each knockout stage, each waiting for the one before. */
 function waves(entrants: 8 | 16, atOnce: number) {
-  const stages = [entrants * 3, ...knockoutStageEntrants[entrants]]
-  return stages.reduce((sum, fixtures) => sum + Math.ceil(fixtures / atOnce), 0)
+  const rounds = [entrants / 2, entrants / 2, entrants / 4, ...knockoutStageEntrants[entrants].map(stage => stage / 2)]
+  return rounds.reduce((sum, fixtures) => sum + Math.ceil(fixtures / atOnce), 0)
 }
 
 /** Estimates a league from its settings and the capacity its battles run in. */
@@ -77,23 +81,19 @@ export function durationSeconds(value: string | undefined): number | undefined {
   return Number(match[1]) / (match[2] === 'ms' ? 1000 : 1)
 }
 
-const stageNames: Record<LeagueStage, string> = { group: 'Group stage', quarterfinal: 'Quarterfinals', semifinal: 'Semifinals', final: 'Final' }
-export function stageLabel(stage: LeagueStage) {
-  return stageNames[stage]
-}
-
 export function fixtureLabel(fixture: LeagueFixture) {
-  const place = fixture.stage === 'group' ? `Group ${fixture.group} · round ${fixture.round}` : `${stageLabel(fixture.stage)} · tie ${fixture.tie}`
-  return `${place} · leg ${fixture.leg}`
+  return matchLabel(fixture)
 }
 
 export function entrantName(league: League, index: number) {
   return league.entrants[index]?.factionName ?? `Entrant ${index + 1}`
 }
 
-/** The fixture's outcome from its result, or its status while unsettled. */
+/** The fixture's outcome: its battle's winner, the tiebreak winner after a draw or a void fixture, or its status while undecided. */
 export function fixtureOutcome(league: League, fixture: LeagueFixture) {
-  if (!fixture.result) return fixture.status === 'void' ? 'Void' : fixture.status[0].toUpperCase() + fixture.status.slice(1)
-  if (fixture.result.winner === null) return 'Draw'
-  return `${entrantName(league, fixture.result.winner)} wins`
+  const { result, winner } = fixture
+  if (result && result.winner !== null) return `${entrantName(league, result.winner)} wins`
+  if (!result && fixture.status !== 'void') return fixture.status[0].toUpperCase() + fixture.status.slice(1)
+  const decided = result ? 'Draw' : 'Void'
+  return winner === null ? decided : `${decided} · ${entrantName(league, winner)} wins on tiebreak`
 }

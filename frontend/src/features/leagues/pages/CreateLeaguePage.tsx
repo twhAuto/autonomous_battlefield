@@ -180,7 +180,7 @@ export function CreateLeaguePage() {
         <Link className="back-link" to="/leagues">← LEAGUES</Link>
         <div className="hero__eyebrow"><span>05</span> LEAGUE SETUP</div>
         <h1>Start a league</h1>
-        <p>Entrants play every group rival twice, once from each side, then the top two of each group play a two-leg crossover knockout. Battles run one at a time in the background.</p>
+        <p>Each group of four plays a dual tournament: two opening matches, a winners' and a losers' match, then a decider. The top two of each group meet in a crossover knockout. Every match is one battle with a coin flip for the first spawn side, played in the background.</p>
         {source && <p>Settings and entrants are copied from <Link to={`/leagues/${encodeURIComponent(source.id)}`}>{source.name}</Link>. Change anything before starting; that league is unchanged.</p>}
       </section>
       {loadState === 'loading' && <section className="directory-state" aria-busy="true"><span className="loader" aria-hidden="true" /><h2>Loading factions, maps and models…</h2></section>}
@@ -229,7 +229,7 @@ function MapChoices({ scenarios, maps, missingMaps, onChange }: Readonly<{ scena
   return (
     <fieldset className="league-form__choice">
       <legend>Maps</legend>
-      <p className="field-hint">Group pairings rotate through the chosen maps; both legs of a pairing use the same map.</p>
+      <p className="field-hint">Matches rotate through the chosen maps, group by group, then through the knockout.</p>
       {scenarios.map(scenario => <label key={scenario.id}>
         <input type="checkbox" checked={maps.includes(scenario.id)} disabled={!maps.includes(scenario.id) && maps.length >= maxMaps}
           onChange={event => onChange(event.target.checked ? [...maps, scenario.id] : maps.filter(id => id !== scenario.id))} />

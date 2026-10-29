@@ -1,6 +1,7 @@
 // League API payloads and requests: create, list, read and cancel AI leagues.
 
 import { createApiClient } from '../../../shared/api/request'
+import type { LeagueMatch } from '../../../shared/domain/leagueMatches'
 import type { BattleController } from '../../battles/api/battles'
 
 export type LeagueStatus = 'running' | 'completed' | 'cancelled'
@@ -11,18 +12,20 @@ export type GroupLetter = 'A' | 'B' | 'C' | 'D'
 export interface LeagueSettings { scenarioIds: string[]; tickCount: number; tickDuration?: string; decisionIntervalTicks?: number }
 export interface LeagueProgress { settled: number; total: number }
 export interface LeagueEntrant { index: number; group: GroupLetter; factionId: string; factionName: string; controller: BattleController }
-export interface LeagueStanding {
-  entrant: number; position: number; played: number; won: number; drawn: number; lost: number; points: number
-  castleDifference: number; damageDifference: number
-}
+/** An entrant's group record; placement is null until the group decides it. */
+export interface LeagueStanding { entrant: number; placement: number | null; won: number; lost: number }
 export interface LeagueTie { stage: LeagueStage; tie: number; homeEntrant: number; awayEntrant: number; winner: number | null }
 export interface LeagueFixture {
-  id: string; sequence: number; stage: LeagueStage; group?: GroupLetter; round: number; tie?: number; leg: 1 | 2
+  id: string; sequence: number; stage: LeagueStage; group?: GroupLetter; round: number; tie: number
+  /** A group fixture's match; absent in the knockout. */
+  match?: LeagueMatch
   homeEntrant: number; awayEntrant: number; scenarioId: string; status: FixtureStatus; attempts: number; battleId: string | null
   /** Present while the fixture runs: its battle's tick and tick limit. */
   battleProgress?: { currentTick: number; requestedTicks: number }
-  /** Present once completed; winner is null for a draw. */
+  /** Present once completed: the battle's winner, null for a draw. */
   result?: { winner: number | null; reason: string }
+  /** The match winner once completed or void, by tiebreak when the battle had none. */
+  winner: number | null
 }
 export interface League {
   id: string; ownerId: string; name: string; status: LeagueStatus; groupCount: 2 | 4; settings: LeagueSettings

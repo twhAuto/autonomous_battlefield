@@ -22,14 +22,14 @@ const completed = {
 const names = new Map([['jov', 'Jov'], ['ws', 'WS']])
 
 it('links a league battle to its league and fixture', () => {
-  header({ ...battle, league: { id: 'league-1', name: 'Autumn cup', fixtureId: 'f', stage: 'group', group: 'B', round: 2, leg: 1 } })
+  header({ ...battle, league: { id: 'league-1', name: 'Autumn cup', fixtureId: 'f', stage: 'group', group: 'B', round: 2, tie: 1, match: 'winners' } })
   expect(screen.getByRole('link', { name: 'Autumn cup' })).toHaveAttribute('href', '/leagues/league-1')
-  expect(screen.getByText(/GROUP B · LEG 1/)).toBeInTheDocument()
+  expect(screen.getByText(/GROUP B · WINNERS' MATCH/)).toBeInTheDocument()
 })
 
 it('names the knockout stage and leaves other battles unlinked', () => {
-  const view = header({ ...battle, league: { id: 'league-1', name: 'Autumn cup', fixtureId: 'f', stage: 'final', round: 1, tie: 1, leg: 2 } })
-  expect(screen.getByText(/FINAL · LEG 2/)).toBeInTheDocument()
+  const view = header({ ...battle, league: { id: 'league-1', name: 'Autumn cup', fixtureId: 'f', stage: 'final', round: 1, tie: 1 } })
+  expect(screen.getByText(/FINAL · TIE 1/)).toBeInTheDocument()
   view.unmount()
   header(battle)
   expect(screen.queryByText(/LEAGUE/)).not.toBeInTheDocument()
