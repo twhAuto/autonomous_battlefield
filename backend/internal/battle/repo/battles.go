@@ -54,7 +54,7 @@ func (r *Postgres) GetBattle(ctx context.Context, id string) (*battleservice.Bat
 		SELECT r.id, r.scenario_id, r.scenario_digest, r.scenario_snapshot, r.requested_ticks,
 		       r.initial_state, r.current_state, r.current_tick, r.status, r.paused, r.attempt, r.result, r.error_code, r.error_message,
 		       r.created_at, r.started_at, r.completed_at, r.owner_id,
-		       l.id, l.name, f.id, f.stage, f.group_index, f.round, f.tie, f.leg
+		       l.id, l.name, f.id, f.stage, f.group_index, f.round, f.tie
 		FROM battle_runs r
 		LEFT JOIN league_fixtures f ON f.battle_id = r.id
 		LEFT JOIN leagues l ON l.id = f.league_id
@@ -63,7 +63,7 @@ func (r *Postgres) GetBattle(ctx context.Context, id string) (*battleservice.Bat
 		&run.ID, &run.ScenarioID, &run.ScenarioDigest, &snapshot, &run.RequestedTicks, &initialState, &currentState,
 		&run.CurrentTick, &run.Status, &run.Paused, &run.Attempt, &result, &run.ErrorCode, &run.ErrorMessage,
 		&run.CreatedAt, &run.StartedAt, &run.CompletedAt, &run.OwnerID,
-		&league.id, &league.name, &league.fixtureID, &league.stage, &league.group, &league.round, &league.tie, &league.leg,
+		&league.id, &league.name, &league.fixtureID, &league.stage, &league.group, &league.round, &league.tie,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, battleservice.ErrBattleNotFound
@@ -94,14 +94,14 @@ func (r *Postgres) GetBattle(ctx context.Context, id string) (*battleservice.Bat
 // battleLeagueColumns scans the nullable league columns of a battle read.
 type battleLeagueColumns struct {
 	id, name, fixtureID, stage *string
-	group, round, tie, leg     *int
+	group, round, tie          *int
 }
 
 func (c battleLeagueColumns) value() *battleservice.BattleLeague {
 	if c.id == nil || c.fixtureID == nil {
 		return nil
 	}
-	league := &battleservice.BattleLeague{ID: *c.id, Name: *c.name, FixtureID: *c.fixtureID, Stage: *c.stage, Round: *c.round, Tie: *c.tie, Leg: *c.leg}
+	league := &battleservice.BattleLeague{ID: *c.id, Name: *c.name, FixtureID: *c.fixtureID, Stage: *c.stage, Round: *c.round, Tie: *c.tie}
 	if c.group != nil {
 		letter := string(rune('A' + *c.group))
 		league.Group = &letter

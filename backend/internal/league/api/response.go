@@ -1,6 +1,6 @@
-// Shapes a league for clients: settings, entrants, ranked group tables, knockout ties and
-// every fixture with its battle, its progress while running and its result. Entrants are
-// referred to by index.
+// Shapes a league for clients: settings, entrants, group records and placements,
+// knockout ties and every fixture with its match, battle, progress while running, result
+// and winner. Entrants are referred to by index.
 
 package api
 
@@ -41,16 +41,12 @@ type groupJSON struct {
 	Standings []standingJSON `json:"standings"`
 }
 
+// standingJSON is an entrant's group record; Placement is null until decided.
 type standingJSON struct {
-	Entrant          int   `json:"entrant"`
-	Position         int   `json:"position"`
-	Played           int   `json:"played"`
-	Won              int   `json:"won"`
-	Drawn            int   `json:"drawn"`
-	Lost             int   `json:"lost"`
-	Points           int   `json:"points"`
-	CastleDifference int64 `json:"castleDifference"`
-	DamageDifference int64 `json:"damageDifference"`
+	Entrant   int  `json:"entrant"`
+	Placement *int `json:"placement"`
+	Won       int  `json:"won"`
+	Lost      int  `json:"lost"`
 }
 
 type tieJSON struct {
@@ -67,8 +63,8 @@ type fixtureJSON struct {
 	Stage      string  `json:"stage"`
 	Group      *string `json:"group,omitempty"`
 	Round      int     `json:"round"`
-	Tie        int     `json:"tie,omitempty"`
-	Leg        int     `json:"leg"`
+	Tie        int     `json:"tie"`
+	Match      string  `json:"match,omitempty"`
 	Home       int     `json:"homeEntrant"`
 	Away       int     `json:"awayEntrant"`
 	ScenarioID string  `json:"scenarioId"`
@@ -76,9 +72,11 @@ type fixtureJSON struct {
 	Attempts   int     `json:"attempts"`
 	BattleID   *string `json:"battleId"`
 	// BattleProgress is present while the fixture runs; Result once it completed, with
-	// Winner null for a draw.
+	// Winner null for a draw. Winner is the match winner once the fixture is completed or
+	// void, after the tiebreak where the battle had none.
 	BattleProgress *battleProgressJSON `json:"battleProgress,omitempty"`
 	Result         *resultJSON         `json:"result,omitempty"`
+	Winner         *int                `json:"winner"`
 }
 
 type battleProgressJSON struct {
@@ -104,7 +102,11 @@ func leagueResponse(l *league.League) leagueJSON {
 	for group := range l.GroupCount {
 		standings := []standingJSON{}
 		for _, s := range l.GroupStandings(group) {
-			standings = append(standings, standingJSON{Entrant: s.Entrant, Position: s.Position, Played: s.Played, Won: s.Won, Drawn: s.Drawn, Lost: s.Lost, Points: s.Points, CastleDifference: s.CastleDifference, DamageDifference: s.DamageDifference})
+			item := standingJSON{Entrant: s.Entrant, Won: s.Won, Lost: s.Lost}
+			if s.Placement > 0 {
+				item.Placement = &s.Placement
+			}
+			standings = append(standings, item)
 		}
 		response.Groups = append(response.Groups, groupJSON{Group: league.GroupLetter(group), Standings: standings})
 	}
@@ -121,8 +123,8 @@ func leagueResponse(l *league.League) leagueJSON {
 }
 
 func fixtureResponse(l *league.League, f league.Fixture) fixtureJSON {
-	item := fixtureJSON{ID: f.ID, Sequence: f.Sequence, Stage: f.Stage, Round: f.Round, Tie: f.Tie, Leg: f.Leg, Home: f.Home, Away: f.Away,
-		ScenarioID: f.ScenarioID, Status: f.Status, Attempts: f.Attempts, BattleID: f.BattleID}
+	item := fixtureJSON{ID: f.ID, Sequence: f.Sequence, Stage: f.Stage, Round: f.Round, Tie: f.Tie, Match: league.MatchName(f.Stage, f.Round, f.Tie),
+		Home: f.Home, Away: f.Away, ScenarioID: f.ScenarioID, Status: f.Status, Attempts: f.Attempts, BattleID: f.BattleID}
 	if f.Group != nil {
 		letter := league.GroupLetter(*f.Group)
 		item.Group = &letter
@@ -132,6 +134,9 @@ func fixtureResponse(l *league.League, f league.Fixture) fixtureJSON {
 	}
 	if score, ok := l.Score(f); ok {
 		item.Result = &resultJSON{Winner: score.Winner, Reason: f.Battle.Reason}
+	}
+	if winner := l.MatchWinner(f); winner >= 0 {
+		item.Winner = &winner
 	}
 	return item
 }

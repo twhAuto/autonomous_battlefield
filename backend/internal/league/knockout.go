@@ -1,11 +1,10 @@
-// Seeds and advances the crossover knockout. Each group winner meets another group's
-// runner-up, and the bracket keeps group-mates apart until the final.
+// Advances the league: each group's next round, then the crossover knockout, where each
+// group winner meets another group's runner-up and the bracket keeps group-mates apart
+// until the final. Every knockout tie is one match.
 
 package league
 
-import "sort"
-
-// Tie is one knockout pairing over two legs; Home takes the first leg's home side.
+// Tie is one knockout match; Home takes the first spawn side.
 type Tie struct {
 	Stage  string
 	Number int
@@ -22,31 +21,37 @@ func KnockoutStages(groupCount int) []string {
 	return []string{StageSemifinal, StageFinal}
 }
 
-// TotalFixtures is the number of fixtures a league plays when nothing is cancelled.
+// TotalFixtures is the number of fixtures a league plays when nothing is cancelled:
+// five per group, then a bracket of half as many ties each stage down to the final.
 func TotalFixtures(groupCount int) int {
-	ties := 0
-	for stage := range KnockoutStages(groupCount) {
-		ties += 1 << (len(KnockoutStages(groupCount)) - stage - 1)
-	}
-	return groupCount*PairingsPerGroup*2 + ties*2
+	return groupCount*MatchesPerGroup + 1<<len(KnockoutStages(groupCount)) - 1
 }
 
-// Advance returns the next knockout stage's fixtures once every fixture so far is
-// settled, or the champion once the final is. It returns neither while battles remain.
+// Advance returns the fixtures that can open: each group's next round once that group's
+// fixtures have settled, the first knockout stage once every group is placed, and each
+// later stage once the previous one has settled. It returns the champion once the final
+// has settled, and neither while battles remain.
 func (l *League) Advance() ([]Fixture, *int) {
+	stages := KnockoutStages(l.GroupCount)
+	last := l.lastStage()
+	if last == StageGroup {
+		opened := []Fixture{}
+		for group := range l.GroupCount {
+			opened = append(opened, l.nextGroupRound(group, len(l.Fixtures)+len(opened))...)
+		}
+		if len(opened) > 0 || !l.groupsPlaced() {
+			return opened, nil
+		}
+		return l.knockoutFixtures(stages[0], l.groupQualifiers()), nil
+	}
 	for _, f := range l.Fixtures {
 		if !f.Settled() {
 			return nil, nil
 		}
 	}
-	stages := KnockoutStages(l.GroupCount)
-	last := l.lastStage()
 	if last == StageFinal {
-		champion := l.TieWinner(StageFinal, 1)
+		champion := l.MatchWinner(l.Fixtures[len(l.Fixtures)-1])
 		return nil, &champion
-	}
-	if last == StageGroup {
-		return l.knockoutFixtures(stages[0], l.groupQualifiers()), nil
 	}
 	for i, stage := range stages[:len(stages)-1] {
 		if stage == last {
@@ -59,7 +64,7 @@ func (l *League) Advance() ([]Fixture, *int) {
 func (l *League) lastStage() string {
 	last := StageGroup
 	for _, f := range l.Fixtures {
-		if f.Stage != StageGroup && stageRank(f.Stage) > stageRank(last) {
+		if stageRank(f.Stage) > stageRank(last) {
 			last = f.Stage
 		}
 	}
@@ -70,13 +75,25 @@ func stageRank(stage string) int {
 	return map[string]int{StageGroup: 0, StageQuarterfinal: 1, StageSemifinal: 2, StageFinal: 3}[stage]
 }
 
+// groupsPlaced reports whether every group has decided its decider.
+func (l *League) groupsPlaced() bool {
+	for group := range l.GroupCount {
+		if l.MatchWinner(l.groupFixture(group, 3, 1)) < 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // groupQualifiers pairs group winners with runners-up: A1-B2 and B1-A2, then C1-D2 and
 // D1-C2. Winners of the first and third ties meet in a semifinal, so A1 and A2 can only
 // meet in the final.
 func (l *League) groupQualifiers() [][2]int {
 	place := map[[2]int]int{}
-	for entrant, standing := range l.AllStandings() {
-		place[[2]int{standing.Group, standing.Position}] = entrant
+	for group := range l.GroupCount {
+		for _, standing := range l.GroupStandings(group) {
+			place[[2]int{group, standing.Placement}] = standing.Entrant
+		}
 	}
 	pairs := [][2]int{}
 	for group := 0; group < l.GroupCount; group += 2 {
@@ -100,133 +117,37 @@ func (l *League) winnerPairs(stage string) [][2]int {
 	return [][2]int{{winners[0], winners[1]}}
 }
 
+// knockoutFixtures opens a stage's ties in order. Knockout maps continue the group
+// stage's rotation.
 func (l *League) knockoutFixtures(stage string, pairs [][2]int) []Fixture {
-	previousTies := len(l.Ties())
 	fixtures := []Fixture{}
-	for leg := 1; leg <= 2; leg++ {
-		for i, pair := range pairs {
-			home, away := pair[0], pair[1]
-			if leg == 2 {
-				home, away = away, home
-			}
-			scenario := l.Settings.ScenarioIDs[(l.GroupCount*PairingsPerGroup+previousTies+i)%len(l.Settings.ScenarioIDs)]
-			fixtures = append(fixtures, newFixture(l.ID, len(l.Fixtures)+len(fixtures), Fixture{
-				Stage: stage, Round: 1, Tie: i + 1, Leg: leg, Home: home, Away: away, ScenarioID: scenario,
-			}))
-		}
+	previous := l.GroupCount*MatchesPerGroup + len(l.Ties())
+	for i, pair := range pairs {
+		number := previous + i
+		fixtures = append(fixtures, l.newFixture(len(l.Fixtures)+i, Fixture{
+			Stage: stage, Round: 1, Tie: i + 1, ScenarioID: l.Settings.ScenarioIDs[number%len(l.Settings.ScenarioIDs)],
+		}, pair[0], pair[1]))
 	}
 	return fixtures
 }
 
-// Ties lists knockout ties in stage and tie order, with a winner once both legs settle.
+// Ties lists knockout ties in stage and tie order, with a winner once decided.
 func (l *League) Ties() []Tie {
-	byKey := map[[2]any]*Tie{}
-	settled := map[[2]any]bool{}
-	ties := []*Tie{}
+	ties := []Tie{}
 	for _, f := range l.Fixtures {
 		if f.Stage == StageGroup {
 			continue
 		}
-		key := [2]any{f.Stage, f.Tie}
-		if byKey[key] == nil {
-			byKey[key] = &Tie{Stage: f.Stage, Number: f.Tie}
-			settled[key] = true
-			ties = append(ties, byKey[key])
-		}
-		if f.Leg == 1 {
-			byKey[key].Home, byKey[key].Away = f.Home, f.Away
-		}
-		settled[key] = settled[key] && f.Settled()
-	}
-	sort.SliceStable(ties, func(i, j int) bool {
-		if ties[i].Stage != ties[j].Stage {
-			return stageRank(ties[i].Stage) < stageRank(ties[j].Stage)
-		}
-		return ties[i].Number < ties[j].Number
-	})
-	result := make([]Tie, 0, len(ties))
-	for _, tie := range ties {
-		if settled[[2]any{tie.Stage, tie.Number}] {
-			winner := l.TieWinner(tie.Stage, tie.Number)
+		tie := Tie{Stage: f.Stage, Number: f.Tie, Home: f.Home, Away: f.Away}
+		if winner := l.MatchWinner(f); winner >= 0 {
 			tie.Winner = &winner
 		}
-		result = append(result, *tie)
+		ties = append(ties, tie)
 	}
-	return result
+	return ties
 }
 
-// TieWinner decides a two-leg tie: more wins, then castle-health difference across both
-// legs, then damage difference, then the better group finish, more group points and
-// entry order. Void legs count for neither side.
-func (l *League) TieWinner(stage string, number int) int {
-	first, second, legs := l.tieLegs(stage, number)
-	if first < 0 {
-		return -1
-	}
-	wins, castle, damage := l.tally(first, legs)
-	return l.tiebreak(first, second, wins, castle, damage)
-}
-
-// tieLegs returns a tie's legs and its sides, first being the first leg's home side.
-func (l *League) tieLegs(stage string, number int) (int, int, []Fixture) {
-	legs := []Fixture{}
-	first, second := -1, -1
-	for _, f := range l.Fixtures {
-		if f.Stage != stage || f.Tie != number {
-			continue
-		}
-		legs = append(legs, f)
-		if f.Leg == 1 {
-			first, second = f.Home, f.Away
-		}
-	}
-	return first, second, legs
-}
-
-// tally sums a tie's scored legs from first's side: the win margin and the castle and
-// damage differences.
-func (l *League) tally(first int, legs []Fixture) (int, int64, int64) {
-	var wins int
-	var castle, damage int64
-	for _, f := range legs {
-		score, ok := l.Score(f)
-		if !ok {
-			continue
-		}
-		sign := int64(1)
-		if f.Home != first {
-			sign = -1
-		}
-		castle += sign * score.CastleDifference
-		damage += sign * score.DamageDifference
-		if score.Winner != nil {
-			wins += pick(*score.Winner == first, 1, -1)
-		}
-	}
-	return wins, castle, damage
-}
-
-func (l *League) tiebreak(first, second, wins int, castle, damage int64) int {
-	for _, margin := range []int64{int64(wins), castle, damage} {
-		if margin > 0 {
-			return first
-		}
-		if margin < 0 {
-			return second
-		}
-	}
-	standings := l.AllStandings()
-	a, b := standings[first], standings[second]
-	if a.Position != b.Position {
-		return pick(a.Position < b.Position, first, second)
-	}
-	if a.Points != b.Points {
-		return pick(a.Points > b.Points, first, second)
-	}
-	return min(first, second)
-}
-
-func pick(condition bool, yes, no int) int {
+func pick[T any](condition bool, yes, no T) T {
 	if condition {
 		return yes
 	}

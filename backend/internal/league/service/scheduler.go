@@ -1,6 +1,6 @@
 // Plays league fixtures in the background. Each pass settles finished battles, opens the
-// next knockout stage or completes the league, and starts pending fixtures only into free
-// engine slots, so a league battle never waits out its timeout in the queue.
+// matches that can follow or completes the league, and starts pending fixtures only into
+// free engine slots, so a league battle never waits out its timeout in the queue.
 
 package service
 
@@ -135,7 +135,7 @@ func (s *Service) stopStranded(ctx context.Context, store SchedulerStore) error 
 	return nil
 }
 
-// settle records finished battles, then opens the next stage or crowns the champion.
+// settle records finished battles, then opens the next matches or crowns the champion.
 func settle(ctx context.Context, store SchedulerStore, l *league.League) error {
 	for i := range l.Fixtures {
 		if l.Fixtures[i].Status != league.FixtureRunning {
@@ -156,7 +156,7 @@ func settle(ctx context.Context, store SchedulerStore, l *league.League) error {
 			return err
 		}
 		l.Fixtures = append(l.Fixtures, fixtures...)
-		slog.InfoContext(ctx, "league_stage_opened", "league_id", l.ID, "stage", fixtures[0].Stage, "fixtures", len(fixtures))
+		slog.InfoContext(ctx, "league_fixtures_opened", "league_id", l.ID, "stage", fixtures[0].Stage, "fixtures", len(fixtures))
 	}
 	if champion != nil {
 		if err := store.CompleteLeague(ctx, l.ID, *champion); err != nil {

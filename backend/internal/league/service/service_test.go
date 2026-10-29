@@ -73,7 +73,7 @@ func TestCreateLeagueValidatesEveryEntrantOnEveryMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.Name != "Autumn cup" || created.OwnerID != "actor-admin" || created.GroupCount != 2 || len(created.Fixtures) != 24 || created.Status != league.StatusRunning {
+	if created.Name != "Autumn cup" || created.OwnerID != "actor-admin" || created.GroupCount != 2 || len(created.Fixtures) != 4 || created.Status != league.StatusRunning {
 		t.Fatalf("league = %+v", created)
 	}
 	if created.Entrants[3].FactionName != "Faction 3" || created.Entrants[3].FactionID != factionID(3) || created.Entrants[3].Group != 1 {

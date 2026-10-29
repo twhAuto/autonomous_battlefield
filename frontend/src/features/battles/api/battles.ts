@@ -3,6 +3,7 @@
 
 import type { UnitCapabilities } from '../../../shared/domain/units'
 import type { ModelProfile } from '../../../shared/domain/model-profile'
+import type { MatchPlace } from '../../../shared/domain/leagueMatches'
 import { createApiClient } from '../../../shared/api/request'
 
 export interface ScenarioSummary {
@@ -134,7 +135,7 @@ export interface BattleResult {
 export interface ProductionSchedule { nextTick: number; opening: boolean }
 
 /** Places a league battle in its league; absent for other battles. */
-export interface BattleLeague { id: string; name: string; fixtureId: string; stage: string; group?: string; round: number; tie?: number; leg: number }
+export interface BattleLeague extends MatchPlace { id: string; name: string; fixtureId: string; round: number }
 
 export interface BattleRun {
   ownerId?: string

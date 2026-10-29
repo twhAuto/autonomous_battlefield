@@ -156,9 +156,13 @@ func TestGetBattleShowsItsLeagueOnlyWhenPresent(t *testing.T) {
 	if _, present := read()["league"]; present {
 		t.Fatal("battle outside a league reports one")
 	}
-	run.League = &battleservice.BattleLeague{ID: "league", Name: "Autumn cup", FixtureID: "fixture", Stage: "group", Group: &group, Round: 2, Leg: 1}
-	if league, _ := read()["league"].(map[string]any); league["name"] != "Autumn cup" || league["group"] != "B" || league["round"] != 2.0 {
+	run.League = &battleservice.BattleLeague{ID: "league", Name: "Autumn cup", FixtureID: "fixture", Stage: "group", Group: &group, Round: 2, Tie: 2}
+	if league, _ := read()["league"].(map[string]any); league["name"] != "Autumn cup" || league["group"] != "B" || league["round"] != 2.0 || league["match"] != "losers" {
 		t.Fatalf("league = %v", league)
+	}
+	run.League = &battleservice.BattleLeague{ID: "league", Name: "Autumn cup", FixtureID: "fixture", Stage: "final", Round: 1, Tie: 1}
+	if league, _ := read()["league"].(map[string]any); league["stage"] != "final" || league["match"] != nil {
+		t.Fatalf("knockout league = %v", league)
 	}
 }
 

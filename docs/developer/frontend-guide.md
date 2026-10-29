@@ -31,7 +31,7 @@ The frontend is a React/Vite single-page application.
 | [`features/battles/components/TypeStatistics.tsx`](../../frontend/src/features/battles/components/TypeStatistics.tsx) | After-action unit and building tables by type and the upgrade timeline; renders nothing for a result without per-type figures |
 | [`features/leagues/api/leagues.ts`](../../frontend/src/features/leagues/api/leagues.ts) | Typed league list, read, create and cancel requests |
 | [`features/leagues/pages/CreateLeaguePage.tsx`](../../frontend/src/features/leagues/pages/CreateLeaguePage.tsx) | League setup: name, 8 or 16 entrants with faction, group and controller, maps, timing, and estimates of battles, duration and model decisions; `?from=<league id>` pre-fills the form from that league, and copied factions, maps, profiles, models or efforts that no longer exist block starting until replaced |
-| [`features/leagues/pages/LeaguePage.tsx`](../../frontend/src/features/leagues/pages/LeaguePage.tsx) | Running battles with tick progress, group tables, knockout bracket and fixtures with battle links (`components/LeagueStandings.tsx`), each entrant named with its controller, refreshed while the league runs; for Admins, cancellation and **START AGAIN** into a pre-filled setup |
+| [`features/leagues/pages/LeaguePage.tsx`](../../frontend/src/features/leagues/pages/LeaguePage.tsx) | Running battles with tick progress, each group's placements, win and loss records and five matches, the knockout bracket, and fixtures with battle links and tiebreak winners (`components/LeagueStandings.tsx`), each entrant named with its controller, refreshed while the league runs; for Admins, cancellation and **START AGAIN** into a pre-filled setup |
 | [`features/analytics/pages/AnalyticsPage.tsx`](../../frontend/src/features/analytics/pages/AnalyticsPage.tsx) | Statistics report with URL-backed league, rules-version and fallback filters: model, head-to-head, unit, army-mix, upgrade, faction and map tables |
 | [`features/analytics/components/WinRateChart.tsx`](../../frontend/src/features/analytics/components/WinRateChart.tsx) | Model leaderboard: win rate per controller with its 95% interval |
 | [`features/admin/pages/MembersPage.tsx`](../../frontend/src/features/admin/pages/MembersPage.tsx) | Managed Player invitations, removal, sync retry, and game link (Admins only, when enabled) |
@@ -137,7 +137,7 @@ ignored.
 (over 1000px) the page spans the full window and fits one viewport height: a
 single command band (`BattleHeader` with the scenario, tick progress, outcome and
 controls, a connection badge while the battle is active, and for a league battle a
-link to its league, group or stage and leg), one
+link to its league and its group match or knockout tie), one
 faction strip per participant, then the map filling the remaining height beside the
 inspector. The title states the battle's status, so the band repeats neither status
 nor attempt. The map legend and selected-entity details float over the map, so
@@ -296,7 +296,8 @@ Navigation and preview tests cover disclosure behavior and responsive changes.
 
 `shared/domain/model-profile.ts` owns `ModelProfile`, used by battle setup and
 administration. `shared/domain/units.ts` owns `UnitCapabilities`, used by battles
-and faction rulesets. Feature API clients import these contracts directly;
+and faction rulesets. `shared/domain/leagueMatches.ts` names league stages, group
+matches and knockout ties for the league pages and a league battle's header. Feature API clients import these contracts directly;
 battle-only payloads remain in the battle client and UI state in `battles/types.ts`.
 
 `src/styles.css` is the single stylesheet entry point, imported by `App.tsx`.

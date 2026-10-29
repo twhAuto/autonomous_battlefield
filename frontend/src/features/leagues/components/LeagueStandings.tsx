@@ -1,11 +1,13 @@
-// Running battles, group tables, knockout bracket and fixture list for one league.
-// Entrants are named by faction with their controller; the top two of each group are
-// marked as qualifying, and running fixtures show their battle's tick progress.
+// Running battles, each group's dual tournament, knockout bracket and fixture list for
+// one league. Entrants are named by faction with their controller; the top two of each
+// group are marked as qualifying once placed, and running fixtures show their battle's
+// tick progress.
 
 import { Link } from 'react-router-dom'
-import type { League, LeagueFixture, LeagueStage, LeagueTie } from '../api/leagues'
+import type { GroupLetter, League, LeagueFixture, LeagueStage } from '../api/leagues'
 import { controllerName } from '../../../shared/domain/controllers'
-import { entrantName, fixtureLabel, fixtureOutcome, stageLabel } from '../presentation/leagues'
+import { groupMatchName, stageLabel, type LeagueMatch } from '../../../shared/domain/leagueMatches'
+import { entrantName, fixtureLabel, fixtureOutcome } from '../presentation/leagues'
 
 function Entrant({ league, index }: Readonly<{ league: League; index: number }>) {
   const entrant = league.entrants[index]
@@ -43,39 +45,57 @@ export function NowPlaying({ league }: Readonly<{ league: League }>) {
   )
 }
 
-function signed(value: number) {
-  return value > 0 ? `+${value}` : String(value)
-}
+const placements = ['1st', '2nd', '3rd', '4th']
 
-export function GroupTables({ league }: Readonly<{ league: League }>) {
+// A group's dual tournament in play order: two openings, the winners' and losers'
+// matches, then the decider.
+const groupMatches: { round: number; tie: number; match: LeagueMatch }[] = [
+  { round: 1, tie: 1, match: 'opening' }, { round: 1, tie: 2, match: 'opening' },
+  { round: 2, tie: 1, match: 'winners' }, { round: 2, tie: 2, match: 'losers' }, { round: 3, tie: 1, match: 'decider' },
+]
+
+export function GroupStage({ league }: Readonly<{ league: League }>) {
   return (
-    <section className="league-groups" aria-label="Group tables">
+    <section className="league-groups" aria-label="Group stage">
       {league.groups.map(group => <div key={group.group} className="league-group">
         <div className="section-label"><span>GROUP {group.group}</span><span>TOP TWO QUALIFY</span></div>
         <table className="league-table">
           <caption className="visually-hidden">Group {group.group} standings</caption>
-          <thead><tr><th scope="col">#</th><th scope="col">Entrant</th><th scope="col"><abbr title="Played">P</abbr></th><th scope="col"><abbr title="Won">W</abbr></th>
-            <th scope="col"><abbr title="Drawn">D</abbr></th><th scope="col"><abbr title="Lost">L</abbr></th><th scope="col"><abbr title="Points">Pts</abbr></th>
-            <th scope="col"><abbr title="Castle-health difference">Castle ±</abbr></th><th scope="col"><abbr title="Damage difference">Damage ±</abbr></th></tr></thead>
-          <tbody>{group.standings.map(standing => <tr key={standing.entrant} className={standing.position <= 2 ? 'league-table__qualifier' : undefined}>
-            <td>{standing.position}</td>
+          <thead><tr><th scope="col"><abbr title="Placement">#</abbr></th><th scope="col">Entrant</th><th scope="col"><abbr title="Won">W</abbr></th><th scope="col"><abbr title="Lost">L</abbr></th></tr></thead>
+          <tbody>{group.standings.map(standing => <tr key={standing.entrant} className={standing.placement !== null && standing.placement <= 2 ? 'league-table__qualifier' : undefined}>
+            <td>{standing.placement === null ? '–' : placements[standing.placement - 1]}</td>
             <th scope="row"><Entrant league={league} index={standing.entrant} /></th>
-            <td>{standing.played}</td><td>{standing.won}</td><td>{standing.drawn}</td><td>{standing.lost}</td>
-            <td><strong>{standing.points}</strong></td><td>{signed(standing.castleDifference)}</td><td>{signed(standing.damageDifference)}</td>
+            <td>{standing.won}</td><td>{standing.lost}</td>
           </tr>)}</tbody>
         </table>
+        <GroupMatches league={league} group={group.group} />
       </div>)}
     </section>
   )
+}
+
+function GroupMatches({ league, group }: Readonly<{ league: League; group: GroupLetter }>) {
+  return <ol className="league-group__matches" aria-label={`Group ${group} matches`}>
+    {groupMatches.map(({ round, tie, match }) => {
+      const fixture = league.fixtures.find(f => f.stage === 'group' && f.group === group && f.round === round && f.tie === tie)
+      const name = groupMatchName(match, tie)
+      return <li key={name}>
+        <span className="league-match__name">{name}</span>
+        {fixture ? <MatchCard league={league} label={`Group ${group} ${name}`} home={fixture.homeEntrant} away={fixture.awayEntrant} winner={fixture.winner} />
+          : <p className="league-tie league-tie--pending">To be decided</p>}
+      </li>
+    })}
+  </ol>
 }
 
 function bracketStages(groupCount: 2 | 4): LeagueStage[] {
   return groupCount === 4 ? ['quarterfinal', 'semifinal', 'final'] : ['semifinal', 'final']
 }
 
-function TieCard({ league, tie }: Readonly<{ league: League; tie: LeagueTie }>) {
-  const side = (index: number) => <li className={tie.winner === index ? 'league-tie__winner' : undefined}><Entrant league={league} index={index} />{tie.winner === index && <span className="visually-hidden"> (winner)</span>}</li>
-  return <ol className="league-tie" aria-label={`${stageLabel(tie.stage)} tie ${tie.tie}`}>{side(tie.homeEntrant)}{side(tie.awayEntrant)}</ol>
+// One match, the home side first, with its winner marked once decided.
+function MatchCard({ league, label, home, away, winner }: Readonly<{ league: League; label: string; home: number; away: number; winner: number | null }>) {
+  const side = (index: number) => <li className={winner === index ? 'league-tie__winner' : undefined}><Entrant league={league} index={index} />{winner === index && <span className="visually-hidden"> (winner)</span>}</li>
+  return <ol className="league-tie" aria-label={label}>{side(home)}{side(away)}</ol>
 }
 
 export function KnockoutBracket({ league }: Readonly<{ league: League }>) {
@@ -86,8 +106,8 @@ export function KnockoutBracket({ league }: Readonly<{ league: League }>) {
         const ties = league.knockout.filter(tie => tie.stage === stage)
         const expected = 2 ** (stages.length - column - 1)
         return <div key={stage} className="league-bracket__stage">
-          <div className="section-label"><span>{stageLabel(stage).toUpperCase()}</span><span>TWO LEGS</span></div>
-          {ties.map(tie => <TieCard key={tie.tie} league={league} tie={tie} />)}
+          <div className="section-label"><span>{stageLabel(stage).toUpperCase()}</span><span>ONE BATTLE</span></div>
+          {ties.map(tie => <MatchCard key={tie.tie} league={league} label={`${stageLabel(tie.stage)} tie ${tie.tie}`} home={tie.homeEntrant} away={tie.awayEntrant} winner={tie.winner} />)}
           {Array.from({ length: expected - ties.length }, (_, index) => <p key={index} className="league-tie league-tie--pending">To be decided</p>)}
         </div>
       })}

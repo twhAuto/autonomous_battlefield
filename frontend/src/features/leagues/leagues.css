@@ -46,6 +46,9 @@
 .league-table th[scope="row"] small, .league-tie small, .league-fixtures small { display: block; margin-top: 2px; color: var(--muted); font: 11px 'DM Mono', monospace; }
 .league-table abbr { text-decoration: none; }
 .league-table__qualifier td:first-child { box-shadow: inset 2px 0 0 var(--lime); }
+/* A group's five matches under its table, in play order. */
+.league-group__matches { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; margin: 16px 0 0; padding: 0; list-style: none; }
+.league-match__name { display: block; margin-bottom: 6px; color: var(--muted); font: 11px 'DM Mono', monospace; letter-spacing: .1em; text-transform: uppercase; }
 .league-bracket { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 24px; margin: 32px 0; }
 .league-bracket__stage { display: flex; flex-direction: column; gap: 12px; }
 .league-tie { margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); background: #151a14; }

@@ -109,7 +109,7 @@ it('keeps the header to the scenario and a live connection badge', async () => {
 })
 
 it('offers a way back to the league once a league battle settles', async () => {
-  const league = { id: 'league-1', name: 'Autumn cup', fixtureId: 'f', stage: 'group', group: 'B', round: 1, leg: 1 }
+  const league = { id: 'league-1', name: 'Autumn cup', fixtureId: 'f', stage: 'group', group: 'B', round: 1, tie: 1, match: 'opening' as const }
   vi.mocked(getBattle).mockResolvedValue(runningBattle({ league }))
   const view = renderBattle()
   await screen.findByRole('heading', { name: 'Battle in progress' })
