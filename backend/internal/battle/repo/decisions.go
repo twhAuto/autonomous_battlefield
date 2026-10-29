@@ -176,6 +176,16 @@ func (r *Postgres) ResolveDecisionFallback(ctx context.Context, id string, expec
 	return tag.RowsAffected() == 1, nil
 }
 
+// minClaimWindow is the least window time worth starting a model run for. A
+// decision closer to its deadline stays pending and falls back when the window closes.
+// Leases shorter than twice this need at least half the lease left instead, so a short
+// configured timeout still lets fresh decisions run.
+const minClaimWindow = 10 * time.Second
+
+// ClaimModelDecision measures the lease from the decision's creation, not from the
+// claim, so a run that waited for a slot gets only the window it has left. The lease
+// still includes the worker's grace; docs/architecture/ai-decisions.md gives how it
+// lines up with the engine's fallback.
 func (r *Postgres) ClaimModelDecision(ctx context.Context, owner string, profileIDs []string, lease time.Duration) (ai.DecisionRecord, error) {
 	ctx, span := tracing.StartDatabaseSpan(ctx, "claim_decision")
 	defer span.End()
@@ -187,13 +197,14 @@ func (r *Postgres) ClaimModelDecision(ctx context.Context, owner string, profile
 			SELECT id FROM battle_decisions
 			WHERE controller_type='model' AND profile_id = ANY($3::text[])
 			  AND (status='pending' OR (status='running' AND lease_expires_at <= now()))
+			  AND created_at + $2::interval >= now() + $4::interval
 			ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1
 		), claimed AS (
-			UPDATE battle_decisions d SET status='running', lease_owner=$1, lease_expires_at=now()+$2::interval
+			UPDATE battle_decisions d SET status='running', lease_owner=$1, lease_expires_at=d.created_at+$2::interval
 			FROM candidate WHERE d.id=candidate.id RETURNING d.*
 		)
 		SELECT `+decisionColumns+` FROM claimed`,
-		owner, lease.String(), profileIDs)
+		owner, lease.String(), profileIDs, min(minClaimWindow, lease/2).String())
 	record, err := scanDecision(row)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && record.Status != "running") {
 		return ai.DecisionRecord{}, ai.ErrNoDecision
