@@ -48,6 +48,9 @@ func TestDecisionReadsAndClaims(t *testing.T) {
 	if !strings.Contains(db.queryRowSQL, "claimed AS") || !strings.Contains(db.queryRowSQL, "profile_id = ANY") || strings.Contains(db.queryRowSQL, "RETURNING id,") {
 		t.Fatalf("claim query leaves UPDATE columns ambiguous: %s", db.queryRowSQL)
 	}
+	if !strings.Contains(db.queryRowSQL, "lease_expires_at=d.created_at+$2::interval") || !strings.Contains(db.queryRowSQL, "created_at + $2::interval >= now() + $4::interval") {
+		t.Fatalf("claim lease must end with the decision window: %s", db.queryRowSQL)
+	}
 	db.row = battleRow(func(...any) error { return pgx.ErrNoRows })
 	if _, err := repository.ClaimModelDecision(context.Background(), "agent", []string{"profile"}, time.Second); !errors.Is(err, ai.ErrNoDecision) {
 		t.Fatal(err)
