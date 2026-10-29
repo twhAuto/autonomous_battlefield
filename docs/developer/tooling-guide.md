@@ -196,7 +196,8 @@ Production hardening entry points:
   the private cluster/image recovery approval after successful runtime assurance.
 - `scripts/ops/prepare-limited-production.sh` checks production cluster identity,
   then validates and renders private launch files (`test-production-preparation.py`).
-  `scripts/ops/ai-policy.sh` is the private operator stop/status/usage interface;
+  `scripts/ops/ai-policy.sh` is the private operator stop/status/usage/CLI-slot
+  interface (`test-ai-policy.py`);
   `scripts/ops/verify-agent-isolation.py` tests the CLI worker guest boundary.
 - `scripts/security/capture-zap-traffic.py` verifies and sanitizes authenticated CI
   reads for an offline ZAP passive scan. `test-production-hardening.py` covers

@@ -214,7 +214,7 @@ PostgreSQL serializes admission across replicas:
   Admin, with a cooldown, queue and execution timeouts, and idempotency keys.
   Expired queued jobs and failed executions both count.
 - At most four CLI executions run at once across decisions and background jobs
-  (`runtime_policy.cli_concurrency`, 1–4). A slot is released when the worker
+  by default (`runtime_policy.cli_concurrency`, 1–8). A slot is released when the worker
   reports completion or its bounded lease expires, not on submission. Each worker
   also caps its own jobs with `ai.agentConcurrency` (1 when omitted). The K3s API
   worker sets 4; the managed CLI VM currently omits it and runs one job at a time
@@ -227,8 +227,12 @@ PostgreSQL serializes admission across replicas:
 Workers use the database lease deadline rather than the time a claim arrives, so
 keep host and VM clocks synchronized.
 
-Use the private kubectl context, set `BATTLEFIELD_POSTGRES_POD=battlefield-postgres-0`,
-and run:
+Set `BATTLEFIELD_POSTGRES_POD=battlefield-postgres-0` and `DEPLOY_ENV` to `dev` or
+`production`, and run the commands below. With `DEPLOY_ENV` set, the script uses
+that environment's registered kubeconfig and context and refuses a cluster whose
+identity does not match ([environments](environments.md)). Like rollback, it skips
+the platform-readiness checks, so `stop` still works while an unrelated controller
+is unhealthy. Without `DEPLOY_ENV`, it uses the shell's current kubectl context.
 
 ```bash
 scripts/ops/ai-policy.sh status
@@ -236,6 +240,8 @@ scripts/ops/ai-policy.sh stop
 scripts/ops/ai-policy.sh usage
 # Only after diagnosing the cause:
 scripts/ops/ai-policy.sh start
+# Match the CLI workers' combined slots (1–8):
+scripts/ops/ai-policy.sh cli-slots 4
 ```
 
 `stop` blocks new background-generation admissions and new model claims, and new
@@ -244,7 +250,11 @@ endpoint every second (two-second HTTP timeout) and cancel running work when pol
 stops or a check fails; on Linux that kills the CLI process group, and stopping the
 VM worker's systemd unit kills its control group. Previously accepted plans can
 still be simulated. `usage` reads `friend_ai_usage` by identity and profile; it
-records reported usage, not an exact bill.
+records reported usage, not an exact bill. `cli-slots` sets
+`runtime_policy.cli_concurrency`, which the league scheduler plans with: set it to
+the CLI workers' combined `ai.agentConcurrency`, since a higher value starts league
+battles whose decisions then wait for a slot toward the decision timeout. Lowering it
+blocks new claims until capacity frees; it does not cancel active jobs.
 
 ## CI service identity
 

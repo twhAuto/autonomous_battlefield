@@ -558,9 +558,10 @@ func TestAgentConcurrencyConfiguration(t *testing.T) {
 	}{
 		{"default", "ai: {}", 1, false},
 		{"four", "ai: {agentConcurrency: 4}", 4, false},
+		{"eight", "ai: {agentConcurrency: 8}", 8, false},
 		{"zero", "ai: {agentConcurrency: 0}", 0, true},
 		{"negative", "ai: {agentConcurrency: -1}", 0, true},
-		{"too many", "ai: {agentConcurrency: 5}", 0, true},
+		{"too many", "ai: {agentConcurrency: 9}", 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg, err := LoadAgent(writeConfigFile(t, tc.yaml))

@@ -10,6 +10,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = (ROOT / 'scripts/dev/run-k8s-cli-agent.sh').read_text()
 FUNCTIONS = '\n'.join(re.findall(r'^\w+\(\) \{\n.*?^\}', SOURCE, re.M | re.S))
+DEFAULT_CONCURRENCY = re.search(r'^agent_concurrency="\$\{HOST_AGENT_CONCURRENCY:-(\d+)\}"$', SOURCE, re.M).group(1)
 BASE_ENV = {key: value for key, value in os.environ.items() if key != 'HOST_CLI_PREFETCH_CONTEXT'}
 
 
@@ -24,7 +25,7 @@ class CLIProfiles(unittest.TestCase):
         with tempfile.TemporaryDirectory() as runtime:
             script = FUNCTIONS + '''
 use_codex=0; use_gemini=0; use_claude=0
-health_port=18083; gateway_port=18084; agent_concurrency="${agent_concurrency:-2}"
+health_port=18083; gateway_port=18084; agent_concurrency="${agent_concurrency:-''' + DEFAULT_CONCURRENCY + '''}"
 resolve_version_prefixes
 codex_available() { [[ "$available" == *codex* ]]; }
 antigravity_available() { [[ "$available" == *gemini* ]]; }
@@ -70,18 +71,18 @@ set_profile_flags false false false
                 self.assertEqual(result.stdout.count('provider:'), count)
 
     def test_agent_concurrency_default_and_override(self):
-        # Two slots by default so both factions of a model battle decide at once.
-        self.assertIn('agentConcurrency: 2', self.run_profile('claude', 'claude').stdout)
+        # Eight slots by default so both factions of four concurrent model battles decide at once.
+        self.assertIn('agentConcurrency: 8', self.run_profile('claude', 'claude').stdout)
         self.assertIn('agentConcurrency: 4', self.run_profile('claude', 'claude', '4').stdout)
 
     def test_agent_concurrency_rejects_invalid_values(self):
-        for value, valid in [('1', True), ('4', True), ('0', False), ('5', False), ('two', False), ('', False)]:
+        for value, valid in [('1', True), ('4', True), ('8', True), ('0', False), ('9', False), ('10', False), ('two', False), ('', False)]:
             with self.subTest(value=value):
                 result = subprocess.run(['bash', '-euo', 'pipefail', '-c', FUNCTIONS + '\nvalidate_agent_concurrency'],
                                         capture_output=True, text=True, env={**os.environ, 'agent_concurrency': value})
                 self.assertEqual(result.returncode, 0 if valid else 2, result.stderr)
                 if not valid:
-                    self.assertIn('HOST_AGENT_CONCURRENCY must be 1, 2, 3, or 4.', result.stderr)
+                    self.assertIn('HOST_AGENT_CONCURRENCY must be a whole number from 1 to 8.', result.stderr)
 
     def test_default_version_prefixes_match_backend_config(self):
         result = self.run_profile('all', 'codex gemini claude')
