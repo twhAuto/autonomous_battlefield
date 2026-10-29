@@ -1338,7 +1338,8 @@ components:
         id: {type: string}
         continuousProduction: {type: boolean, default: false, description: Repeating per-building unit selection and on/off settings; absent or false retains historical batch recruitment.}
         alternatingTurns: {type: boolean, default: false, description: 'Each tick, the factions act in seat order with the first seat alternating, and equal-speed units of the two factions take turns; absent or false orders buildings and units by ID.'}
-        maximumUnitCount: {type: integer, minimum: 0, maximum: 200, description: 'Per-faction cap on living units plus paid units in training; absent or 0 is unlimited. Rulesets v8 and v9 use 40; v10 to v12 use 50.'}
+        alternatingWindows: {type: boolean, default: false, description: 'Requires alternatingTurns. The first seat also changes from one decision window to the next, so neither seat leads every window; absent or false alternates on tick parity alone.'}
+        maximumUnitCount: {type: integer, minimum: 0, maximum: 200, description: 'Per-faction cap on living units plus paid units in training; absent or 0 is unlimited. Rulesets v8 and v9 use 40; v10 to v13 use 50.'}
         upgrades:
           type: array
           items: {$ref: '#/components/schemas/UpgradeRule'}

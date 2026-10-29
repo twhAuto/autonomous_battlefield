@@ -172,6 +172,9 @@ type Ruleset struct {
 	// AlternatingTurns orders each tick by seat instead of faction ID: the first seat
 	// alternates every tick, and equal-speed units of the two factions take turns.
 	AlternatingTurns bool `json:"alternatingTurns,omitempty" yaml:"alternatingTurns,omitempty"`
+	// AlternatingWindows, with AlternatingTurns, also alternates the first seat between
+	// decision windows, so neither seat leads every window when the interval is even.
+	AlternatingWindows bool `json:"alternatingWindows,omitempty" yaml:"alternatingWindows,omitempty"`
 	// MaximumUnitCount caps living plus paid in-training units per faction; zero is unlimited.
 	MaximumUnitCount int           `json:"maximumUnitCount,omitempty" yaml:"maximumUnitCount,omitempty"`
 	Units            []UnitType    `json:"units" yaml:"units"`
