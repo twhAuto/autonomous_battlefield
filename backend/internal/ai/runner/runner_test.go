@@ -270,6 +270,7 @@ func TestCLIRunnerBuildsRestrictedCodexInvocation(t *testing.T) {
 
 func TestAntigravityRunnerUsesIsolatedConfiguration(t *testing.T) {
 	executor := &inspectAntigravityExecutor{t: t}
+	started := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	result, err := (CLIRunner{Connector: errorConnector{session: contextFixtureSession{}}, Provider: "antigravity-cli", Model: "gemini-3.8-flash-medium", Executor: executor}).Run(ctx, ai.DecisionSession{RequestID: "request", MCPURL: "http://mcp/mcp", CapabilityToken: "secret-token"})
@@ -279,9 +280,12 @@ func TestAntigravityRunnerUsesIsolatedConfiguration(t *testing.T) {
 	if _, err := os.Stat(executor.home); !os.IsNotExist(err) {
 		t.Fatal("temporary home was not cleaned")
 	}
-	// agy's own limit follows the run's deadline instead of a fixed value.
-	if !strings.Contains(executor.args, "--print-timeout 2m59s") && !strings.Contains(executor.args, "--print-timeout 2m58s") {
-		t.Fatalf("print timeout does not follow the deadline: %s", executor.args)
+	// agy's own limit follows the run's deadline, whole seconds of what was left when
+	// the invocation was prepared, instead of a fixed value.
+	_, after, _ := strings.Cut(executor.args, "--print-timeout ")
+	value, _, _ := strings.Cut(after, " ")
+	if timeout, err := time.ParseDuration(value); err != nil || timeout > 3*time.Minute || timeout < 3*time.Minute-time.Since(started)-time.Second {
+		t.Fatalf("print timeout %q does not follow the deadline", value)
 	}
 	result, err = (CLIRunner{Provider: "codex-cli", Executor: &fakeExecutor{err: errors.New("exit")}}).Run(context.Background(), ai.DecisionSession{})
 	if err == nil || result.ErrorCategory != "cli" {
