@@ -5,7 +5,7 @@
 import { type SubmitEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { listModelProfiles, listScenarios, type ScenarioSummary } from '../../battles/api/battles'
-import { ControllerSelect, controllerInput, resolveSelection, type ModelSelection } from '../../battles/components/ControllerSelect'
+import { ControllerSelect, controllerInput, resolveSelection, staleSelection, type ModelSelection } from '../../battles/components/ControllerSelect'
 import { listFactions, type Faction } from '../../factions/api/factions'
 import type { ModelProfile } from '../../../shared/domain/model-profile'
 import { createLeague, getLeague, LeagueApiError, listLeagues, type GroupLetter, type League, type LeagueScheduling } from '../api/leagues'
@@ -39,13 +39,13 @@ function defaultSetup(factions: Faction[], scenarios: ScenarioSummary[]): SetupD
 }
 
 // A copied league keeps references that no longer resolve visible: a deleted faction
-// or map is left unchosen and a missing model profile stays selected, so the
-// blockers report them instead of the copy silently substituting another.
-function copiedSetup(league: League, factions: Faction[], scenarios: ScenarioSummary[]): SetupDraft {
+// is left unchosen, and a deleted map or a missing profile, model or effort stays
+// selected and marked unavailable, so the blockers report them instead of the copy
+// silently substituting or dropping them.
+function copiedSetup(league: League, factions: Faction[]): SetupDraft {
   const entrants = [...league.entrants].sort((left, right) => left.index - right.index)
   return {
-    name: league.name, size: entrants.length === 16 ? 16 : 8,
-    maps: league.settings.scenarioIds.filter(id => scenarios.some(scenario => scenario.id === id)),
+    name: league.name, size: entrants.length === 16 ? 16 : 8, maps: [...league.settings.scenarioIds],
     tickCount: league.settings.tickCount, tickDuration: league.settings.tickDuration ?? '',
     decisionInterval: league.settings.decisionIntervalTicks ? String(league.settings.decisionIntervalTicks) : '',
     entrants: entrants.map(({ group, factionId, controller }, slot): EntrantDraft => ({
@@ -62,17 +62,26 @@ function withCurrent(choices: string[], current: string) {
   return current && !choices.includes(current) ? [...choices, current] : choices
 }
 
+function controllerOffered({ controller, selection }: EntrantDraft, profiles: ModelProfile[]) {
+  if (controller === 'scripted') return true
+  const profile = profiles.find(candidate => candidate.id === controller)
+  if (!profile?.available) return false
+  const stale = staleSelection(profile, selection)
+  return !stale.model && !stale.effort
+}
+
 /** Lists what blocks submission, in the order a person would fix it. */
-function problems(name: string, entrants: EntrantDraft[], maps: string[], ticksValid: boolean, profiles: ModelProfile[]) {
+function problems(name: string, entrants: EntrantDraft[], maps: string[], missingMaps: string[], ticksValid: boolean, profiles: ModelProfile[]) {
   const found: string[] = []
   if (!name.trim() || name.trim().length > 80) found.push('Name the league (up to 80 characters).')
   if (maps.length === 0) found.push('Choose at least one map.')
+  if (missingMaps.length > 0) found.push('Remove maps that no longer exist.')
   if (!ticksValid) found.push('Set a tick limit every chosen map allows.')
   const factionIDs = entrants.map(entrant => entrant.factionId)
   if (factionIDs.some(id => !id) || new Set(factionIDs).size !== factionIDs.length) found.push('Give every entrant a different faction.')
   const groupSizes = groupLetters.map(letter => entrants.filter(entrant => entrant.group === letter).length)
   if (groupSizes.some(count => count !== 0 && count !== 4)) found.push('Put exactly four entrants in each group.')
-  if (entrants.some(entrant => entrant.controller !== 'scripted' && !profiles.some(profile => profile.id === entrant.controller && profile.available))) found.push('Choose an available controller for every entrant.')
+  if (entrants.some(entrant => !controllerOffered(entrant, profiles))) found.push('Choose an available controller, model and effort for every entrant.')
   return found
 }
 
@@ -111,7 +120,7 @@ export function CreateLeaguePage() {
         setScenarios(loadedScenarios)
         setProfiles(loadedProfiles)
         setSource(loadedSource)
-        const setup = loadedSource ? copiedSetup(loadedSource, loadedFactions, loadedScenarios) : defaultSetup(loadedFactions, loadedScenarios)
+        const setup = loadedSource ? copiedSetup(loadedSource, loadedFactions) : defaultSetup(loadedFactions, loadedScenarios)
         setName(setup.name)
         setSize(setup.size)
         setMaps(setup.maps)
@@ -126,9 +135,10 @@ export function CreateLeaguePage() {
   }, [loadVersion, sourceID])
 
   const chosen = scenarios.filter(scenario => maps.includes(scenario.id))
+  const missingMaps = maps.filter(id => !scenarios.some(scenario => scenario.id === id))
   const maximumTicks = chosen.length ? Math.min(...chosen.map(scenario => scenario.maximumTicks)) : 0
   const ticksValid = typeof tickCount === 'number' && Number.isInteger(tickCount) && tickCount >= 1 && tickCount <= maximumTicks
-  const blockers = problems(name, entrants, maps, ticksValid, profiles)
+  const blockers = problems(name, entrants, maps, missingMaps, ticksValid, profiles)
   const modelControllers = entrants.filter(entrant => entrant.controller !== 'scripted')
   const estimate = estimateLeague({
     entrants: size, modelEntrants: modelControllers.length,
@@ -193,7 +203,7 @@ export function CreateLeaguePage() {
             <legend>Entrants</legend>
             {([8, 16] as const).map(option => <label key={option}><input type="radio" name="league-size" checked={size === option} disabled={option === 16 && factions.length < 16} onChange={() => changeSize(option)} />{option} entrants · {option / 4} groups</label>)}
           </fieldset>
-          <MapChoices scenarios={scenarios} maps={maps} onChange={setMaps} />
+          <MapChoices scenarios={scenarios} maps={maps} missingMaps={missingMaps} onChange={setMaps} />
           <TimingFields chosen={chosen} maximumTicks={maximumTicks} ticksValid={ticksValid} tickCount={tickCount} onTickCount={setTickCount}
             tickDuration={tickDuration} onTickDuration={setTickDuration} decisionInterval={decisionInterval} onDecisionInterval={setDecisionInterval} />
           <EstimatePanel estimate={estimate} />
@@ -215,7 +225,7 @@ export function CreateLeaguePage() {
   )
 }
 
-function MapChoices({ scenarios, maps, onChange }: Readonly<{ scenarios: ScenarioSummary[]; maps: string[]; onChange(maps: string[]): void }>) {
+function MapChoices({ scenarios, maps, missingMaps, onChange }: Readonly<{ scenarios: ScenarioSummary[]; maps: string[]; missingMaps: string[]; onChange(maps: string[]): void }>) {
   return (
     <fieldset className="league-form__choice">
       <legend>Maps</legend>
@@ -224,6 +234,9 @@ function MapChoices({ scenarios, maps, onChange }: Readonly<{ scenarios: Scenari
         <input type="checkbox" checked={maps.includes(scenario.id)} disabled={!maps.includes(scenario.id) && maps.length >= maxMaps}
           onChange={event => onChange(event.target.checked ? [...maps, scenario.id] : maps.filter(id => id !== scenario.id))} />
         {scenario.id} · {scenario.mapWidth}×{scenario.mapHeight}
+      </label>)}
+      {missingMaps.map(id => <label key={id}>
+        <input type="checkbox" checked onChange={() => onChange(maps.filter(other => other !== id))} />{id} · no longer available
       </label>)}
     </fieldset>
   )

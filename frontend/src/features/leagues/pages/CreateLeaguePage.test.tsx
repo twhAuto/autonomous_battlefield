@@ -162,19 +162,39 @@ it('starts a new league from a copy of another league', async () => {
   })
 })
 
-it('leaves copied factions, maps and models that no longer exist for the blockers', async () => {
-  const entrants = sourceLeague().entrants.map(entrant => entrant.index === 0 ? { ...entrant, factionId: 'deleted', controller: { ...model('low'), profileId: 'retired' } } : entrant)
-  serve(9, undefined, undefined, () => reply(200, sourceLeague({ entrants, settings: { scenarioIds: ['retired-map'], tickCount: 400, tickDuration: '750ms' } })))
+it('keeps copied factions, maps, models and efforts that no longer exist blocking until replaced', async () => {
+  const stale: Record<number, object> = {
+    0: { factionId: 'deleted', controller: { ...model('low'), profileId: 'retired' } },
+    2: { controller: { ...model('high'), modelIdentifier: 'retired-model' } },
+    4: { controller: model('max') },
+  }
+  const entrants = sourceLeague().entrants.map(entrant => ({ ...entrant, ...stale[entrant.index] }))
+  serve(9, undefined, undefined, () => reply(200, sourceLeague({ entrants, settings: { scenarioIds: ['castle-siege', 'retired-map'], tickCount: 400, tickDuration: '750ms' } })))
+  const user = userEvent.setup()
   show('/leagues/new?from=source-1')
   expect(await screen.findByLabelText('Faction', { selector: '#entrant-0-faction' })).toHaveValue('')
   expect(screen.getByLabelText('Controller', { selector: '#entrant-0-controller' })).toHaveDisplayValue('Unavailable controller')
   expect(screen.getByText('Selected controller is unavailable. Choose an available controller.')).toBeInTheDocument()
+  expect(screen.getByLabelText('Model', { selector: '#entrant-2-controller-model' })).toHaveDisplayValue('retired-model · unavailable')
+  expect(screen.getByLabelText('Reasoning effort', { selector: '#entrant-2-controller-effort' })).toHaveDisplayValue('High · unavailable')
+  expect(screen.getByLabelText('Reasoning effort', { selector: '#entrant-4-controller-effort' })).toHaveDisplayValue('Max · unavailable')
+  expect(screen.getByRole('checkbox', { name: /castle-siege/ })).toBeChecked()
+  expect(screen.getByRole('checkbox', { name: 'retired-map · no longer available' })).toBeChecked()
   expect(screen.getByLabelText('Tick duration')).toHaveValue('750ms')
   expect(screen.getByLabelText('Decision interval')).toHaveValue('')
-  for (const blocker of ['Choose at least one map.', 'Give every entrant a different faction.', 'Choose an available controller for every entrant.']) {
+  for (const blocker of ['Remove maps that no longer exist.', 'Give every entrant a different faction.', 'Choose an available controller, model and effort for every entrant.']) {
     expect(screen.getByText(blocker)).toBeInTheDocument()
   }
-  expect(screen.getByRole('button', { name: /START LEAGUE/ })).toBeDisabled()
+  const start = screen.getByRole('button', { name: /START LEAGUE/ })
+  expect(start).toBeDisabled()
+  await user.click(screen.getByRole('checkbox', { name: 'retired-map · no longer available' }))
+  expect(screen.queryByRole('checkbox', { name: /retired-map/ })).not.toBeInTheDocument()
+  await user.selectOptions(screen.getByLabelText('Faction', { selector: '#entrant-0-faction' }), 'faction-0')
+  await user.selectOptions(screen.getByLabelText('Controller', { selector: '#entrant-0-controller' }), 'scripted')
+  await user.selectOptions(screen.getByLabelText('Model', { selector: '#entrant-2-controller-model' }), 'sonnet')
+  expect(start).toBeDisabled()
+  await user.selectOptions(screen.getByLabelText('Reasoning effort', { selector: '#entrant-4-controller-effort' }), 'low')
+  expect(start).toBeEnabled()
 })
 
 it('offers a retry when the league to copy cannot be loaded', async () => {
