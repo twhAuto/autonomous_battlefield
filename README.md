@@ -5,13 +5,40 @@ and React frontend. Create factions, choose scripted or AI controllers, and watc
 them compete on authored hex maps. AI controllers propose strategy plans; the game
 engine validates and executes them.
 
+![A live league battle on the hex tactical map, with both factions' status and the inspector](docs/images/battle.png)
+
+It is a personal project for practising production engineering end to end: a small
+product held to the delivery, security, observability and documentation standards
+of a production service.
+
+## What it demonstrates
+
+| Area | In this repository |
+| --- | --- |
+| Domain design | A deterministic tick engine is the only writer of battle state. Models propose bounded plans that the engine validates, with a scripted fallback ([AI decisions](docs/architecture/ai-decisions.md)). |
+| Distributed workflow | API, engine, AI gateway and decision agent run as separate processes coordinated through PostgreSQL leases and `LISTEN/NOTIFY`, so each can restart without losing battle state ([system architecture](docs/architecture/system-architecture.md)). |
+| AI integration | OpenAI and Gemini APIs and the Codex, Claude and Antigravity CLIs share one MCP tool surface with request-scoped signed capabilities, battlefield data handled as untrusted prompt input, and an offline evaluation harness. |
+| Testing | Go unit and PostgreSQL integration tests, React component tests and Playwright browser tests behind an 80% coverage gate, plus k6 load runs and ZAP scans ([contributor CI](docs/developer/ci.md)). |
+| Delivery and supply chain | A Jenkins pipeline with SonarQube, gitleaks and Trivy builds images with SBOMs, SLSA provenance and Cosign signatures; Kyverno admits only signed, attested image digests ([deployment](docs/operations/deployment.md)). |
+| Operations | Ansible host bootstrap, libvirt VMs, K3s behind Cloudflare Tunnel and Access, Prometheus and Grafana metrics, OpenTelemetry traces in Tempo, and release and recovery runbooks ([observability](docs/architecture/observability.md)). |
+
+**Stack:** Go (standard `net/http`, pgx, goose, OpenTelemetry, MCP Go SDK), PostgreSQL,
+React with TypeScript and Vite, Vitest, Playwright, Kubernetes (Kind locally, K3s in
+production), Jenkins and SonarQube.
+
+## Features
+
 - Create reusable factions with editable names, emblems, backgrounds and strategic doctrines.
-- Run two-faction castle-siege battles with autonomous combat, open maps, terrain bonuses, building-range expansion, defending castles, five specialized training buildings and continuous AI-selected unit production, with visible progress and on/off status.
-- Choose tick duration and decision interval when staging a battle, or keep map defaults.
+- Run two-faction castle-siege battles on open maps with autonomous combat, terrain bonuses, building-range expansion, defending castles, five specialized training buildings and continuous AI-selected unit production.
+- Give each faction a scripted controller or a model, choosing the model and reasoning effort from the operator allowlist, and set tick duration and decision interval or keep map defaults.
 - Inspect live battles, saved results, events and AI decision history, and replay finished battles tick by tick.
 - Run AI leagues (Admins start them; Developers follow them), with group and knockout stages played in the background.
 - Compare models, factions, units, upgrades and maps across completed battles on the Statistics page (Developers and Admins).
 - Manage invited players and model access through Player, Developer and Admin roles.
+
+| League groups and live fixtures | Statistics across completed battles |
+| --- | --- |
+| ![A running eight-entrant league with four live opening matches](docs/images/league.png) | ![Statistics page with win rates by model controller](docs/images/statistics.png) |
 
 The hosted application is at [play.ordinalfrontier.com](https://play.ordinalfrontier.com)
 and requires an invitation. Battles are finite and use authored maps. See
@@ -98,16 +125,18 @@ coverage and each frontend coverage metric must reach 80%. Infrastructure change
 also require `./scripts/test/test-deployment.sh`. See
 [contributor CI](docs/developer/ci.md) for browser prerequisites and additional gates.
 
-Battle setup supports per-faction model and reasoning-effort choices from the operator
-allowlist, including Claude Haiku, GPT-6 Luna and Antigravity Gemini 3.8 Flash
-low/medium/high variants. The AI decision inspector shows elapsed waits and
-completed timing details;
-see [model selection and latency](docs/architecture/ai-decisions.md#model-selection-and-latency)
-and the [worker rollout order](docs/operations/cli-worker.md#model-selection-rollout).
+## How it is built
 
-CLI workers prefetch decision context by default. To compare with tool-fetched
-context, run the host agent launcher with `HOST_CLI_PREFETCH_CONTEXT=false`; see
-[context-prefetch comparison](docs/operations/cli-worker.md#context-prefetch-comparison).
+Coding agents (Claude Code and Codex) write most of the code under the author's
+direction. Each change starts from a ticket that states its goal and acceptance
+criteria in a private Notion backlog; the `AB-NN` IDs in branch names, commit
+subjects and pull-request titles refer to those tickets, so their links are not
+publicly viewable. Agents follow [AGENTS.md](AGENTS.md) and the repository
+[skills](.agents/skills/). Each substantive pull request gets one advisory review
+from the other agent ([cross-review](docs/developer/cross-review.md)) and must pass
+the Jenkins pipeline before the author merges it. The
+[AI-assisted development policy](docs/developer/ai-development-policy.md) sets what
+each pull request records and which changes need human approval.
 
 ## License
 
