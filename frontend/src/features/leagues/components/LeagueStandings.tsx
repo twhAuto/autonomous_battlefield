@@ -73,8 +73,8 @@ export function FixtureList({ league }: Readonly<{ league: League }>) {
         <tbody>{league.fixtures.map(fixture => <tr key={fixture.id}>
           <td data-label="#">{fixture.sequence + 1}</td>
           <td data-label="Fixture">{fixtureLabel(fixture)}{fixture.attempts > 1 && <small>Retried</small>}</td>
-          <td data-label="Home">{entrantName(league, fixture.homeEntrant)}</td>
-          <td data-label="Away">{entrantName(league, fixture.awayEntrant)}</td>
+          <td data-label="Home"><Entrant league={league} index={fixture.homeEntrant} /></td>
+          <td data-label="Away"><Entrant league={league} index={fixture.awayEntrant} /></td>
           <td data-label="Map">{fixture.scenarioId}</td>
           <td data-label="Result"><span className="history-status">{fixtureOutcome(league, fixture)}</span></td>
           <td>{fixture.battleId && <Link className="text-link" to={`/battles/${encodeURIComponent(fixture.battleId)}`}>Open battle →</Link>}</td>
