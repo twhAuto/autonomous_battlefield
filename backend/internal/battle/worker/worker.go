@@ -180,7 +180,7 @@ func (w *Worker) process(ctx context.Context, job *queue.Job) (resultErr error) 
 		metrics.ObserveEngineBattle(outcome, time.Since(started))
 	}()
 
-	simulation, err := game.NewMatch(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
+	simulation, err := newMatch(job)
 	if err != nil {
 		resultErr = w.failInvalidScenario(ctx, job.Lease, err)
 		if resultErr == nil {
@@ -190,6 +190,15 @@ func (w *Worker) process(ctx context.Context, job *queue.Job) (resultErr error) 
 	}
 	outcome, resultErr = w.runBattle(ctx, job, simulation)
 	return resultErr
+}
+
+// newMatch builds the claimed battle's simulation. A snapshot that did not decode is as
+// invalid as a scenario that cannot build a match.
+func newMatch(job *queue.Job) (*game.Match, error) {
+	if job.ScenarioError != nil {
+		return nil, job.ScenarioError
+	}
+	return game.NewMatch(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
 }
 
 func (w *Worker) runBattle(ctx context.Context, job *queue.Job, simulation *game.Match) (string, error) {

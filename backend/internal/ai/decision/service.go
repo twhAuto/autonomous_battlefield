@@ -13,9 +13,6 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
 
-// validationLimit is the number of invalid model submissions that closes a decision.
-const validationLimit = 3
-
 // SubmissionRepository is intentionally unable to mutate battle state. The AI
 // gateway and the engine's scripted controllers receive only this narrow
 // decision-table capability.
@@ -71,7 +68,7 @@ func (s *Service) rejectInvalidPlan(ctx context.Context, record ai.DecisionRecor
 	if err != nil {
 		return ai.SubmissionResult{}, err
 	}
-	if !isModelRuntime(record.Runtime) || failures < validationLimit {
+	if !isModelRuntime(record.Runtime) || failures < ai.InvalidSubmissionLimit {
 		return ai.SubmissionResult{Status: "rejected", Errors: issues}, nil
 	}
 	if err := s.repository.FinishDecisionFailure(ctx, requestID, "validation_limit", ai.Usage{}, map[string]any{"runnerOutcome": "validation_limit"}); err != nil {

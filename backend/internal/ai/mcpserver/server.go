@@ -106,7 +106,7 @@ type submitPlanInput struct {
 	TargetTick             uint64                          `json:"targetTick" jsonschema:"Copy context.targetTick exactly from get_decision_context; never guess or use the observation tick."`
 	Name                   string                          `json:"name"`
 	Rationale              string                          `json:"rationale" jsonschema:"A concise 1-3 sentence explanation based on visible battlefield facts, at most 600 characters. Do not include private chain-of-thought."`
-	ActionWeights          map[string]int64                `json:"actionWeights"`
+	ActionWeights          map[string]int64                `json:"actionWeights" jsonschema:"Legal action kind to integer weight from 1 to 10000, where 1000 is 1x. Omit a kind to keep 1000."`
 	TargetBonuses          map[string]int64                `json:"targetBonuses,omitempty"`
 	ReserveGold            int64                           `json:"reserveGold"`
 	SpendOrder             []string                        `json:"spendOrder"`

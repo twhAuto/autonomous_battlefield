@@ -6,6 +6,7 @@ package decision
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -52,6 +53,19 @@ func ValidateSubmission(record ai.DecisionRecord, submission ai.PlanSubmission) 
 	// Scripted plans may over-order; the engine skips orders beyond a limit.
 	if isModelRuntime(record.Runtime) {
 		issues = append(issues, validateBuildingLimits(record.Observation.Economy, submission.Plan)...)
+		issues = append(issues, validateZeroActionWeights(submission.Plan.ActionWeights)...)
+	}
+	return issues
+}
+
+// validateZeroActionWeights rejects a weight of 0, which the engine reads as the
+// default 1000, so a model asking never to take a tactic would take it at full weight.
+func validateZeroActionWeights(weights map[string]int64) []ai.ValidationIssue {
+	issues := make([]ai.ValidationIssue, 0)
+	for _, kind := range slices.Sorted(maps.Keys(weights)) {
+		if weights[kind] == 0 {
+			issues = append(issues, ai.ValidationIssue{Field: "plan.actionWeights." + kind, Code: "invalid", Message: fmt.Sprintf("Weight for %q must be at least 1 (1000 is 1x); use 1 to all but rule the tactic out, or omit it for 1000.", kind)})
+		}
 	}
 	return issues
 }

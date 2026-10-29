@@ -66,7 +66,9 @@ when omitted). CLI jobs also need one of the `runtime_policy.cli_concurrency`
 leases (1–8, default 4), which PostgreSQL shares across every worker, battle
 decision and generation job; API jobs take no CLI lease. A lease is held until the
 worker reports completion or its execution deadline passes, even after the plan is
-accepted. A claim's lease counts from the decision row's creation, not from the
+accepted. A job that agent shutdown cancels still reports its failure, or an accepted
+plan's usage, within five seconds, so its decision closes and the engine falls back
+without waiting out its timeout. A claim's lease counts from the decision row's creation, not from the
 claim: it ends the worker's `ai.decisionTimeout` plus five seconds after creation, so
 a decision that waited for a slot runs only for the window it has left. The engine
 starts its own `ai.decisionTimeout` wait once it has created the window's decisions,
@@ -94,6 +96,9 @@ provider:
    without a tool call;
 4. append the turn and each tool result to the conversation;
 5. stop after an accepted submission or the profile's step limit.
+
+Each turn is one step. The shipped API profiles allow five: the context fetch, one
+unit-details lookup and the three submissions a decision accepts before it closes.
 
 Provider adapters send the decision policy as the provider's system instruction,
 separate from the untrusted battlefield data, and normalize tool calls, refusals and
@@ -307,8 +312,9 @@ A model or scripted controller can propose:
 The service validates the decision version, target tick, general plan bounds, and
 context-specific units and sites before persisting a plan. The `StrategyPlan`
 schema in the [OpenAPI contract](openapi.yaml) gives the field shapes and limits.
-API and CLI submissions must be substantive, and a request stops after three
-rejected submissions.
+API and CLI submissions must be substantive and may not set an action weight to 0,
+which the engine reads as the default 1000; a request stops after three rejected
+submissions.
 
 Current contexts expose `continuousProduction: true`. Plans use `productionOrders`:
 `[{"buildingId":"a:castle","unitType":"vanguard","enabled":true}]` selects a
