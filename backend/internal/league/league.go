@@ -35,6 +35,13 @@ const (
 	FixtureCompleted = "completed"
 	FixtureVoid      = "void"
 	FixtureCancelled = "cancelled"
+	FixtureForfeited = "forfeited"
+
+	// A forfeited fixture records which side was disqualified: the home side, the away
+	// side, or both.
+	ForfeitHome = "home"
+	ForfeitAway = "away"
+	ForfeitBoth = "both"
 
 	MatchOpening = "opening"
 	MatchWinners = "winners"
@@ -84,8 +91,6 @@ type Settings struct {
 	DecisionIntervalTicks *uint64  `json:"decisionIntervalTicks,omitempty"`
 }
 
-// Entrant is one competitor: a faction and the controller that plays it. Index is the
-// entry order, the final tiebreak.
 // Scheduling is the capacity league battles run in: the engine's battle slots and the
 // CLI execution slots that model decisions share.
 type Scheduling struct {
@@ -93,17 +98,21 @@ type Scheduling struct {
 	CLISlots    int
 }
 
+// Entrant is one competitor: a faction and the controller that plays it. Index is the
+// entry order, the final tiebreak. Disqualified is set once an admin removes it.
 type Entrant struct {
-	Index       int
-	Group       int
-	FactionID   string
-	FactionName string
-	Controller  game.ControllerConfig
+	Index        int
+	Group        int
+	FactionID    string
+	FactionName  string
+	Controller   game.ControllerConfig
+	Disqualified *Disqualification
 }
 
 // Fixture is one match, played as one battle. Home takes the first spawn side. Group
 // fixtures are numbered by round and tie as MatchName describes; knockout fixtures are
-// round 1 of their stage, numbered by tie.
+// round 1 of their stage, numbered by tie. Forfeit names the disqualified side of a
+// forfeited fixture, and is empty otherwise.
 type Fixture struct {
 	ID         string
 	Sequence   int
@@ -118,6 +127,7 @@ type Fixture struct {
 	Attempts   int
 	BattleID   *string
 	Battle     *BattleOutcome
+	Forfeit    string
 }
 
 // BattleOutcome is the part of a fixture's current battle that the league scores and
@@ -166,7 +176,7 @@ func MatchName(stage string, round, tie int) string {
 
 // Settled reports whether a fixture will produce no further battles.
 func (f Fixture) Settled() bool {
-	return f.Status == FixtureCompleted || f.Status == FixtureVoid || f.Status == FixtureCancelled
+	return f.Status == FixtureCompleted || f.Status == FixtureVoid || f.Status == FixtureCancelled || f.Status == FixtureForfeited
 }
 
 // Score returns a completed fixture's result. Void, cancelled and unfinished fixtures

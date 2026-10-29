@@ -54,8 +54,8 @@ func (s *Service) RunScheduler(ctx context.Context, interval time.Duration) {
 	}
 }
 
-// SchedulePass stops battles left running in cancelled leagues, then advances every
-// running league once.
+// SchedulePass stops battles left running in cancelled leagues and forfeited fixtures,
+// then advances every running league once.
 func (s *Service) SchedulePass(ctx context.Context) error {
 	_, err := s.repo.Schedule(ctx, s.pass)
 	return err
@@ -123,7 +123,7 @@ func (s *Service) cliSides(l *league.League, f league.Fixture) int {
 	return sides
 }
 
-// stopStranded retries stops that a cancellation could not complete.
+// stopStranded retries stops that a cancellation or disqualification could not complete.
 func (s *Service) stopStranded(ctx context.Context, store SchedulerStore) error {
 	stranded, err := store.StrandedBattles(ctx)
 	if err != nil {
@@ -150,22 +150,32 @@ func settle(ctx context.Context, store SchedulerStore, l *league.League) error {
 			return err
 		}
 	}
-	fixtures, champion := l.Advance()
-	if len(fixtures) > 0 {
+	return advance(ctx, store, l)
+}
+
+// advance opens the matches that can follow. A match with a disqualified side opens
+// already forfeited, so it repeats until a match needs a battle or the league has its
+// champion.
+func advance(ctx context.Context, store SchedulerStore, l *league.League) error {
+	for {
+		fixtures, champion := l.Advance()
+		if champion != nil {
+			if err := store.CompleteLeague(ctx, l.ID, *champion); err != nil {
+				return err
+			}
+			l.Status, l.Champion = league.StatusCompleted, champion
+			slog.InfoContext(ctx, "league_completed", "league_id", l.ID, "champion_entrant", *champion)
+			return nil
+		}
+		if len(fixtures) == 0 {
+			return nil
+		}
 		if err := store.AddFixtures(ctx, l.ID, fixtures); err != nil {
 			return err
 		}
 		l.Fixtures = append(l.Fixtures, fixtures...)
 		slog.InfoContext(ctx, "league_fixtures_opened", "league_id", l.ID, "stage", fixtures[0].Stage, "fixtures", len(fixtures))
 	}
-	if champion != nil {
-		if err := store.CompleteLeague(ctx, l.ID, *champion); err != nil {
-			return err
-		}
-		l.Status, l.Champion = league.StatusCompleted, champion
-		slog.InfoContext(ctx, "league_completed", "league_id", l.ID, "champion_entrant", *champion)
-	}
-	return nil
 }
 
 // settledFixture moves a running fixture on once its battle has finished. A failed or

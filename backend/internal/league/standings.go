@@ -1,6 +1,7 @@
 // Decides matches and ranks each group. Every match has a winner: the battle's winner,
 // or after a draw or a void fixture the higher castle-health difference, then damage
-// difference, then the higher seed. A group places its entrants by the dual tournament:
+// difference, then the higher seed. A forfeited match goes to the side that was not
+// disqualified, or to the higher seed when both were. A group places its entrants by the dual tournament:
 // the winners'-match winner first, the decider's winner second and loser third, and the
 // losers'-match loser fourth.
 
@@ -22,18 +23,25 @@ type result struct {
 	winner, loser int
 }
 
-// MatchWinner returns a completed or void fixture's winner, or -1 while it is undecided
-// or after it was cancelled.
+// MatchWinner returns a completed, void or forfeited fixture's winner, or -1 while it is
+// undecided or after it was cancelled.
 func (l *League) MatchWinner(f Fixture) int {
-	if f.Status != FixtureCompleted && f.Status != FixtureVoid {
+	if f.Status != FixtureCompleted && f.Status != FixtureVoid && f.Status != FixtureForfeited {
 		return -1
 	}
 	return l.decided(f).winner
 }
 
-// decided applies the match tiebreak; the caller checks that the fixture is decided.
+// decided applies the match tiebreak; the caller checks that the fixture is decided. A
+// fixture both sides forfeited has no score, so it falls through to the seed.
 func (l *League) decided(f Fixture) result {
 	home, away := result{f.Home, f.Away}, result{f.Away, f.Home}
+	switch f.Forfeit {
+	case ForfeitHome:
+		return away
+	case ForfeitAway:
+		return home
+	}
 	score, _ := l.Score(f)
 	if score.Winner != nil {
 		return pick(*score.Winner == f.Home, home, away)

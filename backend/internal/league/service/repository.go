@@ -24,13 +24,21 @@ type Repository interface {
 	// Schedule runs fn while holding the scheduler lock, and reports false without
 	// running it when another replica holds the lock.
 	Schedule(context.Context, func(context.Context, SchedulerStore) error) (bool, error)
+	// Exclusive runs fn while holding the scheduler lock, waiting for a pass in progress
+	// to finish, as CancelLeague does.
+	Exclusive(context.Context, func(context.Context, SchedulerStore) error) error
 	// CLISlots reads runtime_policy.cli_concurrency.
 	CLISlots(context.Context) (int, error)
 }
 
-// SchedulerStore is the scheduler's view of storage inside one locked pass.
+// SchedulerStore is storage inside one locked transaction: a scheduling pass or a
+// disqualification.
 type SchedulerStore interface {
 	RunningLeagues(context.Context) ([]league.League, error)
+	// League reads one league with its fixtures' battle outcomes.
+	League(context.Context, string) (*league.League, error)
+	// Disqualify records an entrant's disqualification; At is the time of the write.
+	Disqualify(context.Context, string, int, league.Disqualification) error
 	SaveFixture(context.Context, league.Fixture) error
 	AddFixtures(context.Context, string, []league.Fixture) error
 	CompleteLeague(context.Context, string, int) error
@@ -38,7 +46,8 @@ type SchedulerStore interface {
 	Capacity(context.Context) (Capacity, error)
 	// Battle describes an existing battle's origin, or returns nil when there is none.
 	Battle(context.Context, string) (*BattleProvenance, error)
-	// StrandedBattles lists battles of cancelled leagues that are still queued or running.
+	// StrandedBattles lists battles still queued or running in cancelled leagues or
+	// forfeited fixtures.
 	StrandedBattles(context.Context) ([]StrandedBattle, error)
 }
 
