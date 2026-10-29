@@ -182,9 +182,10 @@ func (r *Postgres) ResolveDecisionFallback(ctx context.Context, id string, expec
 // configured timeout still lets fresh decisions run.
 const minClaimWindow = 10 * time.Second
 
-// ClaimModelDecision measures the lease from the decision's creation, when the engine
-// opened the window, not from the claim: a run that waited for a slot must stop with
-// the window instead of holding the slot after the engine has fallen back.
+// ClaimModelDecision measures the lease from the decision's creation, not from the
+// claim, so a run that waited for a slot gets only the window it has left. The lease
+// still includes the worker's grace; docs/architecture/ai-decisions.md gives how it
+// lines up with the engine's fallback.
 func (r *Postgres) ClaimModelDecision(ctx context.Context, owner string, profileIDs []string, lease time.Duration) (ai.DecisionRecord, error) {
 	ctx, span := tracing.StartDatabaseSpan(ctx, "claim_decision")
 	defer span.End()
