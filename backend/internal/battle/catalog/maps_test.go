@@ -12,6 +12,22 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
+// raceSweepTransitions bounds each map battle under the race detector. What it can
+// check here is the sweep's concurrency, battles sharing one catalog, which starts
+// with the opening; the coverage pass plays every battle to its end.
+const raceSweepTransitions = 100
+
+// skipSequentialBattleUnderRace skips a battle played in one goroutine when the race
+// detector is on: it reports only conflicting access between goroutines, so the
+// replay would cost minutes on a shared CI agent and check nothing. The coverage pass
+// still plays it.
+func skipSequentialBattleUnderRace(t *testing.T) {
+	t.Helper()
+	if raceEnabled {
+		t.Skip("one-goroutine battle; the coverage pass plays it")
+	}
+}
+
 // Chokepoints and forward deposits can let both sides hold a front for the whole
 // battle, so scripted bots must break through on every map before the shared tick
 // limit. Turn order goes by seat, so swapping the two faction IDs must replay the same
@@ -29,7 +45,7 @@ func TestScriptedBotsFinishEveryMap(t *testing.T) {
 				return
 			}
 			last := traces[0][len(traces[0])-1].tick
-			if winners[0] < 0 {
+			if winners[0] < 0 && !raceEnabled {
 				t.Fatalf("scripted bots stalemated at tick %d", last)
 			}
 			if tick, differ := firstDifference(traces[0], traces[1]); differ {
@@ -66,9 +82,10 @@ type seatTick struct {
 	seats string
 }
 
-// playScriptedBattle runs map id to the end with factions sides[0] on the left and
-// sides[1] on the right. It returns every transition by seat and the winning seat, or
-// -1 for a draw.
+// playScriptedBattle runs map id to the end, or for raceSweepTransitions under the race
+// detector, with factions sides[0] on the left and sides[1] on the right. It returns
+// every transition by seat and the winning seat, or -1 for a draw or an unfinished
+// battle.
 func playScriptedBattle(t *testing.T, c *Catalog, id string, sides [2]string) ([]seatTick, int) {
 	t.Helper()
 	s, err := c.Resolve(id, [2]service.FactionIdentity{{ID: sides[0], Name: sides[0]}, {ID: sides[1], Name: sides[1]}})
@@ -81,13 +98,13 @@ func playScriptedBattle(t *testing.T, c *Catalog, id string, sides [2]string) ([
 	}
 	trace := []seatTick{}
 	var last game.Transition
-	for !m.Finished() {
+	for !m.Finished() && (!raceEnabled || len(trace) < raceSweepTransitions) {
 		if last, err = m.Advance(); err != nil {
 			t.Fatal(err)
 		}
 		trace = append(trace, seatTick{last.Tick, seatState(last.State, sides[0]) + " | " + seatState(last.State, sides[1])})
 	}
-	if last.Result.WinnerFactionID == nil {
+	if last.Result == nil || last.Result.WinnerFactionID == nil {
 		return trace, -1
 	}
 	return trace, slices.Index(sides[:], *last.Result.WinnerFactionID)
@@ -213,6 +230,7 @@ func checkMineLayout(t *testing.T, id string, gameMap game.Map, mines []game.Gol
 
 // Scripted bots spend their home mines and claim mines beyond castle range.
 func TestScriptedBotsExpandBeyondHomeMines(t *testing.T) {
+	skipSequentialBattleUnderRace(t)
 	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)

@@ -77,6 +77,7 @@ func withoutVisualizationMetadata(transition *game.Transition) {
 }
 
 func TestFrontierCatalogMapAndDeterministicBattle(t *testing.T) {
+	skipSequentialBattleUnderRace(t)
 	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)

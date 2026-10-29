@@ -72,6 +72,7 @@ func TestLateGameUnitsBreakUpgradedStalemate(t *testing.T) {
 // The live scripted plans must save for both unlocks and switch their sources,
 // so bot battles reach the late game and still end.
 func TestScriptedBotsUnlockAndTrainLateGameUnits(t *testing.T) {
+	skipSequentialBattleUnderRace(t)
 	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
