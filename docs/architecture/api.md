@@ -322,8 +322,8 @@ nobody. Model access is checked again for every battle, so revoking access
 mid-league voids that entrant's remaining fixtures.
 
 `GET /v1/leagues/{id}` returns the settings, entrants, ranked `groups`, `knockout`
-ties and every fixture with its `battleId`, its battle's `battleProgress` (current
-and requested ticks) while running and, once completed, its `result`.
+ties and every fixture with its battle, progress and result as the
+[`LeagueFixture`](openapi.yaml) schema describes.
 `GET /v1/leagues` lists summaries, newest first. `POST /v1/leagues/{id}/cancel`
 cancels unfinished fixtures and stops the running battle; repeating it returns `200`
 and stops any league battle still running. Cancelling a completed league returns
