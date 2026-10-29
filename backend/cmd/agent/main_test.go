@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -164,11 +165,13 @@ func TestCheckConfigValidatesWithoutRunning(t *testing.T) {
 	}
 }
 
-func TestStatusHandlerReportsDrainState(t *testing.T) {
+func TestStatusHandlerReportsDrainStateAndProfiles(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	statusHandler(func() agent.Status { return agent.Status{Draining: true, Active: 2, Concurrency: 4} })(recorder, httptest.NewRequest(http.MethodGet, "/status", nil))
+	want := agent.Status{Draining: true, Active: 2, Concurrency: 4, Profiles: []string{"codex-subscription-local"},
+		Unavailable: map[string]string{"gemini-subscription-local": "agy CLI version is not supported"}}
+	statusHandler(func() agent.Status { return want })(recorder, httptest.NewRequest(http.MethodGet, "/status", nil))
 	var status agent.Status
-	if err := json.NewDecoder(recorder.Body).Decode(&status); err != nil || status != (agent.Status{Draining: true, Active: 2, Concurrency: 4}) {
+	if err := json.NewDecoder(recorder.Body).Decode(&status); err != nil || !reflect.DeepEqual(status, want) {
 		t.Fatalf("status = %+v, %v", status, err)
 	}
 	if recorder.Header().Get("Content-Type") != "application/json" {

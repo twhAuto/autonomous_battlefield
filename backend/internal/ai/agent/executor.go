@@ -58,17 +58,43 @@ type Executor struct {
 func (e *Executor) Ready() bool { return e.ready.Load() }
 
 // Status is the worker's drain state: whether it has stopped claiming, how many claims
-// or decisions are still in progress, and its configured concurrency.
+// or decisions are still in progress, and its configured concurrency. Profiles lists
+// the profile IDs it claims work for, and Unavailable the reason each other configured
+// profile cannot run here, so a launcher advertises only what this worker serves.
 type Status struct {
-	Draining    bool `json:"draining"`
-	Active      int  `json:"active"`
-	Concurrency int  `json:"concurrency"`
+	Draining    bool              `json:"draining"`
+	Active      int               `json:"active"`
+	Concurrency int               `json:"concurrency"`
+	Profiles    []string          `json:"profiles"`
+	Unavailable map[string]string `json:"unavailable,omitempty"`
 }
 
 func (e *Executor) Status() Status {
+	profiles, unavailable := e.profileAvailability()
 	e.slots.Lock()
 	defer e.slots.Unlock()
-	return Status{Draining: e.draining, Active: e.active, Concurrency: e.Concurrency}
+	return Status{Draining: e.draining, Active: e.active, Concurrency: e.Concurrency, Profiles: profiles, Unavailable: unavailable}
+}
+
+// profileAvailability splits the configured profiles into those this worker executes
+// and the reasons the others cannot run.
+func (e *Executor) profileAvailability() ([]string, map[string]string) {
+	served := []string{}
+	if e.Profiles == nil {
+		return served, nil
+	}
+	var unavailable map[string]string
+	for _, profile := range e.Profiles.List() {
+		if profile.Available {
+			served = append(served, profile.ID)
+			continue
+		}
+		if unavailable == nil {
+			unavailable = map[string]string{}
+		}
+		unavailable[profile.ID] = profile.UnavailableReason
+	}
+	return served, unavailable
 }
 
 // Drain stops new claims. Claims and decisions already in progress finish normally,
@@ -131,8 +157,11 @@ func (e *Executor) Run(ctx context.Context) error {
 	if e.ClaimWait <= 0 {
 		e.ClaimWait = 5 * time.Second
 	}
-	profileIDs := e.Profiles.AvailableIDs()
+	profileIDs, unavailable := e.profileAvailability()
 	logger := e.logger()
+	for id, reason := range unavailable {
+		logger.WarnContext(ctx, "agent_profile_unavailable", "worker_id", e.WorkerID, "profile_id", id, "reason", reason)
+	}
 	logger.InfoContext(ctx, "agent_worker_ready", "worker_id", e.WorkerID, "concurrency", e.Concurrency, "profile_ids", profileIDs)
 	e.ready.Store(true)
 	defer func() {

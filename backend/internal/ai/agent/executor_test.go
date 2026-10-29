@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -514,5 +515,19 @@ func TestAPIWorkerUsesCurrentConfiguredModelAfterEnvironmentChange(t *testing.T)
 	worker.runJob(context.Background(), job{RequestID: "request", ProfileID: "api", CapabilityToken: "scoped", ModelIdentifier: "previous-model"})
 	if !invoked || reportPath != "/internal/agent/usage" {
 		t.Fatalf("invoked = %t, report = %q", invoked, reportPath)
+	}
+}
+
+func TestStatusReportsServedAndUnavailableProfiles(t *testing.T) {
+	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{
+		{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1},
+		{ID: "off", DisplayName: "Off", Provider: "openai", Runtime: "api", Scope: "cluster", MaxSteps: 1, MaxOutputTokens: 1},
+	})
+	status := (&Executor{Profiles: profiles, Concurrency: 2}).Status()
+	if !reflect.DeepEqual(status.Profiles, []string{"profile"}) || len(status.Unavailable) != 1 || status.Unavailable["off"] != "disabled by configuration" {
+		t.Fatalf("status = %+v", status)
+	}
+	if empty := (&Executor{Concurrency: 1}).Status(); empty.Profiles == nil || len(empty.Profiles) != 0 || empty.Unavailable != nil {
+		t.Fatalf("status without a registry = %+v", empty)
 	}
 }

@@ -275,7 +275,9 @@ running worker and a successful database ping; worker shutdown or database failu
 makes readiness fail while liveness remains available.
 
 The agent and AI gateway serve their own `/healthz`. The agent also serves `/status`
-with its drain state (`draining`, `active`, `concurrency`), and the AI gateway's
+with its drain state (`draining`, `active`, `concurrency`), the profile IDs it claims
+work for (`profiles`) and the reason each other configured profile cannot run here
+(`unavailable`, also logged at startup as `agent_profile_unavailable`), and the AI gateway's
 `/readyz` pings PostgreSQL for its readiness probe. See the
 [backend guide](../developer/backend-guide.md#process-health-ownership) for source
 ownership and lifecycle tests.
