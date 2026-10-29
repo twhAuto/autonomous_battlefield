@@ -57,7 +57,8 @@ export function AnalyticsPage() {
       <section className="page-header page-header--directory">
         <Link className="back-link" to="/">← MAIN MENU</Link>
         <div className="hero__eyebrow"><span>06</span> STATISTICS</div>
-        <div className="directory-title"><div><h1>Statistics</h1><p>Which models win, which units and upgrades decide battles, and whether maps and sides are fair, across completed battles.</p></div></div>
+        <div className="directory-title"><div><h1>Statistics</h1><p>Which models win, which units and upgrades decide battles, and whether maps and sides are fair, across completed battles.</p></div>
+          {leagueId && <Link className="compact-action" to={`/leagues/${encodeURIComponent(leagueId)}`}>← BACK TO LEAGUE</Link>}</div>
       </section>
       <form className="analytics-filters" aria-label="Statistics filters" onSubmit={event => event.preventDefault()}>
         <label>League <select value={leagueId} onChange={event => setFilter('leagueId', event.target.value)}>

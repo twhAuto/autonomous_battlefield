@@ -88,6 +88,17 @@ it('keeps filters in the URL and refetches with them', async () => {
   expect(lastSearch).toBe('?rules=all&fallback=exclude')
 })
 
+it('links back to the selected league', async () => {
+  serve()
+  const user = userEvent.setup()
+  show('/analytics?leagueId=league-1')
+  await screen.findByText('Win rate by controller')
+  expect(screen.getByRole('link', { name: '← BACK TO LEAGUE' })).toHaveAttribute('href', '/leagues/league-1')
+  expect(screen.getByRole('link', { name: '← MAIN MENU' })).toHaveAttribute('href', '/')
+  await user.selectOptions(screen.getByLabelText('League'), '')
+  expect(screen.queryByRole('link', { name: '← BACK TO LEAGUE' })).not.toBeInTheDocument()
+})
+
 it('explains empty, truncated and failed reports', async () => {
   serve(() => reply(200, report({ battles: 0 })))
   const view = show('/analytics?leagueId=gone')
