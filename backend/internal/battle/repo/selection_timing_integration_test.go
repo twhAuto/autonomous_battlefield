@@ -99,6 +99,16 @@ func TestDecisionClaimEndsWithItsWindow(t *testing.T) {
 	if record, err := repo.GetDecision(ctx, expiring.ID); err != nil || record.Status != "pending" {
 		t.Fatalf("expiring decision: %+v %v", record, err)
 	}
+	// A two-second decision timeout leases for seven seconds, under minClaimWindow, yet a
+	// fresh decision must still run.
+	p.ID, p.FactionID, p.ObservationHash = randomUUID(t), randomUUID(t), "short-timeout"
+	fresh, err := repo.CreateOrReuseDecision(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed, err = repo.ClaimModelDecision(ctx, "worker", []string{p.ProfileID}, 7*time.Second); err != nil || claimed.ID != fresh.ID {
+		t.Fatalf("short lease claim: %+v %v", claimed, err)
+	}
 }
 
 func assertContextAndAcceptanceTiming(t *testing.T, ctx context.Context, repo *Postgres, decision ai.DecisionRecord) {

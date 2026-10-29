@@ -66,12 +66,14 @@ when omitted). CLI jobs also need one of the `runtime_policy.cli_concurrency`
 leases (1–4, default 4), which PostgreSQL shares across every worker, battle
 decision and generation job; API jobs take no CLI lease. A lease is held until the
 worker reports completion or its execution deadline passes, even after the plan is
-accepted. A decision's deadline counts from when the engine opened its window (the
-row's creation), not from the claim: the lease ends the worker's `ai.decisionTimeout`
-plus five seconds after creation, so a decision that waited for a slot runs only for
-the window it has left and stops when the engine falls back. A decision with less
-than ten seconds left is not claimed and falls back at the deadline. Pausing a battle
-extends the engine's wait but not a claimed lease. Claims carry the database lease
+accepted. A claim's lease counts from the decision row's creation, not from the
+claim: it ends the worker's `ai.decisionTimeout` plus five seconds after creation, so
+a decision that waited for a slot runs only for the window it has left. The engine
+starts its own `ai.decisionTimeout` wait once it has created the window's decisions,
+so with the same setting on both sides a run ends at most five seconds after the
+engine falls back. A decision with less than ten seconds of lease left (half the
+lease, for leases under twenty seconds) is not claimed and falls back at the
+deadline. Pausing a battle extends the engine's wait but not a claimed lease. Claims carry the database lease
 deadline, which also bounds the request capability, so network delay never extends
 a worker's time; keep the database, AI gateway and VM clocks synchronized.
 [CLI worker operations](../operations/cli-worker.md) give the production worker's
