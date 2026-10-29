@@ -2,12 +2,13 @@
 // controls; data loading stays in the page and hooks.
 
 import { type ReactNode, type Ref } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { BattleRun } from '../api/battles'
+import { modelLabel } from '../presentation/factions'
 import { type ConnectionState, type BattleControlState, type BattleControlAction } from '../types'
 import { TypeStatistics } from './TypeStatistics'
 
-// Single command band: navigation, title, scenario, league and connection on the left; the
+// Single command band: title, scenario, league and connection on the left; the
 // page supplies tick progress, outcome and controls as children. The title already states
 // the battle's status, so a settled battle shows no connection badge.
 export function BattleHeader({ battle, battleTitle, connection, connectionMessage, retryConnection, children }: Readonly<{
@@ -18,16 +19,9 @@ export function BattleHeader({ battle, battleTitle, connection, connectionMessag
   retryConnection: () => void
   children?: ReactNode
 }>) {
-  const location = useLocation()
-  const candidate: unknown = location.state?.historyURL
-  const historyURL = typeof candidate === 'string' && (candidate === '/battles' || candidate.startsWith('/battles?')) ? candidate : '/battles'
   return (
     <section className="battle-command-bar" aria-label="Battle status">
       <div className="battle-command-bar__title">
-        <div className="battle-command-bar__links">
-          <Link className="back-link" to={historyURL}>← BATTLE HISTORY</Link>
-          <Link className="back-link" to="/battles/new">← NEW BATTLE</Link>
-        </div>
         <h1>{battleTitle}</h1>
       </div>
       <div className="battle-command-bar__meta">
@@ -48,7 +42,8 @@ export function BattleHeader({ battle, battleTitle, connection, connectionMessag
   )
 }
 
-// With `onShowMap` the statistics cover the map, with a control that reveals it again.
+// With `onShowMap` the statistics cover the map. Their header is a map toolbar led by the
+// control that reveals the map, exactly where the map's toolbar leads with Show results.
 export function BattleStatistics({ battle, participantNames, onShowMap, showMapRef }: Readonly<{
   battle: BattleRun
   participantNames: Map<string, string>
@@ -56,16 +51,23 @@ export function BattleStatistics({ battle, participantNames, onShowMap, showMapR
   showMapRef?: Ref<HTMLButtonElement>
 }>) {
   if (!battle.result) return null
+  const { winnerFactionId } = battle.result
   return (
     <section className={`battle-statistics${onShowMap ? ' battle-statistics--overlay' : ''}`} aria-label="After-action statistics">
-      <div className="section-label">
-        <span>AFTER-ACTION STATISTICS</span><span>{battle.result.ticksRun} TICKS</span>
-        {onShowMap && <button ref={showMapRef} className="compact-action" type="button" onClick={onShowMap}>VIEW MAP</button>}
-      </div>
+      {onShowMap
+        ? <div className="map-toolbar">
+          <button ref={showMapRef} className="map-toolbar__results" type="button" onClick={onShowMap}>Show map</button>
+          <span>AFTER-ACTION STATISTICS · {battle.result.ticksRun} TICKS</span>
+        </div>
+        : <div className="section-label"><span>AFTER-ACTION STATISTICS</span><span>{battle.result.ticksRun} TICKS</span></div>}
       <div className="statistics-grid">
         {battle.result.factions.map((stats) => (
           <article key={stats.factionId} className="statistics-card">
-            <h2>{participantNames.get(stats.factionId) ?? stats.factionId}</h2>
+            <h2>
+              {participantNames.get(stats.factionId) ?? stats.factionId}
+              <FactionModel battle={battle} factionId={stats.factionId} />
+              {stats.factionId === winnerFactionId && <>{' '}<span className="statistics-card__winner">Winner</span></>}
+            </h2>
             <dl>
               <Stat label="Units remaining / started" value={`${stats.unitsRemaining} / ${stats.unitsStarted}`} />
               <Stat label="Castle health" value={stats.castleHealth ?? 0} />
@@ -98,7 +100,7 @@ export function Outcome({ battle, winnerName }: Readonly<{ battle: BattleRun; wi
   if (battle.status === 'completed' && battle.result) {
     return (
       <>
-        <strong>{winnerName ? `${winnerName} wins` : 'Draw'}</strong>
+        <strong>{winnerName ? <>{winnerName} wins<FactionModel battle={battle} factionId={battle.result.winnerFactionId} /></> : 'Draw'}</strong>
         <p>{battle.result.reason === 'castle_destroyed' ? 'The enemy castle was destroyed.' : 'Maximum tick limit reached.'}</p>
       </>
     )
@@ -154,6 +156,12 @@ export function BattleState({ code, title, message, loading, children }: Readonl
       {children}
     </section>
   )
+}
+
+// The faction's model beside its name in results; nothing for scripted factions or players.
+function FactionModel({ battle, factionId }: Readonly<{ battle: BattleRun; factionId: string | null }>) {
+  const model = modelLabel(battle.participants.find((participant) => participant.id === factionId))
+  return model ? <>{' '}<small className="faction-model">{model}</small></> : null
 }
 
 function Stat({ label, value }: Readonly<{ label: string; value: string | number }>) {

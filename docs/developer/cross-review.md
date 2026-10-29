@@ -125,6 +125,9 @@ estimate, not a bill.
 3. Fix valid defects, test, commit/push, then run one focused follow-up using the
    same command and a new output directory. The runner selects the new diff and
    latest exchange automatically. This also supports a same-head disagreement.
+   To bring in target-branch changes before the follow-up, merge the target into
+   the PR branch; a rebase rewrites the reviewed head, and the runner then stops
+   for user input instead of reviewing.
 4. If no supported findings remain, acknowledge agreement on the PR. Otherwise,
    stop after the second round and ask the user before another model call. Never
    force consensus, weaken tests or bypass the limit by omitting `--pr`.

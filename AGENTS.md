@@ -10,7 +10,9 @@
 - Promotion from `dev` to `main` is a separate release action, done only when the
   user requests it.
 - Run the applicable checks before opening a PR, including
-  `./scripts/test/test-deployment.sh` for deployment changes. Jenkins verifies PRs
+  `./scripts/ci/lint-go.sh` for backend changes (gofmt, vet and SonarQube's
+  cognitive-complexity limit) and `./scripts/test/test-deployment.sh` for
+  deployment changes. Jenkins verifies PRs
   on the shared `battlefield-production` agent by design. Skipped or queued stages
   are not verification.
 

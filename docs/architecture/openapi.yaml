@@ -1337,7 +1337,8 @@ components:
       properties:
         id: {type: string}
         continuousProduction: {type: boolean, default: false, description: Repeating per-building unit selection and on/off settings; absent or false retains historical batch recruitment.}
-        maximumUnitCount: {type: integer, minimum: 0, maximum: 200, description: 'Per-faction cap on living units plus paid units in training; absent or 0 is unlimited. Rulesets v8 and later use 40.'}
+        alternatingTurns: {type: boolean, default: false, description: 'Each tick, the factions act in seat order with the first seat alternating, and equal-speed units of the two factions take turns; absent or false orders buildings and units by ID.'}
+        maximumUnitCount: {type: integer, minimum: 0, maximum: 200, description: 'Per-faction cap on living units plus paid units in training; absent or 0 is unlimited. Rulesets v8 and v9 use 40; v10 to v12 use 50.'}
         upgrades:
           type: array
           items: {$ref: '#/components/schemas/UpgradeRule'}
@@ -1487,7 +1488,7 @@ components:
         kind: {type: string, examples: [authored]}
         width: {type: integer}
         height: {type: integer}
-        rows: {type: array, items: {type: string}, description: "Authored symbols: . ground, # rock, f forest (+3 troop defense), g gold deposit (+5 economy income). Legacy b pads remain readable."}
+        rows: {type: array, items: {type: string}, description: "Authored symbols: . ground, # rock, f forest (+3 troop defense), g gold mine (economy buildings only; finite gold under gold-mine rulesets, otherwise +5 economy income). Legacy b pads remain readable."}
         castleSpawns:
           type: array
           minItems: 2
@@ -1499,6 +1500,10 @@ components:
           minItems: 2
           maxItems: 2
           items: {type: [array, 'null'], items: {$ref: '#/components/schemas/Position'}}
+        goldMineReserve:
+          description: Gold each mine on this map starts with. Scenario summaries report the effective value; frozen battle maps omit it when the ruleset default applies.
+          type: integer
+          minimum: 0
 
     BattleState:
       description: |
@@ -1533,6 +1538,21 @@ components:
             death from disappearance.
           type: [array, 'null']
           items: {$ref: '#/components/schemas/UnitDeath'}
+        goldMines:
+          description: |
+            One entry per map gold mine, in row order, under rulesets with finite gold
+            mines. Omitted for other rulesets and in older snapshots. A mine with
+            `remaining: 0` is depleted and yields nothing.
+          type: array
+          items: {$ref: '#/components/schemas/GoldMine'}
+
+    GoldMine:
+      type: object
+      required: [position, reserve, remaining]
+      properties:
+        position: {$ref: '#/components/schemas/Position'}
+        reserve: {type: integer, description: Gold the mine started with.}
+        remaining: {type: integer, description: Gold left; an economy building on the mine draws its income from it.}
 
     FactionState:
       type: object
@@ -1786,6 +1806,11 @@ components:
             counting living units plus paid units in training. Omitted when unlimited.
           type: integer
           minimum: 1
+        contestedTerritory:
+          description: |
+            True when the battle's ruleset snapshot closes construction where faction
+            territories overlap (`buildings.contestedTerritory`). Omitted otherwise.
+          type: boolean
         production:
           description: |
             The next strategy/construction/upgrade window, derived by the engine from
@@ -2007,6 +2032,13 @@ components:
         status: {type: string, enum: [pending, running, completed, void, cancelled]}
         attempts: {type: integer, minimum: 0, maximum: 2}
         battleId: {type: [string, 'null'], format: uuid}
+        battleProgress:
+          description: Present while the fixture is running and its battle exists.
+          type: object
+          required: [currentTick, requestedTicks]
+          properties:
+            currentTick: {type: integer, minimum: 0}
+            requestedTicks: {type: integer, minimum: 1}
         result:
           description: Present once the fixture completed.
           type: object
@@ -2248,7 +2280,7 @@ components:
         | `building_constructed` | `factionId`, `buildingId`, `buildingType`, `position`, `cost` |
         | `unit_queued` | `factionId`, `sourceBuildingId`, `unitType`, `trainingTicks`, `cost`; charged once at enqueue |
         | `unit_recruited` | `factionId`, `unitId`, `unitType`, `position`, `readyAtTick`, `cost`, and `sourceBuildingId`; `cost` is informational unit value for compatibility, not a new expense; count only `unit_queued.cost` for recruitment spending |
-        | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant; reasons include `prerequisite_required`, `exclusive_choice_owned`, `reserve_required`, `queue_full`, `source_unavailable`, `unit_not_trainable`, `invalid_terrain`, `outside_build_range`, `building_too_close`, `site_occupied` and `maximum_reached` |
+        | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant; reasons include `prerequisite_required`, `exclusive_choice_owned`, `reserve_required`, `queue_full`, `source_unavailable`, `unit_not_trainable`, `invalid_terrain`, `outside_build_range`, `contested_territory`, `building_too_close`, `site_occupied` and `maximum_reached` |
         | `unit_moved` | `factionId`, `unitId`, `from`, `to` |
         | `unit_attacked`, `building_attacked` | `attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`, `attackMode`, `outcome: hit`, `impactPosition` |
         | `unit_attack_missed` | `attackerId`, `attackMode: position`, `outcome: miss`, `impactPosition` |

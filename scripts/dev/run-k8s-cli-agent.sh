@@ -18,13 +18,13 @@ kube_context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"
 namespace="${KUBERNETES_NAMESPACE:-battlefield}"
 gateway_port="${HOST_AI_GATEWAY_PORT:-18084}"
 health_port="${HOST_AGENT_HEALTH_PORT:-18083}"
-# Concurrent decision slots across all enabled CLIs. Two lets both factions of a
-# model-vs-model battle decide at once; the worker accepts 1-4, and the database
-# runtime_policy.cli_concurrency still caps executions across all workers.
-agent_concurrency="${HOST_AGENT_CONCURRENCY:-2}"
+# Concurrent decision slots across all enabled CLIs. Eight lets both factions of four
+# concurrent model-vs-model battles decide at once; the worker accepts 1-8, and the
+# database runtime_policy.cli_concurrency still caps executions across all workers.
+agent_concurrency="${HOST_AGENT_CONCURRENCY:-8}"
 validate_agent_concurrency() {
-  if [[ ! "${agent_concurrency}" =~ ^[1-4]$ ]]; then
-    echo "HOST_AGENT_CONCURRENCY must be 1, 2, 3, or 4." >&2
+  if [[ ! "${agent_concurrency}" =~ ^[1-8]$ ]]; then
+    echo "HOST_AGENT_CONCURRENCY must be a whole number from 1 to 8." >&2
     exit 2
   fi
 }
@@ -221,7 +221,7 @@ write_agent_config() {
     printf '  environment: local\n'
     printf '  agentHealthAddress: "127.0.0.1:%s"\n' "${health_port}"
     printf '  mcpUrl: "http://127.0.0.1:%s/mcp"\n' "${gateway_port}"
-    printf '  decisionTimeout: 2m\n'
+    printf '  decisionTimeout: 3m\n'
     printf '  agentConcurrency: %s\n' "${agent_concurrency}"
     printf '  profiles:\n'
     if [[ "${use_codex}" == "1" ]]; then
@@ -303,8 +303,52 @@ wait_for_endpoint() {
   return 1
 }
 
+start_agent() {
+  (cd "${backend_dir}" && exec "${runtime_dir}/agent" -config "${runtime_dir}/config.yaml") &
+  agent_pid=$!
+  wait_for_endpoint "http://127.0.0.1:${health_port}/healthz" "${agent_pid}" "Host agent" "" 300
+}
+
+stop_agent() {
+  kill "${agent_pid}" 2>/dev/null || true
+  wait "${agent_pid}" 2>/dev/null || true
+  agent_pid=""
+}
+
+# Reads the agent's /status JSON on stdin and prints the profile IDs it serves, one per
+# line. Each configured profile it cannot run is reported on stderr with its reason.
+served_profiles() {
+  python3 -c '
+import json, sys
+status = json.load(sys.stdin)
+for profile_id, reason in sorted((status.get("unavailable") or {}).items()):
+    print(f"Host agent cannot serve {profile_id}: {reason}", file=sys.stderr)
+for profile_id in status.get("profiles") or []:
+    print(profile_id)
+'
+}
+
+running_agent_profiles() {
+  curl --noproxy '*' --fail --silent --show-error --max-time 5 "http://127.0.0.1:${health_port}/status" | served_profiles
+}
+
+# Clears the selection of every profile missing from the served list ($1, one ID per
+# line), so only profiles a running agent claims are advertised. Fails if it cleared any.
+keep_served_profiles() {
+  local served="$1" dropped=0
+  if [[ "${use_codex}" == "1" ]] && ! grep -Fxq codex-subscription-local <<<"${served}"; then use_codex=0; dropped=1; fi
+  if [[ "${use_gemini}" == "1" ]] && ! grep -Fxq gemini-subscription-local <<<"${served}"; then use_gemini=0; dropped=1; fi
+  if [[ "${use_claude}" == "1" ]] && ! grep -Fxq claude-subscription-local <<<"${served}"; then use_claude=0; dropped=1; fi
+  return "${dropped}"
+}
+
+pinned_versions() {
+  printf '%s|%s|%s' "${codex_version_prefix}" "${claude_version_prefix}" "${antigravity_version_prefix}"
+}
+
 require_command base64
 require_command curl
+require_command python3
 require_command go
 require_command kubectl
 echo "Building the host decision agent..."
@@ -346,9 +390,28 @@ if [[ "${LANGFUSE_ENABLED}" == 1 ]]; then
 fi
 
 echo "Starting the authenticated host decision agent..."
-(cd "${backend_dir}" && exec "${runtime_dir}/agent" -config "${runtime_dir}/config.yaml") &
-agent_pid=$!
-wait_for_endpoint "http://127.0.0.1:${health_port}/healthz" "${agent_pid}" "Host agent" "" 300
+start_agent
+served="$(running_agent_profiles)"
+if ! keep_served_profiles "${served}"; then
+  # A CLI can update itself between the version check above and the agent's own check,
+  # which then drops its profile. Re-pin the installed versions and restart once.
+  pinned="$(pinned_versions)"
+  resolve_version_prefixes
+  use_codex=0; use_gemini=0; use_claude=0
+  select_profiles
+  if [[ "$(pinned_versions)" != "${pinned}" ]]; then
+    echo "A CLI version changed after it was checked; restarting the host agent with the installed versions..."
+    stop_agent
+    write_agent_config
+    start_agent
+    served="$(running_agent_profiles)"
+  fi
+  keep_served_profiles "${served}" || true
+fi
+if [[ "${use_codex}" != "1" && "${use_gemini}" != "1" && "${use_claude}" != "1" ]]; then
+  echo "The host agent serves none of the selected CLI profiles." >&2
+  exit 1
+fi
 
 codex_flag=false
 gemini_flag=false

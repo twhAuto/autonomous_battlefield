@@ -48,7 +48,7 @@ func parseModels(raw fileConfig, production bool) (Models, error) {
 }
 
 func parseDecisionTimeout(raw fileConfig) (time.Duration, error) {
-	return parseOptionalDuration("ai.decisionTimeout", raw.AI.DecisionTimeout, 2*time.Minute)
+	return parseOptionalDuration("ai.decisionTimeout", raw.AI.DecisionTimeout, 3*time.Minute)
 }
 
 func parseAgent(raw fileConfig) (Agent, error) {
@@ -56,8 +56,8 @@ func parseAgent(raw fileConfig) (Agent, error) {
 	if raw.AI.AgentConcurrency != nil {
 		concurrency = *raw.AI.AgentConcurrency
 	}
-	if concurrency < 1 || concurrency > 4 {
-		return Agent{}, fmt.Errorf("ai.agentConcurrency must be between 1 and 4")
+	if concurrency < 1 || concurrency > 8 {
+		return Agent{}, fmt.Errorf("ai.agentConcurrency must be between 1 and 8")
 	}
 	secret := os.Getenv(envAgentSecret)
 	if err := requireSecret(envAgentSecret, secret, minimumSecretBytes); err != nil {

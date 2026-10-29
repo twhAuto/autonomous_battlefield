@@ -74,7 +74,7 @@ func validateSpendOrder(spendOrder []string) error {
 	seenSpend := make(map[string]bool, len(spendOrder))
 	for _, kind := range spendOrder {
 		if kind != "construction" && kind != "recruitment" && kind != "upgrades" {
-			return fmt.Errorf("%w: unsupported spend kind %q", ErrInvalidPlan, kind)
+			return fmt.Errorf("%w: unsupported spend kind %q; spendOrder accepts only construction, recruitment and upgrades", ErrInvalidPlan, kind)
 		}
 		if seenSpend[kind] {
 			return fmt.Errorf("%w: duplicate spend kind %q", ErrInvalidPlan, kind)
@@ -152,8 +152,11 @@ func validateRecruitmentOrders(plan PlanProposal) error {
 
 func validateTypedConstruction(proposal PlanProposal) error {
 	if proposal.ConstructionOrders != nil {
-		if len(proposal.ConstructionPriorities) > 0 || len(*proposal.ConstructionOrders) > 8 {
-			return fmt.Errorf("%w: use at most eight typed construction orders without legacy priorities", ErrInvalidPlan)
+		if len(proposal.ConstructionPriorities) > 0 {
+			return fmt.Errorf("%w: send constructionPriorities as [] when constructionOrders is supplied", ErrInvalidPlan)
+		}
+		if len(*proposal.ConstructionOrders) > 8 {
+			return fmt.Errorf("%w: use at most eight constructionOrders per window", ErrInvalidPlan)
 		}
 		sites := []Coordinate{}
 		for _, order := range *proposal.ConstructionOrders {

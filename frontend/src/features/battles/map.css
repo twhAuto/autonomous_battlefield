@@ -6,12 +6,14 @@
 .map-toolbar button { background: #192129; border: 1px solid #48535d; color: #fff; cursor: pointer; font-size: 13px; min-height: 32px; min-width: 32px; }
 .map-panel { background: #0e1419; border: 1px solid #303a42; margin-bottom: 28px; }
 .map-toolbar { align-items: center; border-bottom: 1px solid #303a42; display: flex; gap: 18px; justify-content: space-between; min-height: 58px; padding: 10px 16px; }
-.map-toolbar > span { color: #9aa6af; font-size: 12px; letter-spacing: .14em; }
+.map-toolbar > span { margin-right: auto; color: #9aa6af; font-size: 12px; letter-spacing: .14em; }
 .map-toolbar__controls, .map-zoom-controls { align-items: center; display: flex; flex-wrap: wrap; }
 .map-toolbar__controls { gap: 14px; }
 .map-zoom-controls { gap: 6px; }
 .map-zoom-controls button:last-child { font-size: 12px; padding-inline: 10px; }
-.map-toolbar .map-toolbar__results { padding-inline: 10px; color: var(--lime); border-color: rgba(216,255,104,.45); }
+/* The results and map toggles lead their toolbars with one size and style, so switching
+   views never moves the control at any width. */
+.map-toolbar .map-toolbar__results { min-width: 112px; padding-inline: 10px; color: var(--lime); border-color: rgba(216,255,104,.45); }
 .map-viewport { overflow: hidden; touch-action: none; aspect-ratio: var(--map-aspect, auto); }
 .map-viewport svg { cursor: grab; height: 100%; width: 100%; }
 .map-viewport svg:active { cursor: grabbing; }
@@ -95,8 +97,11 @@
 .hex-tile--forest { fill: #234b3a; stroke: #397158; }
 .hex-tile--gold { fill: #655127; stroke: #c8a34c; }
 .hex-tile--build-range { stroke: #87c4ed; stroke-width: 1.8; }
-.build-area { opacity: .16; pointer-events: none; }
-.legend-build-area { background: rgba(216,255,104,.16); }
+.territory { opacity: .16; pointer-events: none; }
+.territory--contested { opacity: 1; }
+.territory-hatch { stroke: rgba(236,240,229,.4); stroke-width: 1.5; }
+.legend-territory { background: rgba(216,255,104,.16); }
+.legend-contested { background: repeating-linear-gradient(45deg, rgba(236,240,229,.4) 0 1.5px, transparent 1.5px 4px); }
 .legend-forest { background: #234b3a; }
 .legend-gold { background: #c8a34c; }
 .training-queue { width: 100%; }
@@ -106,4 +111,11 @@
 .terrain-glyph { pointer-events: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 .terrain-glyph--forest { fill: #448b60; stroke: #b1dfaa; }
 .terrain-glyph--gold { fill: #e5b94f; stroke: #fff0aa; }
+.gold-mine--depleted .hex-tile--gold { fill: #2c2a24; }
+.gold-mine--depleted .terrain-glyph--gold { fill: #6b6553; stroke: #8d8670; }
+.mine-reserve__badge { fill: #10150f; stroke: #c8a34c; stroke-width: .75; }
+.mine-reserve__amount { fill: #f2c94c; font: 500 9px 'DM Mono', monospace; }
+.mine-reserve__value { fill: #f2c94c; }
+.mine-reserve--depleted .mine-reserve__badge { stroke: #6b6553; }
+.mine-reserve--depleted .mine-reserve__amount { fill: #8d8670; }
 .terrain-glyph--rock { fill: #596977; stroke: #9bafbd; }

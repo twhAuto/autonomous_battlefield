@@ -111,6 +111,23 @@ func TestGetLeagueRouteShowsFixtureResults(t *testing.T) {
 	}
 }
 
+func TestGetLeagueRouteShowsRunningBattleProgress(t *testing.T) {
+	h, _ := createdHarness(t)
+	stored := h.repo.leagues[testLeagueID]
+	battleID := "11111111-1111-4111-8111-111111111111"
+	stored.Fixtures[0].Status, stored.Fixtures[0].BattleID = league.FixtureRunning, &battleID
+	stored.Fixtures[0].Battle = &league.BattleOutcome{Status: "running", CurrentTick: 120, RequestedTicks: 500}
+	read := h.do(authn.Developer, http.MethodGet, "/v1/leagues/"+testLeagueID, "")
+	fixtures := decode(t, read)["fixtures"].([]any)
+	progress, ok := fixtures[0].(map[string]any)["battleProgress"].(map[string]any)
+	if read.Code != http.StatusOK || !ok || progress["currentTick"] != 120.0 || progress["requestedTicks"] != 500.0 {
+		t.Fatalf("read = %d, fixture %v", read.Code, fixtures[0])
+	}
+	if _, pending := fixtures[1].(map[string]any)["battleProgress"]; pending {
+		t.Fatalf("pending fixture = %v", fixtures[1])
+	}
+}
+
 func TestListLeaguesRouteShowsChampions(t *testing.T) {
 	h, _ := createdHarness(t)
 	champion := 3

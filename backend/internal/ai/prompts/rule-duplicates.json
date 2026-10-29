@@ -1,10 +1,10 @@
 {
-  "mechanicsSHA256": "6422e9b4a1665944edc47a1c83b1ce689a797f0f89762c4f3b3071dce6eaf325",
+  "mechanicsSHA256": "30499a77c467b530d0b3d7413eb14854fb4057fba7a786982abc324337e5b8b9",
   "rules": [
     {
       "prompt": "The entire battlefield is visible.",
       "mechanics": [
-        "The entire battlefield is visible; there is no fog of war."
+        "The whole battlefield is visible (no fog of war)."
       ]
     },
     {
@@ -30,7 +30,7 @@
     {
       "prompt": "Only one paid unit per building is in progress; blocked adjacent exits hold it without additional charges.",
       "mechanics": [
-        "A blocked exit prevents further purchases.",
+        "A blocked exit stops purchases.",
         "The building continuously trains that type one at a time using trainingTicks.",
         "Ready units wait if every adjacent traversable hex is occupied."
       ]
@@ -63,27 +63,34 @@
     {
       "prompt": "Only clear ground and gold deposits permit construction; units block placement and every pair of living buildings must have hex distance at least 2.",
       "mechanics": [
-        "All buildings must be at least two hexes apart; units block construction.",
-        "Buildings may occupy clear ground or gold deposits within buildRange of an active friendly building."
+        "Buildings must be at least two hexes apart and never beside a mine with gold left; units block construction.",
+        "Buildings need clear ground in your territory (within buildRange of an active friendly building) and outside enemy territory: overlapping ground is contested and closed to both sides until buildings fall.",
+        "Economy buildings need a gold mine (gold deposit) with gold left, which no other building may take."
       ]
     },
     {
       "prompt": "Forests grant troops +3 defense; economy buildings on gold deposits earn +5 gold per tick.",
       "mechanics": [
         "Forests are traversable and grant troops +3 defense after armor piercing, but prohibit construction.",
-        "Gold deposits grant economy buildings +5 income each tick."
+        "A mine holds finite gold: its economy building draws all its income, Industry and the +5 mine bonus included, from it until empty, then earns nothing; a destroyed one leaves the rest for either side."
       ]
     },
     {
       "prompt": "New sources activate next tick.",
       "mechanics": [
-        "Castles and defense towers fire before units; newly built towers and training buildings become active next tick; outposts grant construction range."
+        "Castles and defense towers fire before units; newly built towers and training buildings become active next tick; outposts extend territory."
       ]
     },
     {
       "prompt": "A single building limits training throughput even with abundant gold.",
       "mechanics": [
         "The building continuously trains that type one at a time using trainingTicks."
+      ]
+    },
+    {
+      "prompt": "No building may be placed beside a mine with gold left.",
+      "mechanics": [
+        "Buildings must be at least two hexes apart and never beside a mine with gold left; units block construction."
       ]
     }
   ]

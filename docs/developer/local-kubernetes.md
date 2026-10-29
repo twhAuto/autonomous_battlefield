@@ -86,19 +86,27 @@ Local CLIs allow the selected stable version or newer: Codex `0.155.0+`,
 Antigravity `1.2.0+` and Claude `2.1.267+`. A saved login is required.
 Name a CLI explicitly to see why it was rejected.
 
-The host agent runs `HOST_AGENT_CONCURRENCY` decision slots (default `2`, range
-1–4) shared across the enabled CLIs, so both factions of a model-vs-model battle
-decide at the same time. Use `4` for two concurrent battles, or `1` to reduce
-load; `runtime_policy.cli_concurrency` (4 by default) still caps executions across
-all workers:
+The host agent runs `HOST_AGENT_CONCURRENCY` decision slots (default `8`, range
+1–8) shared across the enabled CLIs. A model-vs-model battle needs two at once, so
+eight covers the engine's four concurrent battles. Set the database CLI limit to
+the same number ([limits and the stop switch](../operations/access.md#limits-and-the-stop-switch)
+explains why):
 
 ```bash
-HOST_AGENT_CONCURRENCY=4 ./scripts/dev/run-k8s-cli-agent.sh auto
+DEPLOY_ENV=dev BATTLEFIELD_POSTGRES_POD=battlefield-postgres-0 ./scripts/ops/ai-policy.sh cli-slots 8
+./scripts/dev/run-k8s-cli-agent.sh auto
 ```
+
+To reduce load, run fewer slots, for example `HOST_AGENT_CONCURRENCY=2`, and set
+`cli-slots 2` to match.
 
 The helper checks the CLI version policy and the existing host login, forwards
 only the internal AI gateway service to loopback, runs the decision agent on the
-host, and makes the connected profiles selectable through the API while it runs.
+host, and makes selectable through the API, while it runs, only the profiles the
+agent's `/status` reports it serves. It prints each profile the agent dropped with
+the agent's reason. A CLI that updated itself after the helper checked its version
+fails the agent's own check, so the helper then re-pins the installed versions and
+restarts the agent once; it exits if the agent serves none of the selected CLIs.
 No CLI login directory or provider credential is mounted into the cluster. Keep it
 running for the whole battle and press Ctrl+C afterwards. The generated host
 profile passes `--model gpt-5.6-luna` to Codex, `--model gemini-3.8-flash-medium`

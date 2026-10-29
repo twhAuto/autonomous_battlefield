@@ -214,7 +214,9 @@ all entities, actions, movement routes and deaths. It retains only the requestin
 faction's economy/upgrade/production totals in `state.factions`. Opponent building
 `production` settings are omitted, keeping future unit selections, on/off choices
 and gold/reserve waits private. Paid training progress and all physical entities
-remain visible. The full battle snapshot used by viewers retains both sides' settings. The deprecated
+remain visible. The full battle snapshot used by viewers retains both sides' settings.
+Under gold-mine rulesets every view also carries `state.goldMines`, each mine's
+`reserve` and `remaining` gold, for both factions. The deprecated
 `visiblePositions` field contains every map coordinate for older clients.
 
 Buildings expose `buildRange`, optional `trains` (supported unit IDs), `trainingQueue`,
@@ -320,7 +322,8 @@ nobody. Model access is checked again for every battle, so revoking access
 mid-league voids that entrant's remaining fixtures.
 
 `GET /v1/leagues/{id}` returns the settings, entrants, ranked `groups`, `knockout`
-ties and every fixture with its `battleId` and, once completed, its `result`.
+ties and every fixture with its battle, progress and result as the
+[`LeagueFixture`](openapi.yaml) schema describes.
 `GET /v1/leagues` lists summaries, newest first. `POST /v1/leagues/{id}/cancel`
 cancels unfinished fixtures and stops the running battle; repeating it returns `200`
 and stops any league battle still running. Cancelling a completed league returns

@@ -157,20 +157,15 @@ it('cancels on unmount, handles non-Error failures, and allows correcting unknow
   expect(signal?.aborted).toBe(true)
 })
 
-it('opens details and returns to the originating history URL', async () => {
+it('opens details, and browser back returns to the filtered page', async () => {
   const user = userEvent.setup()
   vi.mocked(listBattles).mockResolvedValue({ battles: [summary], nextCursor: null })
   renderHistory('/battles?status=completed&cursor=page2&previous=')
   await user.click(await screen.findByRole('link', { name: 'Open battle →' }))
-  expect(screen.getByRole('link', { name: '← BATTLE HISTORY' })).toHaveAttribute('href', '/battles?status=completed&cursor=page2&previous=')
-  await user.click(screen.getByRole('link', { name: '← BATTLE HISTORY' }))
+  expect(screen.getByRole('heading', { name: 'North vs South' })).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Browser back' }))
   await screen.findByRole('table')
   expect(listBattles).toHaveBeenLastCalledWith({ status: 'completed', cursor: 'page2' }, expect.any(AbortSignal))
-})
-
-it('links direct detail visits back to history', () => {
-  renderHistory('/battles/' + summary.id)
-  expect(screen.getByRole('link', { name: '← BATTLE HISTORY' })).toHaveAttribute('href', '/battles')
 })
 
 it('restores the first page from a directly loaded cursor without prior cursors', async () => {

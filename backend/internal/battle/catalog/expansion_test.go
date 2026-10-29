@@ -77,6 +77,7 @@ func withoutVisualizationMetadata(transition *game.Transition) {
 }
 
 func TestFrontierCatalogMapAndDeterministicBattle(t *testing.T) {
+	skipSequentialBattleUnderRace(t)
 	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +89,7 @@ func TestFrontierCatalogMapAndDeterministicBattle(t *testing.T) {
 	if s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 0 || len(s.Ruleset.Units) != 14 || len(s.Ruleset.Structures) != 7 {
 		t.Fatal("incomplete frontier content")
 	}
-	if s.Ruleset.ContentSource.Version != "8" {
+	if s.Ruleset.ContentSource.Version != "10" {
 		t.Fatal("incorrect content version")
 	}
 	checkFrontierRoutes(t, s.Map)
@@ -104,11 +105,11 @@ func TestFrontierCatalogMapAndDeterministicBattle(t *testing.T) {
 // from a forward building rather than a castle.
 func replayFrontierTwice(t *testing.T, s game.Scenario) (map[string]bool, bool) {
 	t.Helper()
-	first, err := game.NewMatch("replay", s, 100)
+	first, err := game.NewMatch("replay", s, 200)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, _ := game.NewMatch("replay", s, 100)
+	second, _ := game.NewMatch("replay", s, 200)
 	kinds := map[string]bool{}
 	forward := false
 	for !first.Finished() {

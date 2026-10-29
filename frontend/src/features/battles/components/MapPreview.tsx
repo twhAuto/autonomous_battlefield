@@ -13,6 +13,8 @@ export function MapPreview({ map, scenarioId, factionIds }: Readonly<{ map: Batt
   const width = root3 * size * (map.width + 0.5)
   const height = size * (1.5 * (map.height - 1) + 2)
   const colors = factionColors(factionIds)
+  const reserve = map.goldMineReserve
+  const mineCount = map.rows.reduce((total, row) => total + [...row].filter((symbol) => symbol === 'g').length, 0)
   return (
     <figure className="map-preview">
       <svg viewBox={`${-root3 * size / 2} ${-size} ${width} ${height}`}>
@@ -20,7 +22,7 @@ export function MapPreview({ map, scenarioId, factionIds }: Readonly<{ map: Batt
         {map.rows.map((row, y) => [...row].map((symbol, x) => {
           const center = centerOf({ x, y })
           return <g key={`${x}:${y}`}>
-            <polygon points={hexPoints(center.x, center.y)} className={`hex-tile hex-tile--${terrainClass(symbol)}`}><title>{terrainDescription(symbol)} · ({x}, {y})</title></polygon>
+            <polygon points={hexPoints(center.x, center.y)} className={`hex-tile hex-tile--${terrainClass(symbol)}`}><title>{terrainDescription(symbol, reserve ? { remaining: reserve, reserve } : undefined)} · ({x}, {y})</title></polygon>
             <g transform={`translate(${center.x - 12} ${center.y - 12})`}><TerrainGlyph symbol={symbol} /></g>
           </g>
         }))}
@@ -36,6 +38,7 @@ export function MapPreview({ map, scenarioId, factionIds }: Readonly<{ map: Batt
       </svg>
       <figcaption>
         {['castle', 'gold', 'forest', 'rock'].map(kind => <span key={kind}><i className={`map-preview__key map-preview__key--${kind}`} aria-hidden="true" />{kind}</span>)}
+        {reserve ? <span className="map-preview__gold">{mineCount} gold mines · {reserve} gold each</span> : null}
       </figcaption>
     </figure>
   )

@@ -6,36 +6,38 @@ structures, maps, and balance probes.
 
 Choose one of the [maps](#maps) in **Stage a battle → Combat map**. Every map uses
 the same current roster, buildings, upgrades, starting gold and battle timing; only
-the terrain differs. Every map has forests and gold deposits, with no reserved
-building pads. Historical saved battles retain their frozen content definitions.
+the terrain and its gold differ. Every map has forests and gold mines, with no
+reserved building pads. Historical saved battles retain their frozen content definitions.
 
 ## Maps
 
-| Map | ID | Size | Castles | Layout |
-| --- | --- | --- | --- | --- |
-| Castle Siege | `castle-siege` | 15×11 | `(1,5)`, `(13,5)` | Compact open field; two deposits per side inside castle build range |
-| Frontier Siege | `frontier-siege` | 25×17 | `(2,8)`, `(22,8)` | Central approach and flanking routes around stone ridges; six deposits per side |
-| River Fords | `river-fords` | 19×25, tall | `(2,12)`, `(16,12)` | A three-hex rock river splits the halves. Three fords, each three rows wide, cross it; the north and south fords each hold a contested deposit. Six deposits per side |
-| Long March | `long-march` | 35×17, wide | `(2,8)`, `(32,8)` | A long field; rock outcrops split the centre into north, centre and south roads. Six deposits per side and two contested ones on the centre line |
-| Highland Crown | `highland-crown` | 33×25, large | `(3,12)`, `(29,12)` | A hexagonal highland with rock corners. A rock-ringed plateau in the centre holds three contested deposits behind north and south gates. Six deposits per side |
+| Map | ID | Size | Castles | Gold mines | Layout |
+| --- | --- | --- | --- | --- | --- |
+| Castle Siege | `castle-siege` | 15×11 | `(1,5)`, `(13,5)` | 10 × 800, scarcest | Compact open field; two home and two forward mines per side, two contested mines beside the centre rocks |
+| Frontier Siege | `frontier-siege` | 25×17 | `(2,8)`, `(22,8)` | 12 × 2,000 | Central approach and flanking routes around stone ridges; two home and three mid-field mines per side, two contested mines north and south of the centre |
+| River Fords | `river-fords` | 19×25, tall | `(2,12)`, `(16,12)` | 10 × 2,500 | A three-hex rock river splits the halves. Three fords, each three rows wide, cross it; the north and south fords each hold a contested mine. Two home and two mid-field mines per side |
+| Long March | `long-march` | 35×17, wide | `(2,8)`, `(32,8)` | 15 × 3,000, richest | A long field; rock outcrops split the centre into north, centre and south roads. Two home and four mid-field mines per side, and a contested mine in each road on the centre line |
+| Highland Crown | `highland-crown` | 33×25, large | `(3,12)`, `(29,12)` | 15 × 2,500 | A hexagonal highland with rock corners. A rock-ringed plateau in the centre holds three contested mines behind north and south gates. Two home and four mid-field mines per side |
 
-Contested deposits sit on the centre column, the same walking distance from both
-castles.
+Home mines lie inside castle build range, so each faction can claim them at its
+first regular window; every other mine needs territory pushed toward it.
+Contested mines sit on the centre column, the same walking distance from both
+castles. An economy building empties a mine in about `reserve ÷ 15` ticks (53 on
+Castle Siege, 200 on Long March), so home income runs out mid-battle and the fight
+moves to the remaining mines.
 
 ## Map and economy
 
 Rocks block movement but ranged attacks use distance without line-of-sight
 occlusion. Every map cell and entity is visible.
-Forests grant troops +3 defense after armor piercing and prohibit construction;
-gold deposits add +5 income per tick to an economy building placed on them.
+Forests grant troops +3 defense after armor piercing and prohibit construction.
+Gold mines take only economy buildings and hold finite gold
+([gold mines](game-rules.md#resources-and-upgrades)).
 
-Each faction starts with 220 gold and only its castle, and may maintain **sixteen non-castle buildings** and **40 units** (living plus paid in training),
-including at most **four economy buildings**. Construction requires unoccupied
-buildable terrain within a living active friendly building's range. Every pair of
-buildings must be at least two hexes apart, including opposing structures.
-Destroyed buildings release capacity and stop granting range. Economy activates
-immediately; other structures activate next tick. Engineers can repair non-castle
-buildings. There is no selling, demolition, or capture.
+Each faction starts with 220 gold and only its castle. There is **no building
+limit**, and each faction may field **50 units** (living plus paid in training).
+Placement, spacing, mine and activation rules are in
+[construction and training](game-rules.md#construction-and-training).
 
 ## Unit roster
 
@@ -56,7 +58,8 @@ buildings. There is no selling, demolition, or capture.
 | Gunner | 120 | 38 | 24 | 2 | 3 | 1 | 2 | 6 | Requires Gunpowder; highest troop attack |
 | Heavy Cavalry | 150 | 130 | 17 | 7 | 7 | 2 | 1 | 9 | Requires Knighthood; +8 attack vs infantry |
 
-Speed determines turn order, not distance or attacks per tick. Units move or act
+Speed determines turn order, not distance or attacks per tick (see
+[tick order](game-rules.md#tick-order)). Units move or act
 once per tick; recruits first act on the following tick. Bonus attack is added
 before defense and the existing faction tactic modifiers. There is no splash
 damage or friendly fire. Both factions see every battlefield action. Faction economic totals remain private.
@@ -134,7 +137,7 @@ for that turn. Arsenal never grants Engineers an attack; Plating still applies.
 | Structure | Gold | HP | Defense | Build range | Function |
 | --- | ---: | ---: | ---: | ---: | --- |
 | Castle (starting only) | 0 | 300 | 8 | 4 | +10 income/tick; Vanguard, Striker, Pikeman; attack 15, range 3 |
-| Economy | 50 | 60 | 2 | 3 | +10 income/tick; +15 on a deposit |
+| Economy | 50 | 60 | 2 | 3 | Gold mines only; draws 15 gold/tick from its mine until empty |
 | Defense Tower | 60 | 130 | 4 | 3 | Attack 15, range 3, targets enemy units |
 | Outpost | 30 | 50 | 1 | 5 | Extends construction territory |
 | Barracks | 90 | 100 | 3 | 3 | Vanguard, Striker, Pikeman |
@@ -143,7 +146,7 @@ for that turn. Arsenal never grants Engineers an attack; Plating still applies.
 | Siege Workshop | 120 | 100 | 3 | 3 | Catapult, Battering Ram, Engineer, Cannon |
 | Infirmary | 80 | 100 | 3 | 3 | Herbalist |
 
-Castles and towers act in stable building-ID order before unit turns. They use the same
+Castles and towers act before unit turns, in [tick order](game-rules.md#tick-order). They use the same
 distance/health/ID target tie breakers and faction damage modifiers as ordinary
 attacks, award normal loot, and cannot attack buildings. At 60 gold, a tower has
 more base HP per gold than any unit, making stationary defense economical.
@@ -158,8 +161,11 @@ Destroyed sources lose paid training without refund; deployed troops act next ti
 See [construction and training](game-rules.md#construction-and-training) for timing
 and [OpenAPI](../architecture/openapi.yaml) for fields.
 
-Scripted construction favors deposits, then locations nearer the opponent, choosing
-separated sites for income, a tower and missing production types. Scripted templates
+Scripted construction puts one economy building per window on the legal mine
+nearest its castle, and each missing production type and one tower on the legal
+ground site nearest the opponent. When no mine is
+in reach, it adds an Outpost on the ground site nearest the closest unclaimed mine,
+so scripted economies follow the gold as home mines run dry. Scripted templates
 select a compatible unit for each newly active unconfigured source and retain
 existing selections, with one exception: once their faction owns an unlock, they
 move an enabled source from a classic type to a preferred late-game type it can
@@ -167,10 +173,10 @@ train. Disabled sources are never changed. AI factions receive scripted plans on
 as fallbacks in their first two windows, before any unlock is affordable. The AI
 can change its choices or disable individual sources.
 Frozen pre-v7 battles retain their original batch queues.
-Scripted baselines omit currently untrainable orders before submission. Once four
-economy buildings, all five production kinds and one tower are built, default
-construction stops, leaving free slots for explicit orders; destroyed types become eligible for replacement. Explicit orders take precedence; Outposts are an
-alternative purchase for wider expansion. Opening fallback buys combat units in
+Scripted baselines omit currently untrainable orders before submission. Once all
+five production kinds and one tower are built, default construction only claims and
+reaches mines; destroyed types become eligible for replacement. Explicit orders take
+precedence. Opening fallback buys combat units in
 deterministic round-robin order from the castle. Other unit types require
 their own production building first.
 
@@ -196,12 +202,12 @@ unlocked. Model controllers
 choose their own priorities. Spectators see the highest owned level for each track,
 and purchase events show the level and its incremental price.
 
-Industry adds 2 gold per living economy building per tick per level. With one
-building, incremental break-even times are 80/200/400 income collections; with two,
-they are 40/100/200; with the maximum four, 20/50/100. Levels II and III therefore
-pay back only with most economy slots filled or in long battles. These calculations assume the buildings
-survive and exclude the time and gold spent constructing them. The compounding
-economy is a balance consideration, not proof of a dominant strategy.
+Industry adds 2 gold per tick per level to each living economy building's draw.
+A mine's gold is finite, so Industry collects the same gold sooner rather than
+adding more: at level III a 2,000-gold mine empties in 96 ticks instead of 134.
+Industry therefore pays for itself only by funding an earlier push, or by draining a
+contested mine before the opponent takes it; it never raises castle income. These
+are balance considerations, not proof of a dominant strategy.
 
 ## Specializations
 
@@ -240,18 +246,31 @@ are not claims about the current balance. `TestFrontierThreeLevelCatalogAndScrip
 also checks shared content and scripted upgrade purchases.
 
 `TestLateGameUnitsBreakUpgradedStalemate` runs the live ruleset with equal 8,000-gold
-treasuries. Both sides build the same four training buildings and buy every general
-upgrade level; one side also buys both unlocks and trains Gunners, Heavy Cavalry and
-Cannons instead of Crossbowmen, Raider Cavalry and Catapults. The classic mirror
-ends at tick 130, while the unlocked side wins from either map side by tick 94, and
-an unlocked mirror ends by tick 81. `TestFrontierUpgradeBalanceProbe` compares a
+treasuries on Frontier Siege terrain with its mines turned to ground, because the
+probe builds no economy and the hexes beside mines would otherwise decide where its
+buildings stand. Both sides build the same four training buildings on mirrored sites
+in front of their castles and buy every general upgrade level; one side also buys
+both unlocks and trains Gunners, Heavy Cavalry and Cannons instead of Crossbowmen,
+Raider Cavalry and Catapults. The classic mirror ends at tick 174, while the unlocked
+side wins from either map side by tick 78, and an unlocked mirror ends by tick 146.
+Results depend on where the training buildings stand: with a source behind its
+castle the classic army can win, so the probe compares units, not placement. `TestFrontierUpgradeBalanceProbe` compares a
 level-I upgrade plus troops with an equal-cost army at the opening; both draw.
 `TestScriptedBotsUnlockAndTrainLateGameUnits` runs the scripted bots on the live
-ruleset: both fill four economy slots, buy both unlocks after level II, train Gunners
-and Heavy Cavalry, and the battle ends with a winner (tick 258).
+ruleset: both claim home and mid-field mines, buy both unlocks after level II, train
+Gunners and Heavy Cavalry, and the battle ends with a winner (tick 378).
 
-`TestScriptedBotsFinishEveryMap` plays the scripted bots on every map with each
-faction on each side. Every battle must end with a winner before the 800-tick limit;
-current results range from tick 169 (River Fords) to 369 (Castle Siege). Narrow
-chokepoints let both armies hold a front: drafts with one- and two-row fords, or a
-13-row Long March, reached the limit without a winner.
+`TestScriptedBotsFinishEveryMap` plays the scripted bots against each other on every
+map twice, with the two faction IDs swapped between runs. Each seat must hold the same
+state on every tick of both runs, so faction IDs never decide a battle, and every
+battle must end with a winner before the 800-tick limit; current results range from
+tick 209 (Highland Crown) to 609 (Castle Siege). Because both sides run the same bot,
+the winning seat shows each map's side bias: the first seat wins Highland Crown and
+River Fords, the second Castle Siege, Frontier Siege and Long March. Narrow chokepoints let both armies hold a front: drafts with one- and
+two-row fords, or a 13-row Long March, reached the limit without a winner. Scarce
+gold has the same effect at chokepoints, because once the mines are empty both sides
+fight on castle income alone; River Fords at 1,500 gold per mine stalled, so it
+holds 2,500. `TestMapsSpreadFiniteGoldFromHomeToCentre` checks every map's mine
+layout and that the scarcest map holds under half the gold of the richest, and
+`TestScriptedBotsExpandBeyondHomeMines` checks that both scripted bots empty a mine
+and claim one beyond castle range.

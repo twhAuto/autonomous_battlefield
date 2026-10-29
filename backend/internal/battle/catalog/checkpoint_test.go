@@ -13,6 +13,7 @@ import (
 )
 
 func TestFrontierCheckpointsResumeExactly(t *testing.T) {
+	skipSequentialBattleUnderRace(t)
 	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)

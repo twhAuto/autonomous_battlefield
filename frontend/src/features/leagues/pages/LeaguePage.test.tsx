@@ -29,8 +29,8 @@ function sampleLeague(change: Partial<League> = {}): League {
 
 const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status })
 
-function show(canCancel = true) {
-  return render(<MemoryRouter initialEntries={['/leagues/league-1']}><Routes><Route path="/leagues/:id" element={<LeaguePage canCancel={canCancel} />} /></Routes></MemoryRouter>)
+function show(canManage = true) {
+  return render(<MemoryRouter initialEntries={['/leagues/league-1']}><Routes><Route path="/leagues/:id" element={<LeaguePage canManage={canManage} />} /></Routes></MemoryRouter>)
 }
 
 beforeEach(() => { vi.stubGlobal('fetch', vi.fn()) })
@@ -52,17 +52,48 @@ it('shows group tables, the bracket and fixtures', async () => {
   expect(within(bracket).getAllByText('To be decided')).toHaveLength(2)
   const fixtures = screen.getByRole('table', { name: 'Fixtures in play order' })
   expect(within(fixtures).getByText('Amber wins')).toBeInTheDocument()
+  const [, , home, away] = within(within(fixtures).getAllByRole('row')[1]).getAllByRole('cell')
+  expect(home).toHaveTextContent(/^Amber\s*sonnet · low$/)
+  expect(away).toHaveTextContent(/^Gale\s*Scripted$/)
   expect(within(fixtures).getByText('Retried')).toBeInTheDocument()
   expect(within(fixtures).getByRole('link', { name: 'Open battle →' })).toHaveAttribute('href', `/battles/${battleID}`)
   expect(screen.getByRole('link', { name: 'STATISTICS →' })).toHaveAttribute('href', '/analytics?leagueId=league-1')
   expect(screen.queryByRole('button', { name: 'CANCEL LEAGUE' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'START AGAIN →' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: 'Now playing' })).not.toBeInTheDocument()
 })
 
-it('names the champion of a completed league', async () => {
+it('puts running battles first with their tick progress', async () => {
+  const running = '22222222-2222-4222-8222-222222222222'
+  const league = sampleLeague()
+  league.fixtures.push(
+    { id: 'x3', sequence: 2, stage: 'group', group: 'A', round: 2, leg: 1, homeEntrant: 0, awayEntrant: 2, scenarioId: 'castle-siege', status: 'running', attempts: 1, battleId: running, battleProgress: { currentTick: 120, requestedTicks: 500 } },
+    { id: 'x4', sequence: 3, stage: 'group', group: 'B', round: 2, leg: 1, homeEntrant: 1, awayEntrant: 3, scenarioId: 'frontier-siege', status: 'running', attempts: 1, battleId: null },
+  )
+  vi.mocked(fetch).mockImplementation(async () => reply(200, league))
+  show(false)
+  const live = await screen.findByRole('region', { name: 'Now playing' })
+  expect(live).toHaveTextContent('2 RUNNING')
+  const [first, second] = within(live).getAllByRole('listitem')
+  expect(first).toHaveTextContent(/Group A · round 2 · leg 1 · castle-siege.*Amber.*sonnet · low.*Cinder.*Scripted/)
+  expect(within(first).getByRole('progressbar', { name: 'Group A · round 2 · leg 1 ticks played' })).toHaveValue(120)
+  expect(first).toHaveTextContent('Tick 120 of 500')
+  expect(within(first).getByRole('link', { name: 'WATCH LIVE →' })).toHaveAttribute('href', `/battles/${running}`)
+  expect(second).toHaveTextContent('Starting…')
+  expect(within(second).queryByRole('link')).not.toBeInTheDocument()
+
+  const rows = within(screen.getByRole('table', { name: 'Fixtures in play order' })).getAllByRole('row')
+  expect(rows[3]).toHaveClass('league-fixtures__running')
+  expect(rows[3]).toHaveTextContent('Tick 120 of 500')
+  expect(rows[2]).not.toHaveClass('league-fixtures__running')
+})
+
+it('names the champion of a completed league and offers Admins a copy of its setup', async () => {
   vi.mocked(fetch).mockImplementation(async () => reply(200, sampleLeague({ status: 'completed', champion: 3 })))
   show()
   expect(await screen.findByText(/Champion:/)).toHaveTextContent('Champion: Dusk')
   expect(screen.queryByRole('button', { name: 'CANCEL LEAGUE' })).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'START AGAIN →' })).toHaveAttribute('href', '/leagues/new?from=league-1')
 })
 
 it('cancels only after confirmation and reports failures', async () => {

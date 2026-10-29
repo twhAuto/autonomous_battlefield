@@ -32,7 +32,7 @@ func buildingIDs(r game.Ruleset) []string {
 		economy = "economy"
 	}
 	ids := []string{castle}
-	if r.Buildings.MaximumEconomyCount > 0 {
+	if game.EconomyAvailable(r.Buildings) {
 		ids = append(ids, economy)
 	}
 	for _, b := range r.Structures {
@@ -68,7 +68,7 @@ func validateSelectedPlan(p controller.PlanProposal, r game.Ruleset) error {
 	if err := validateSelectedConstruction(p, r); err != nil {
 		return err
 	}
-	if r.Buildings.MaximumEconomyCount == 0 && len(p.ConstructionPriorities) > 0 {
+	if !game.EconomyAvailable(r.Buildings) && len(p.ConstructionPriorities) > 0 {
 		return fmt.Errorf("plan %q builds excluded economy buildings", p.Name)
 	}
 	return nil

@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -93,7 +94,20 @@ elif ' apply -k ' in ' '+text+' ':
 elif 'exec battlefield-postgres-0' in text and 'psql' in text:
     if os.environ.get('DATABASE_UNAVAILABLE'): sys.exit(1)
     print(os.environ.get('MIGRATIONS','[0,1]'))
-elif 'pg_dump' in text: print('synthetic dump')
+elif 'pg_dump' in text or 'pg_restore' in text:
+    step='pg_dump' if 'pg_dump' in text else 'pg_restore'
+    if os.environ.get('STALL')==step:
+        import time
+        if os.environ.get('STALL_TRANSPORT'): time.sleep(60)
+        # Like the pod's BusyBox timeout: stop after the seconds it was given.
+        remote=args[args.index('--')+1:]
+        assert remote[0]=='timeout', remote
+        time.sleep(int(remote[1])); sys.exit(143)
+    if step=='pg_dump': print('synthetic dump')
+    else:
+        # The real pg_restore --list stops after the table of contents; the script must drain the rest.
+        assert 'cat >/dev/null' in text, text
+        sys.stdin.read()
 elif 'create secret' in text: print('{}')
 elif 'config view' in text: print('synthetic-kubeconfig')
 elif 'get pvc' in text: print('{"items":[]}')
@@ -172,10 +186,27 @@ elif 'apply' in args and '-f' in args and args[args.index('-f')+1]=='-': sys.std
     def test_wrong_identity_driver_platform_and_supply_chain_fail_before_mutation(self):
         for settings in ({'LIVE_UID':'other'},{'CLUSTER_DRIVER':'kind'},{'K3S_VERSION':'wrong'},
                          {'RECLAIM':'Delete'},{'CONTROLLER_READY':'0'},{'IMAGE_SOURCE':'local'},{'SIGNATURE_FAIL':'1'},
-                         {'ATTESTATION_FAIL':'1'},{'GHCR_TOKEN':''},{'KIND_CLUSTER_NAME':'old'}):
+                         {'ATTESTATION_FAIL':'1'},{'GHCR_TOKEN':''},{'KIND_CLUSTER_NAME':'old'},{'BACKUP_TIMEOUT':'5m'}):
             with self.subTest(settings=settings):
                 self.run_script('deploy.sh','f'*40,ok=False,**settings)
                 self.assertFalse(any(any(v in c for v in ['apply','delete','patch','create']) for c in self.calls),self.calls)
+
+    def test_stalled_backup_fails_fast_without_migration_or_partial_dump(self):
+        # The pod's deadline ends a stalled step; the local deadline (15 s later) ends a stalled exec stream.
+        for step,transport,label,limit in (('pg_dump','','pg_dump',10),('pg_restore','','pg_restore --list',10),
+                                           ('pg_dump','1','pg_dump',30)):
+            with self.subTest(step=step,transport=bool(transport)):
+                started=time.monotonic()
+                result=self.run_script('deploy.sh','f'*40,ok=False,STALL=step,STALL_TRANSPORT=transport,BACKUP_TIMEOUT='1s')
+                self.assertLess(time.monotonic()-started,limit)
+                self.assertIn(f'Database backup failed: {label} did not finish within 1s; refusing migration.',result.stderr)
+                self.assertFalse((self.directory/'migration.yaml').exists())
+                self.assertFalse(any('battlefield-migrate' in c for c in self.calls))
+                self.assertEqual(list((self.directory/'backups').iterdir()),[])
+                self.assertTrue(any(c[3:6]==['get','pod','battlefield-postgres-0'] for c in self.calls),self.calls)
+                sessions=[' '.join(c) for c in self.calls if 'pg_stat_activity' in ' '.join(c)]
+                self.assertTrue(sessions)
+                self.assertNotIn('query',sessions[0].split('from pg_stat_activity')[0])
 
     def test_recovery_requires_matching_database_and_keeps_uid_guard(self):
         self.run_script('production-recovery.sh','record','f'*40)

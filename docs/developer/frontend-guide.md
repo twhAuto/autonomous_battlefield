@@ -30,8 +30,8 @@ The frontend is a React/Vite single-page application.
 | [`features/battles/components/PlayerStatusPanel.tsx`](../../frontend/src/features/battles/components/PlayerStatusPanel.tsx) | Null-safe spectator summaries, economy/building overview, and grouped living units |
 | [`features/battles/components/TypeStatistics.tsx`](../../frontend/src/features/battles/components/TypeStatistics.tsx) | After-action unit and building tables by type and the upgrade timeline; renders nothing for a result without per-type figures |
 | [`features/leagues/api/leagues.ts`](../../frontend/src/features/leagues/api/leagues.ts) | Typed league list, read, create and cancel requests |
-| [`features/leagues/pages/CreateLeaguePage.tsx`](../../frontend/src/features/leagues/pages/CreateLeaguePage.tsx) | League setup: name, 8 or 16 entrants with faction, group and controller, maps, timing, and estimates of battles, duration and model decisions |
-| [`features/leagues/pages/LeaguePage.tsx`](../../frontend/src/features/leagues/pages/LeaguePage.tsx) | Group tables, knockout bracket and fixtures with battle links (`components/LeagueStandings.tsx`), refreshed while the league runs; cancellation for Admins |
+| [`features/leagues/pages/CreateLeaguePage.tsx`](../../frontend/src/features/leagues/pages/CreateLeaguePage.tsx) | League setup: name, 8 or 16 entrants with faction, group and controller, maps, timing, and estimates of battles, duration and model decisions; `?from=<league id>` pre-fills the form from that league, and copied factions, maps, profiles, models or efforts that no longer exist block starting until replaced |
+| [`features/leagues/pages/LeaguePage.tsx`](../../frontend/src/features/leagues/pages/LeaguePage.tsx) | Running battles with tick progress, group tables, knockout bracket and fixtures with battle links (`components/LeagueStandings.tsx`), each entrant named with its controller, refreshed while the league runs; for Admins, cancellation and **START AGAIN** into a pre-filled setup |
 | [`features/analytics/pages/AnalyticsPage.tsx`](../../frontend/src/features/analytics/pages/AnalyticsPage.tsx) | Statistics report with URL-backed league, rules-version and fallback filters: model, head-to-head, unit, army-mix, upgrade, faction and map tables |
 | [`features/analytics/components/WinRateChart.tsx`](../../frontend/src/features/analytics/components/WinRateChart.tsx) | Model leaderboard: win rate per controller with its 95% interval |
 | [`features/admin/pages/MembersPage.tsx`](../../frontend/src/features/admin/pages/MembersPage.tsx) | Managed Player invitations, removal, sync retry, and game link (Admins only, when enabled) |
@@ -39,9 +39,10 @@ The frontend is a React/Vite single-page application.
 
 ## Routes and session
 
-Home and primary navigation share three destinations in order: Stage battle,
-Factions, Battle history. Developers and Admins also see Leagues and Statistics,
-and Admins see Admin. The compact home has no promotional hero. Factions
+Home and primary navigation share destinations in this order: Stage battle,
+Factions, Battle history, and, for Developers and Admins, Leagues and Statistics.
+Admin appears only in primary navigation for Admins outside role preview.
+The compact home has no promotional hero. Factions
 combines directory access with its Create faction action; the creation and
 editing routes keep the Factions navigation item active.
 
@@ -127,9 +128,8 @@ stops playback and keeps a retry; leaving the page aborts outstanding requests.
 `BattleHistoryPage` fetches on entry, filter or page navigation, retry, and manual
 refresh; it does not poll. URL parameters keep the status filter, current cursor,
 and prior cursors for Previous and browser navigation, and refresh returns to the
-newest page with the same filter. Detail links carry the originating URL in router
-state, and direct detail visits link back to the unfiltered archive. Obsolete
-requests are aborted and their results ignored.
+newest page with the same filter. Obsolete requests are aborted and their results
+ignored.
 
 ## Battle page layout
 
@@ -148,14 +148,18 @@ keep the map's aspect ratio.
 
 A battle with a result opens on its after-action statistics (`BattleStatistics`:
 each faction's totals, units and buildings by type, and upgrade timeline), laid over
-the map so viewers see the outcome without scrolling. The covered map is inert, so
-keyboard and assistive-technology users reach the results first. **VIEW MAP** reveals the map,
-whose toolbar then offers **Show results**; focus moves to the replacement control.
+the map so viewers see the outcome without scrolling. Each faction's card heading and
+the header's outcome name the faction with the same model label as its faction strip;
+the winner's card is marked **Winner**. The covered map is inert, so
+keyboard and assistive-technology users reach the results first. The results' header is a
+map toolbar led by **Show map**; the map's toolbar is led by **Show results** in the same spot,
+size and style, so switching views never moves the control. Focus moves to the replacement
+control.
 Narrower screens show the results in place of the map. A battle without a map lists
 its results below the page.
 
 A completed, stopped or failed battle offers **WATCH REPLAY** under its tick
-progress. `components/BattleReplay.tsx` then replaces the faction strips and map in
+progress and, for a league battle, **BACK TO LEAGUE** to the league page. `components/BattleReplay.tsx` then replaces the faction strips and map in
 the same grid areas, with playback controls (restart, step, play/pause, a timeline
 slider and speed) above the map. Faction strips show the frame's gold, units,
 buildings, castle health and production, and the plan applied by that tick. The
@@ -210,10 +214,11 @@ rows initially; Show more reveals loaded rows. A polite status announces counts.
 [`HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx)
 draws the SVG map: entity icons, HP bars, movement routes, tracking and
 fixed-position attack markers, tower fire, healing lines and death markers. Each
-faction's build area is tinted in its faction color, following the
-[construction rules](../game/game-rules.md#construction-and-training) except that
-units, which move every tick, do not clear the tint. A tile's tooltip names the
-factions that can build there. Pages can add toolbar controls through the `actions`
+faction's [territory](../game/game-rules.md#construction-and-training) is tinted in
+its faction color. When the battle response sets `contestedTerritory`, overlapping
+territory is hatched instead and the legend explains it is closed to construction;
+otherwise overlapping tints blend. A tile's tooltip names the faction whose territory
+it is, or the factions contesting it. Pages can add toolbar controls through the `actions`
 prop, which the expanded dialog leaves out, and mark the inline map `covered` to make
 it inert beneath page content.
 `features/battles/battles.css` and `map.css` own the battle layout; browser tests
@@ -240,8 +245,9 @@ the battle's `maximumUnits` when the ruleset has a cap; buildings exclude the ca
 Each strip also
 carries that faction's production chips, one upgrade chip with an icon per owned
 upgrade (the highest level per general track, with its numeral) and, for inspecting
-viewers, a plan disclosure. Production and upgrade chips wrap in their own column
-beside the plan. Chips and the plan share one exclusive `<details name>` group per
+viewers, a plan disclosure. Every strip control is one 44 px touch target tall; an
+upgrade chip too wide for its column wraps its icons and grows instead of overflowing.
+Production and upgrade chips wrap in their own column beside the plan. Chips and the plan share one exclusive `<details name>` group per
 strip, so opening one closes the others. Hovering an upgrade icon shows its name and
 effect; the chip's disclosure lists every owned upgrade with its effect for touch,
 keyboard and screen-reader users. Failed-battle reasons in the header are
@@ -281,7 +287,7 @@ env files or shell to point it elsewhere. `createApiClient` preserves abort erro
 ## Responsive navigation and forms
 
 `AppLayout` owns the mobile menu, account actions, Escape/focus handling and skip
-link. `useMobile` shares the 780px breakpoint with CSS. `ResponsivePreview` keeps
+link. `useMobile` shares the shell's mobile breakpoint. `ResponsivePreview` keeps
 form previews after the controls and collapses them on mobile. Responsive and interaction rules live with the shell, feature, or shared component
 that owns them; global accessibility defaults live in `shared/styles/accessibility.css`.
 Navigation and preview tests cover disclosure behavior and responsive changes.
@@ -310,14 +316,11 @@ shared rules require desktop/mobile browser checks as well as component tests.
 
 ## Verification
 
-`frontend/e2e/fixtures.ts` intercepts the complete API boundary for Playwright
-tests, which run against a local Vite server in desktop and mobile Chromium:
-
-- `e2e/usability.spec.ts` covers navigation, layout reflow, map controls, replay
-  playback and destructive actions against fixtures only.
-- `e2e/staging.spec.ts` submits the battle setup form end to end, continues into
-  the live battle view, and covers a rejected creation and a retry.
-- `e2e/admin.spec.ts` covers model-access saves and Player role preview.
+The Playwright suite in `frontend/e2e/` runs against a local Vite server in desktop
+and mobile Chromium. `frontend/e2e/fixtures.ts` intercepts the complete API
+boundary; unexpected requests fail the test. Use these fixtures to verify user
+journeys, role visibility, keyboard access and responsive layouts without a live
+backend or production mutations.
 
 See [frontend commands](../../frontend/README.md#commands) for browser setup,
 coverage and reports, and [coverage gate details](ci.md#coverage-gate-details) for
@@ -327,8 +330,12 @@ missing report fails the stage.
 The frontend build enables TypeScript `noUnusedLocals` and `noUnusedParameters`
 alongside strict type checks.
 
-Forests, deposits and rocks have distinct SVG silhouettes via `TerrainGlyph.tsx`,
-terrain colors and accessible descriptions. Selecting a living building highlights its
+Forests, gold mines and rocks have distinct SVG silhouettes via `TerrainGlyph.tsx`,
+terrain colors and accessible descriptions. When `state.goldMines` is present, each
+mine carries a badge with its gold left (compact, such as 1.2K) and a bar of its share of
+the reserve, drawn above entities so a building on the mine never hides it; the tile
+description gives the exact figures, depleted mines are dimmed,
+and the player overview totals the gold left in the mines a faction holds. Selecting a living building highlights its
 construction radius. Production-building details show their `trains` roster, selected unit, on/off setting,
 remaining/total ticks, progress and blocked exits. `BuildingProduction.tsx`
 also shows every living production source as a chip in its faction strip to all

@@ -286,10 +286,19 @@ it('defaults to frontier-siege and previews the selected map layout', async () =
   const preview = screen.getByTitle('frontier-siege layout, 3 by 2 hexes').closest('svg')!
   expect(preview.querySelectorAll('.hex-tile')).toHaveLength(6)
   expect(preview.querySelector('.hex-tile--gold')).not.toBeNull()
+  expect(screen.queryByText(/gold mines ·/)).not.toBeInTheDocument()
   expect(screen.getByText('Slot 1 castle · (0, 0)')).toBeInTheDocument()
   expect(screen.getByText('Slot 2 castle · (2, 1)')).toBeInTheDocument()
   await user.selectOptions(screen.getByLabelText('Combat map'), 'castle-siege-v1')
   expect(screen.queryByTitle(/layout/)).not.toBeInTheDocument()
+})
+
+it('summarizes a map\'s gold mines in the preview', async () => {
+  const map = { kind: 'authored' as const, width: 3, height: 1, rows: ['g.g'], goldMineReserve: 800, castleSpawns: [{ x: 0, y: 0 }, { x: 2, y: 0 }] as [{ x: number; y: number }, { x: number; y: number }], economySites: [[], []] as [[], []] }
+  vi.mocked(listScenarios).mockResolvedValue([{ ...scenario, id: 'frontier-siege', mapWidth: 3, mapHeight: 1, map }])
+  renderPage()
+  expect(await screen.findByText('2 gold mines · 800 gold each')).toBeInTheDocument()
+  expect(screen.getAllByText('Gold mine: 800 of 800 gold left; economy buildings only, none beside it · (0, 0)')).toHaveLength(1)
 })
 
 it('colors castle spawns by sorted faction ID like the live map', async () => {

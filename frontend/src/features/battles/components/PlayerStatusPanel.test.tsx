@@ -55,6 +55,23 @@ describe('player status', () => {
     expect(amber.getByText('Gold').nextElementSibling).toHaveTextContent('0')
     expect(amber.getByText('Destroyed')).toBeInTheDocument()
   })
+
+  it('totals the gold left in mines under living economy buildings', () => {
+    const mines: BattleState = { ...state, goldMines: [
+      { position: { x: 1, y: 0 }, reserve: 800, remaining: 300 },
+      { position: { x: 2, y: 0 }, reserve: 800, remaining: 200 },
+      { position: { x: 3, y: 0 }, reserve: 800, remaining: 800 },
+    ], buildings: [
+      ...state.buildings!,
+      { id: 'mine-a', factionId: 'a', type: 'economy', position: { x: 2, y: 0 }, health: 60, maxHealth: 60, defense: 2, vision: 2, income: 15 },
+      { id: 'tower-a', factionId: 'a', type: 'defense_tower', position: { x: 3, y: 0 }, health: 60, maxHealth: 60, defense: 2, vision: 2, income: 0 },
+    ] }
+    render(<Panel state={mines} />)
+    expect(within(screen.getByRole('article', { name: 'Amber status' })).getByText('Gold mines held').nextElementSibling).toHaveTextContent('1 · 200 gold left')
+    expect(within(screen.getByRole('article', { name: 'Crimson status' })).getByText('Gold mines held').nextElementSibling).toHaveTextContent('0 · 0 gold left')
+    render(<Panel state={state} />)
+    expect(screen.getAllByText('Gold mines held')).toHaveLength(3)
+  })
 })
 
 it('lists the highest owned upgrade per track with icons', () => {

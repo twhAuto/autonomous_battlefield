@@ -42,7 +42,7 @@ ai:
   agentHealthAddress: "127.0.0.1:8083"
   aiGatewayAddress: "127.0.0.1:8084"
   mcpUrl: http://127.0.0.1:8084/mcp
-  decisionTimeout: 2m
+  decisionTimeout: 3m
   allowedOrigins:
     - http://127.0.0.1:8083
     - http://localhost:8083

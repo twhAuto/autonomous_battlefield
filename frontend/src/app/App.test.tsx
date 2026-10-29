@@ -141,13 +141,23 @@ describe('App', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('offers faction and battle operations on the main menu', () => {
-    renderApp()
-	const menu = screen.getByRole('heading', { name: 'Main menu' }).closest('section')!
+  it.each(['admin', 'developer', 'player'] as const)('offers the %s main-menu destinations allowed by primary navigation', (role) => {
+    render(<MemoryRouter><App initialSession={{
+      enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'test-user', role },
+    }} /></MemoryRouter>)
+    const menu = screen.getByRole('region', { name: 'Main menu' })
 
     expect(within(menu).getByRole('heading', { name: 'Factions' }).closest('a')).toHaveAttribute('href', '/factions')
     expect(within(menu).getByRole('link', { name: /stage battle/i })).toHaveAttribute('href', '/battles/new')
     expect(within(menu).getByRole('link', { name: /battle history/i })).toHaveAttribute('href', '/battles')
+    expect(within(menu).getAllByRole('link')).toHaveLength(role === 'player' ? 3 : 5)
+    for (const [name, href] of [['Leagues', '/leagues'], ['Statistics', '/analytics']]) {
+      if (role === 'player') {
+        expect(within(menu).queryByRole('link', { name })).not.toBeInTheDocument()
+      } else {
+        expect(within(menu).getByRole('link', { name })).toHaveAttribute('href', href)
+      }
+    }
   })
 
   it('restricts the admin route to administrators', async () => {

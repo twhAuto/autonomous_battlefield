@@ -70,7 +70,7 @@ must supply the restricted login
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
 These diagrams show every column of every table, generated from the schema after
-migration `00022` with keys marked `PK` and `FK`. Update them with any schema
+migration `00023` with keys marked `PK` and `FK`. Update them with any schema
 change. Battles snapshot faction data instead of referencing `factions`, so
 deleting a faction never changes a battle. Gameplay content lives in the frozen
 scenario and state JSON of `battle_runs`, not in relational columns: each battle
@@ -386,7 +386,7 @@ API replica, engine and AI gateway instance sees one serialized policy:
 | `release_decision_execution` / `release_generation_execution` (`release_agent_execution`) | After a worker reports usage | Deletes the job's CLI lease |
 
 Defaults (`runtime_policy`): 20 battles per person per UTC day, 2 unfinished per
-person, 4 unfinished globally, 100 model executions per battle, 4 CLI slots. API
+person, 4 unfinished globally, 100 model executions per battle, 4 CLI slots (1–8). API
 jobs do not take CLI slots. Paused battles remain `queued` or `running`, so they
 still count as unfinished. Admin battles skip the allowances but count toward other
 identities' global cap. League battles are Admin battles that also skip the model

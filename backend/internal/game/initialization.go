@@ -16,7 +16,7 @@ func NewMatch(id string, scenario Scenario, maxTicks uint64) (*Match, error) {
 	}
 	match := &Match{
 		id: id, scenario: CloneScenario(scenario), maxTicks: maxTicks,
-		state:    State{BattleID: id, Factions: make([]FactionState, 0, 2), Units: make([]Unit, 0), Buildings: make([]Building, 0, 6)},
+		state:    State{BattleID: id, Factions: make([]FactionState, 0, 2), Units: make([]Unit, 0), Buildings: make([]Building, 0, 6), GoldMines: initialGoldMines(scenario.Map, scenario.Ruleset.Buildings)},
 		factions: make(map[string]*factionRuntime, 2),
 	}
 	occupied := make(map[Position]bool)

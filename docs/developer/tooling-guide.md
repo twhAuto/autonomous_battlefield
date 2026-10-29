@@ -127,9 +127,9 @@ Tests are colocated with their Go or React implementation. The codebase includes
 Go tests assert with plain `if` statements and `t.Fatal`. SonarQube's cognitive
 complexity rule (go:S3776, limit 15) applies to test code too, so a long test is
 split into named `check…` helpers with `t.Helper()` rather than hiding branches in
-an assertion wrapper. Run
-`go run github.com/uudashr/gocognit/cmd/gocognit@latest -over 15 .` in `backend/`
-before pushing. Component tests verify accessibility roles from labelled sections
+an assertion wrapper. `./scripts/ci/lint-go.sh`, which the PR pipeline's Go lint
+stage runs, enforces that limit with a pinned gocognit; run it before pushing.
+Component tests verify accessibility roles from labelled sections
 and native `output` elements rather than redundant explicit role attributes.
 
 Other test locations:
@@ -196,7 +196,8 @@ Production hardening entry points:
   the private cluster/image recovery approval after successful runtime assurance.
 - `scripts/ops/prepare-limited-production.sh` checks production cluster identity,
   then validates and renders private launch files (`test-production-preparation.py`).
-  `scripts/ops/ai-policy.sh` is the private operator stop/status/usage interface;
+  `scripts/ops/ai-policy.sh` is the private operator stop/status/usage/CLI-slot
+  interface (`test-ai-policy.py`);
   `scripts/ops/verify-agent-isolation.py` tests the CLI worker guest boundary.
 - `scripts/security/capture-zap-traffic.py` verifies and sanitizes authenticated CI
   reads for an offline ZAP passive scan. `test-production-hardening.py` covers

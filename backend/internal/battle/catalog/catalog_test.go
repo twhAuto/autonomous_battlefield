@@ -199,8 +199,8 @@ func TestCatalogRejectsBrokenContentAtStartup(t *testing.T) {
 		{"malformed ruleset", "decode catalog file", func(t *testing.T, dir string) {
 			writeCatalogFile(t, dir, "rulesets/broken.yaml", "id: [")
 		}},
-		{"missing library version", "content/core-v9.yaml", func(t *testing.T, dir string) {
-			editedRuleset(t, dir, "other.yaml", `id: other`, `  version: "8"`, `  version: "9"`)
+		{"missing library version", "content/core-v11.yaml", func(t *testing.T, dir string) {
+			editedRuleset(t, dir, "other.yaml", `id: other`, `  version: "10"`, `  version: "11"`)
 		}},
 		{"invalid ruleset values", "ruleset \"rulesets/other.yaml\"", func(t *testing.T, dir string) {
 			editedRuleset(t, dir, "other.yaml", `id: other`, `startingGold: 220`, `startingGold: -1`)

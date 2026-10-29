@@ -1,13 +1,14 @@
 // League setup for Admins: maps, timing, and 8 or 16 entrants (faction, group and
-// controller), with live estimates of battles, duration and model decisions.
+// controller), with live estimates of battles, duration and model decisions. With
+// ?from=<league id> it starts from a copy of that league's settings and entrants.
 
 import { type SubmitEvent, useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { listModelProfiles, listScenarios, type ScenarioSummary } from '../../battles/api/battles'
-import { ControllerSelect, controllerInput, resolveSelection, type ModelSelection } from '../../battles/components/ControllerSelect'
+import { ControllerSelect, controllerInput, resolveSelection, staleSelection, type ModelSelection } from '../../battles/components/ControllerSelect'
 import { listFactions, type Faction } from '../../factions/api/factions'
 import type { ModelProfile } from '../../../shared/domain/model-profile'
-import { createLeague, LeagueApiError, listLeagues, type GroupLetter, type LeagueScheduling } from '../api/leagues'
+import { createLeague, getLeague, LeagueApiError, listLeagues, type GroupLetter, type League, type LeagueScheduling } from '../api/leagues'
 import { durationSeconds, estimateLeague, groupLetters } from '../presentation/leagues'
 
 type LoadState = 'loading' | 'ready' | 'error'
@@ -17,6 +18,8 @@ const defaultScenarioID = 'frontier-siege'
 const maxMaps = 5
 // Default league battles stay well under the one-hour battle timeout for slow models.
 const defaultTicks = 500
+const tickDurations = ['250ms', '500ms', '1s', '2s']
+const decisionIntervals = ['5', '10', '20', '50']
 
 // Changing the entrant count re-deals every row across the groups in entry order, so
 // groups stay at four; existing rows keep their faction and controller.
@@ -28,22 +31,64 @@ function draftEntrants(size: 8 | 16, factions: Faction[], previous: EntrantDraft
   }))
 }
 
+interface SetupDraft { name: string; size: 8 | 16; maps: string[]; tickCount: number; tickDuration: string; decisionInterval: string; entrants: EntrantDraft[] }
+
+function defaultSetup(factions: Faction[], scenarios: ScenarioSummary[]): SetupDraft {
+  const first = scenarios.find(scenario => scenario.id === defaultScenarioID) ?? scenarios[0]
+  return { name: '', size: 8, maps: first ? [first.id] : [], tickCount: defaultTicks, tickDuration: '', decisionInterval: '', entrants: draftEntrants(8, factions, []) }
+}
+
+// A copied league keeps references that no longer resolve visible: a deleted faction
+// is left unchosen, and a deleted map or a missing profile, model or effort stays
+// selected and marked unavailable, so the blockers report them instead of the copy
+// silently substituting or dropping them.
+function copiedSetup(league: League, factions: Faction[]): SetupDraft {
+  const entrants = [...league.entrants].sort((left, right) => left.index - right.index)
+  return {
+    name: league.name, size: entrants.length === 16 ? 16 : 8, maps: [...league.settings.scenarioIds],
+    tickCount: league.settings.tickCount, tickDuration: league.settings.tickDuration ?? '',
+    decisionInterval: league.settings.decisionIntervalTicks ? String(league.settings.decisionIntervalTicks) : '',
+    entrants: entrants.map(({ group, factionId, controller }, slot): EntrantDraft => ({
+      slot, group, factionId: factions.some(faction => faction.id === factionId) ? factionId : '',
+      ...(controller.type === 'model'
+        ? { controller: controller.profileId ?? '', selection: { modelIdentifier: controller.modelIdentifier, reasoningEffort: controller.reasoningEffort } }
+        : { controller: 'scripted', selection: {} }),
+    })),
+  }
+}
+
+/** Keeps a copied value that is not among the standard choices selectable. */
+function withCurrent(choices: string[], current: string) {
+  return current && !choices.includes(current) ? [...choices, current] : choices
+}
+
+function controllerOffered({ controller, selection }: EntrantDraft, profiles: ModelProfile[]) {
+  if (controller === 'scripted') return true
+  const profile = profiles.find(candidate => candidate.id === controller)
+  if (!profile?.available) return false
+  const stale = staleSelection(profile, selection)
+  return !stale.model && !stale.effort
+}
+
 /** Lists what blocks submission, in the order a person would fix it. */
-function problems(name: string, entrants: EntrantDraft[], maps: string[], ticksValid: boolean, profiles: ModelProfile[]) {
+function problems(name: string, entrants: EntrantDraft[], maps: string[], missingMaps: string[], ticksValid: boolean, profiles: ModelProfile[]) {
   const found: string[] = []
   if (!name.trim() || name.trim().length > 80) found.push('Name the league (up to 80 characters).')
   if (maps.length === 0) found.push('Choose at least one map.')
+  if (missingMaps.length > 0) found.push('Remove maps that no longer exist.')
   if (!ticksValid) found.push('Set a tick limit every chosen map allows.')
   const factionIDs = entrants.map(entrant => entrant.factionId)
   if (factionIDs.some(id => !id) || new Set(factionIDs).size !== factionIDs.length) found.push('Give every entrant a different faction.')
   const groupSizes = groupLetters.map(letter => entrants.filter(entrant => entrant.group === letter).length)
   if (groupSizes.some(count => count !== 0 && count !== 4)) found.push('Put exactly four entrants in each group.')
-  if (entrants.some(entrant => entrant.controller !== 'scripted' && !profiles.some(profile => profile.id === entrant.controller && profile.available))) found.push('Choose an available controller for every entrant.')
+  if (entrants.some(entrant => !controllerOffered(entrant, profiles))) found.push('Choose an available controller, model and effort for every entrant.')
   return found
 }
 
 export function CreateLeaguePage() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const sourceID = params.get('from') ?? ''
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [loadVersion, setLoadVersion] = useState(0)
   const [factions, setFactions] = useState<Faction[]>([])
@@ -60,31 +105,40 @@ export function CreateLeaguePage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [scheduling, setScheduling] = useState<LeagueScheduling>()
+  const [source, setSource] = useState<League>()
 
   useEffect(() => {
     const controller = new AbortController()
     setLoadState('loading')
     Promise.all([listFactions(controller.signal), listScenarios(controller.signal), listModelProfiles(controller.signal).catch(() => []),
-      listLeagues(controller.signal).then(list => list.scheduling).catch(() => undefined)])
-      .then(([loadedFactions, loadedScenarios, loadedProfiles, loadedScheduling]) => {
+      listLeagues(controller.signal).then(list => list.scheduling).catch(() => undefined),
+      sourceID ? getLeague(sourceID, controller.signal) : undefined])
+      .then(([loadedFactions, loadedScenarios, loadedProfiles, loadedScheduling, loadedSource]) => {
         if (controller.signal.aborted) return
         setScheduling(loadedScheduling)
         setFactions(loadedFactions)
         setScenarios(loadedScenarios)
         setProfiles(loadedProfiles)
-        const first = loadedScenarios.find(scenario => scenario.id === defaultScenarioID) ?? loadedScenarios[0]
-        setMaps(first ? [first.id] : [])
-        setEntrants(draftEntrants(8, loadedFactions, []))
+        setSource(loadedSource)
+        const setup = loadedSource ? copiedSetup(loadedSource, loadedFactions) : defaultSetup(loadedFactions, loadedScenarios)
+        setName(setup.name)
+        setSize(setup.size)
+        setMaps(setup.maps)
+        setTickCount(setup.tickCount)
+        setTickDuration(setup.tickDuration)
+        setDecisionInterval(setup.decisionInterval)
+        setEntrants(setup.entrants)
         setLoadState('ready')
       })
       .catch(() => { if (!controller.signal.aborted) setLoadState('error') })
     return () => controller.abort()
-  }, [loadVersion])
+  }, [loadVersion, sourceID])
 
   const chosen = scenarios.filter(scenario => maps.includes(scenario.id))
+  const missingMaps = maps.filter(id => !scenarios.some(scenario => scenario.id === id))
   const maximumTicks = chosen.length ? Math.min(...chosen.map(scenario => scenario.maximumTicks)) : 0
   const ticksValid = typeof tickCount === 'number' && Number.isInteger(tickCount) && tickCount >= 1 && tickCount <= maximumTicks
-  const blockers = problems(name, entrants, maps, ticksValid, profiles)
+  const blockers = problems(name, entrants, maps, missingMaps, ticksValid, profiles)
   const modelControllers = entrants.filter(entrant => entrant.controller !== 'scripted')
   const estimate = estimateLeague({
     entrants: size, modelEntrants: modelControllers.length,
@@ -127,10 +181,11 @@ export function CreateLeaguePage() {
         <div className="hero__eyebrow"><span>05</span> LEAGUE SETUP</div>
         <h1>Start a league</h1>
         <p>Entrants play every group rival twice, once from each side, then the top two of each group play a two-leg crossover knockout. Battles run one at a time in the background.</p>
+        {source && <p>Settings and entrants are copied from <Link to={`/leagues/${encodeURIComponent(source.id)}`}>{source.name}</Link>. Change anything before starting; that league is unchanged.</p>}
       </section>
       {loadState === 'loading' && <section className="directory-state" aria-busy="true"><span className="loader" aria-hidden="true" /><h2>Loading factions, maps and models…</h2></section>}
       {loadState === 'error' && <section className="directory-state directory-state--error" role="alert">
-        <h2>League setup unavailable</h2><p>Factions or maps could not be loaded.</p>
+        <h2>League setup unavailable</h2><p>{sourceID ? 'Factions, maps or the league to copy could not be loaded.' : 'Factions or maps could not be loaded.'}</p>
         <button className="compact-action" type="button" onClick={() => setLoadVersion(value => value + 1)}>RETRY</button>
       </section>}
       {loadState === 'ready' && factions.length < 8 && <section className="directory-state">
@@ -148,7 +203,7 @@ export function CreateLeaguePage() {
             <legend>Entrants</legend>
             {([8, 16] as const).map(option => <label key={option}><input type="radio" name="league-size" checked={size === option} disabled={option === 16 && factions.length < 16} onChange={() => changeSize(option)} />{option} entrants · {option / 4} groups</label>)}
           </fieldset>
-          <MapChoices scenarios={scenarios} maps={maps} onChange={setMaps} />
+          <MapChoices scenarios={scenarios} maps={maps} missingMaps={missingMaps} onChange={setMaps} />
           <TimingFields chosen={chosen} maximumTicks={maximumTicks} ticksValid={ticksValid} tickCount={tickCount} onTickCount={setTickCount}
             tickDuration={tickDuration} onTickDuration={setTickDuration} decisionInterval={decisionInterval} onDecisionInterval={setDecisionInterval} />
           <EstimatePanel estimate={estimate} />
@@ -170,7 +225,7 @@ export function CreateLeaguePage() {
   )
 }
 
-function MapChoices({ scenarios, maps, onChange }: Readonly<{ scenarios: ScenarioSummary[]; maps: string[]; onChange(maps: string[]): void }>) {
+function MapChoices({ scenarios, maps, missingMaps, onChange }: Readonly<{ scenarios: ScenarioSummary[]; maps: string[]; missingMaps: string[]; onChange(maps: string[]): void }>) {
   return (
     <fieldset className="league-form__choice">
       <legend>Maps</legend>
@@ -179,6 +234,9 @@ function MapChoices({ scenarios, maps, onChange }: Readonly<{ scenarios: Scenari
         <input type="checkbox" checked={maps.includes(scenario.id)} disabled={!maps.includes(scenario.id) && maps.length >= maxMaps}
           onChange={event => onChange(event.target.checked ? [...maps, scenario.id] : maps.filter(id => id !== scenario.id))} />
         {scenario.id} · {scenario.mapWidth}×{scenario.mapHeight}
+      </label>)}
+      {missingMaps.map(id => <label key={id}>
+        <input type="checkbox" checked onChange={() => onChange(maps.filter(other => other !== id))} />{id} · no longer available
       </label>)}
     </fieldset>
   )
@@ -201,14 +259,14 @@ function TimingFields(props: Readonly<{
         <label htmlFor="league-tick-duration">Tick duration</label>
         <select id="league-tick-duration" value={props.tickDuration} onChange={event => props.onTickDuration(event.target.value)}>
           <option value="">Map default ({first?.tickDuration ?? '—'})</option>
-          {['250ms', '500ms', '1s', '2s'].map(value => <option key={value} value={value}>{value}</option>)}
+          {withCurrent(tickDurations, props.tickDuration).map(value => <option key={value} value={value}>{value}</option>)}
         </select>
       </div>
       <div className="battle-form__field">
         <label htmlFor="league-interval">Decision interval</label>
         <select id="league-interval" value={props.decisionInterval} onChange={event => props.onDecisionInterval(event.target.value)}>
           <option value="">Map default ({first?.decisionIntervalTicks ?? '—'} ticks)</option>
-          {[5, 10, 20, 50].map(ticks => <option key={ticks} value={ticks}>Every {ticks} ticks</option>)}
+          {withCurrent(decisionIntervals, props.decisionInterval).map(ticks => <option key={ticks} value={ticks}>Every {ticks} ticks</option>)}
         </select>
       </div>
     </div>

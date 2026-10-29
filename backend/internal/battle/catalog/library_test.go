@@ -54,11 +54,11 @@ func TestLibraryEditsLeaveSnapshotsUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	var library contentLibrary
-	if err = decodeOne(os.DirFS(dir), "content/core-v8.yaml", &library); err != nil {
+	if err = decodeOne(os.DirFS(dir), "content/core-v10.yaml", &library); err != nil {
 		t.Fatal(err)
 	}
 	library.Units[0].Cost++
-	writeYAML(t, filepath.Join(dir, "content/core-v8.yaml"), library)
+	writeYAML(t, filepath.Join(dir, "content/core-v10.yaml"), library)
 	next, err := LoadCatalog(os.DirFS(dir))
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +115,7 @@ func TestLibraryReferencesAndValidation(t *testing.T) {
 		}
 	}
 	var library contentLibrary
-	if err := decodeOne(gamedata.Files, "content/core-v8.yaml", &library); err != nil {
+	if err := decodeOne(gamedata.Files, "content/core-v10.yaml", &library); err != nil {
 		t.Fatal(err)
 	}
 	for _, change := range []func(*contentLibrary){
@@ -186,7 +186,7 @@ func checkSharedDecisionContent(t *testing.T, s game.Scenario) {
 
 func TestCastleLibraryCapabilities(t *testing.T) {
 	var library contentLibrary
-	if err := decodeOne(gamedata.Files, "content/core-v8.yaml", &library); err != nil {
+	if err := decodeOne(gamedata.Files, "content/core-v10.yaml", &library); err != nil {
 		t.Fatal(err)
 	}
 	for _, mutate := range []func(*buildingDefinition){

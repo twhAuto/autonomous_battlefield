@@ -146,7 +146,7 @@ type EconomyContext struct {
 	EconomyBuildingCost     int64 `json:"economyBuildingCost"`
 	EconomyBuildingIncome   int64 `json:"economyBuildingIncome"`
 	CurrentEconomyBuildings int   `json:"currentEconomyBuildings"`
-	MaximumEconomyBuildings int   `json:"maximumEconomyBuildings"`
+	MaximumEconomyBuildings int   `json:"maximumEconomyBuildings,omitempty"`
 }
 
 type LegalChoices struct {
@@ -156,6 +156,8 @@ type LegalChoices struct {
 	ActionKinds        []string                `json:"actionKinds"`
 	Units              []game.UnitType         `json:"units"`
 	EconomySites       []controller.Coordinate `json:"economySites"`
+	// GoldMineSites are the only legal economy sites when view.state.goldMines is present.
+	GoldMineSites []controller.Coordinate `json:"goldMineSites,omitempty"`
 }
 
 type PlanSubmission struct {
