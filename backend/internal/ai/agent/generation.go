@@ -51,7 +51,7 @@ func (e *Executor) runGeneration(parent context.Context, job job) {
 	}
 	tracing.AIOutcome(span, category != "", category)
 	payload, _ := json.Marshal(map[string]any{"requestId": job.RequestID, "category": category, "usage": result.Usage, "metadata": metadata})
-	reportCtx, reportCancel := context.WithTimeout(context.WithoutCancel(parent), 5*time.Second)
+	reportCtx, reportCancel := reportContext(parent)
 	defer reportCancel()
 	request, err := http.NewRequestWithContext(reportCtx, http.MethodPost, e.serviceURL("/internal/agent/generation-finish"), bytes.NewReader(payload))
 	if err != nil {

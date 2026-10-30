@@ -130,7 +130,8 @@ accessing the PC remotely, the initial SSH to the PC is one additional hop.
 
 A fresh bootstrap needs these artifacts. Once a worker is registered,
 [`battlefield-platform/cli`](cli-worker.md#worker-upgrades) upgrades its binary to
-each production release.
+each production release and [its Codex](cli-worker.md#codex-updates) to the pinned
+release.
 
 On the host, obtain the `battlefield-agent` binary from the same verified backend
 release deployed in production. For example, extract `/app/agent` from the running
@@ -138,38 +139,28 @@ AI gateway container into a private staging directory; check the command succeed
 registering the file. Record its checksum for the CLI bootstrap guest inputs;
 Ansible installs it root-owned at `/usr/local/bin/battlefield-agent`, mode 0755.
 
-The supported Codex release is **0.155.0**; the supplied profile requires the
-`codex-cli 0.155.` version family (0.152 is rejected by the provider). Download **both** version-matched Linux amd64
-musl assets from the official `openai/codex` release on the host:
-
-- `codex-x86_64-unknown-linux-musl.tar.gz`
-- `codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz`
-
-Use the release's published digests/provenance to verify each asset. A versioned
-URL alone is not checksum verification. The helper archive's release SHA256 for
-0.155.0 is `328c1bebe09fc727053794576efea353d3b18381ee8883f5283b37ae4a7854d4`.
-The main archive's release SHA256 is
-`e415cc3adb94ade16e8d44b4dd58a9201cc34b2ee51a5d6eddf2a3a00aecb6c0`
-(GitHub release digests, re-verified by download on 2026-09-29).
-Retain both expected digests with your release inventory. For this exact release,
-on the host (do not reuse these hashes for another version):
+Install the Codex release pinned in
+[`infra/deploy/agent-vm/cli-releases.json`](../../infra/deploy/agent-vm/cli-releases.json).
+It records the version, which the Codex profiles' `supportedVersionPrefix` matches,
+and the SHA-256 that GitHub publishes for **both** Linux amd64 musl archives: `codex`
+and its `codex-code-mode-host` helper. A versioned URL alone is not checksum
+verification, so check each archive against its pinned digest. On the host, from a
+checkout of `main`:
 
 ```bash
 (
 set -eu
+pin=infra/deploy/agent-vm/cli-releases.json
+# Prints the pinned version, or the archive digest for an executable name.
+field() { python3 -c 'import json, sys; codex = json.load(open(sys.argv[1]))["codex"]; print(codex["version"] if sys.argv[2] == "version" else codex["archives"][sys.argv[2]])' "$pin" "$1"; }
+version="$(field version)"
 mkdir -p "$HOME/battlefield-cli-install"
-cd "$HOME/battlefield-cli-install"
-base=https://github.com/openai/codex/releases/download/rust-v0.155.0
 for name in codex codex-code-mode-host; do
-  curl --fail --location --output "$name-x86_64-unknown-linux-musl.tar.gz" \
-    "$base/$name-x86_64-unknown-linux-musl.tar.gz"
-done
-sha256sum --check <<'SUMS'
-e415cc3adb94ade16e8d44b4dd58a9201cc34b2ee51a5d6eddf2a3a00aecb6c0  codex-x86_64-unknown-linux-musl.tar.gz
-328c1bebe09fc727053794576efea353d3b18381ee8883f5283b37ae4a7854d4  codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz
-SUMS
-for name in codex codex-code-mode-host; do
-  tar -xzf "$name-x86_64-unknown-linux-musl.tar.gz"
+  archive="$HOME/battlefield-cli-install/$name-x86_64-unknown-linux-musl.tar.gz"
+  curl --fail --location --output "$archive" \
+    "https://github.com/openai/codex/releases/download/rust-v$version/$name-x86_64-unknown-linux-musl.tar.gz"
+  printf '%s  %s\n' "$(field "$name")" "$archive" | sha256sum --check
+  tar -xzf "$archive" -C "$HOME/battlefield-cli-install"
 done
 )
 ```

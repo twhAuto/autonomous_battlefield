@@ -240,10 +240,17 @@ submit them through the MCP tool schema.
 
 Each tick transition runs these steps in order (`AdvanceWithPlans` in
 `backend/internal/game/match.go`). Where both factions act in turn, they follow the
-tick's **faction order**: on odd ticks the first participant (the first castle spawn)
-goes first, on even ticks the second, so neither a seat nor a faction ID always acts
-first (`backend/internal/game/turn_order.go`). Within a faction, buildings and units
-keep ID order. Rulesets before v12 have no alternating turns: the economy runs in
+tick's **faction order**, in which the first participant (the first castle spawn) and
+the second take turns going first, so neither a seat nor a faction ID always acts
+first (`backend/internal/game/turn_order.go`). The lead changes every tick within a
+decision window and passes to the other participant from one window to the next: the
+second participant leads when the tick's offset within its window plus the window
+number (the tick divided by the decision interval) is even. With the default
+10-tick interval, the second participant leads the opening and tick 20, and the first
+leads tick 10 and tick 30. Within a faction, buildings and units keep ID order.
+Ruleset v12 alternates on tick parity alone, the first participant on odd ticks and
+the second on even ones, so with an even interval the second participant leads every
+window. Rulesets before v12 have no alternating turns: the economy runs in
 participant order, and buildings and units in ID order, so on ties the faction whose
 ID sorts first acts first.
 

@@ -57,8 +57,8 @@ must supply the restricted login
 | `battle_replay_frames` | One engine checkpoint per decision window of a battle attempt (tick 0, then every `decisionIntervalTicks`), with that tick's events | Written in the same lease-guarded statement as the tick. Primary key `(battle_id, attempt, tick)` makes inserts idempotent and finds the nearest earlier checkpoint. `checkpoint` is a JSON object about the size of one `current_state`; `events` is a JSON array. Frames of every attempt stay until the battle is deleted |
 | `battle_decisions` | One strategy decision window: frozen observation and hash, controller, profile, model and `reasoning_effort` (empty for the model default), lease, lifecycle timestamps, resolved plan, fallback source, error category, usage, provider metadata, trace context | Unique per `(battle_id, attempt, faction_id, target_tick)`. Status `pending`, `running`, `accepted`, `fallback` or `failed`. `version` guards resolution; `idempotency_key` deduplicates submissions. `faction_id` is snapshot data, not a foreign key |
 | `leagues` | One AI league: owner, name, status, request digest, secret battle-ID salt, maps, battle timing, group count, champion | Status `running`, `completed` or `cancelled`; `completed_at` is set exactly when it is not running, and a champion only when completed |
-| `league_entrants` | One competitor per league: entry index, group, faction ID, faction name copied at creation, requested controller | Primary key `(league_id, entrant_index)`; one entrant per faction per league. No foreign key to `factions`, so deleting a faction never breaks a league |
-| `league_fixtures` | One match, played as one battle: play sequence, stage, group, round, tie, home and away entrants, map, status, attempts, current battle | IDs are derived from the league and the match's stage, group, round and tie, so repeated writes are no-ops. Group fixtures are rounds 1–3 with ties 1–2; knockout fixtures are round 1. Status `pending`, `running`, `completed`, `void` or `cancelled`; a running fixture has a battle. `battle_id` is unique and set to null if that battle is deleted. Results are read from the battle, not copied |
+| `league_entrants` | One competitor per league: entry index, group, faction ID, faction name copied at creation, requested controller, and once disqualified the time, Admin and reason | Primary key `(league_id, entrant_index)`; one entrant per faction per league. No foreign key to `factions`, so deleting a faction never breaks a league. `disqualified_at` and `disqualified_by` are set together; a reason of up to 200 characters only with them |
+| `league_fixtures` | One match, played as one battle: play sequence, stage, group, round, tie, home and away entrants, map, status, attempts, current battle | IDs are derived from the league and the match's stage, group, round and tie, so repeated writes are no-ops. Group fixtures are rounds 1–3 with ties 1–2; knockout fixtures are round 1. Status `pending`, `running`, `completed`, `void`, `cancelled` or `forfeited`; a running fixture has a battle, and exactly the forfeited ones name the disqualified side in `forfeit` (`home`, `away` or `both`). `battle_id` is unique and set to null if that battle is deleted. Results are read from the battle, not copied |
 | `faction_generation_accounts` | Per-actor row used as a generation lock | Locked `FOR UPDATE` while creating a job |
 | `faction_background_generations` | Durable background-draft jobs | Unique `(actor_id, idempotency_key)`; a partial unique index allows one queued or running job per actor. Status `queued`, `running`, `succeeded`, `failed` or `expired` |
 | `runtime_policy` | Singleton: AI stop switch, battle allowances, per-battle model budget, CLI concurrency | Row lock serializes every admission decision |
@@ -199,6 +199,9 @@ erDiagram
         uuid faction_id
         text faction_name
         jsonb controller
+        timestamptz disqualified_at
+        text disqualified_by
+        text disqualification_reason
     }
     LEAGUE_FIXTURES {
         uuid id PK
@@ -214,6 +217,7 @@ erDiagram
         text status
         int attempts
         uuid battle_id FK
+        text forfeit
         timestamptz updated_at
     }
 ```

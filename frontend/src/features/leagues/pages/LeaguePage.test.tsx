@@ -12,8 +12,9 @@ function sampleLeague(change: Partial<League> = {}): League {
   return {
     id: 'league-1', ownerId: 'admin', name: 'Autumn cup', status: 'running', groupCount: 2,
     settings: { scenarioIds: ['frontier-siege'], tickCount: 500 }, champion: null, progress: { settled: 1, total: 13 },
+    // Gale has lost two group matches, so it alone can no longer win.
     entrants: names.map((factionName, index) => ({ index, group: index % 2 ? 'B' : 'A', factionId: `f${index}`, factionName,
-      controller: index === 0 ? { type: 'model', modelIdentifier: 'sonnet', reasoningEffort: 'low' } : { type: 'scripted' } })),
+      controller: index === 0 ? { type: 'model', modelIdentifier: 'sonnet', reasoningEffort: 'low' } : { type: 'scripted' }, eliminated: index === 6, disqualification: null })),
     // Group A has placed everyone; group B has not played.
     groups: [
       { group: 'A', standings: [[0, 1, 2, 0], [2, 2, 2, 1], [4, 3, 1, 2], [6, 4, 0, 2]].map(([entrant, placement, won, lost]) => ({ entrant, placement, won, lost })) },
@@ -59,15 +60,18 @@ it('shows group tables and matches, the bracket and fixtures', async () => {
   expect(within(bracket).getAllByText('ONE BATTLE')).toHaveLength(2)
   const fixtures = screen.getByRole('table', { name: 'Fixtures in play order' })
   expect(within(fixtures).getByText('Amber wins')).toBeInTheDocument()
-  const [, , home, away] = within(within(fixtures).getAllByRole('row')[1]).getAllByRole('cell')
-  expect(home).toHaveTextContent(/^Amber\s*sonnet · low$/)
-  expect(away).toHaveTextContent(/^Gale\s*Scripted$/)
+  expect(within(fixtures).getAllByRole('columnheader').map(header => header.textContent)).toEqual(['#', 'Fixture', 'Side 1', 'Side 2', 'Map', 'Result', 'Battle'])
+  const [, , side1, side2] = within(within(fixtures).getAllByRole('row')[1]).getAllByRole('cell')
+  expect(side1).toHaveTextContent(/^Amber\s*sonnet · low$/)
+  expect(side2).toHaveTextContent(/^Gale\s*Scripted$/)
   expect(within(fixtures).getByText('Retried')).toBeInTheDocument()
   expect(within(fixtures).getByRole('link', { name: 'Open battle →' })).toHaveAttribute('href', `/battles/${battleID}`)
   expect(screen.getByRole('link', { name: 'STATISTICS →' })).toHaveAttribute('href', '/analytics?leagueId=league-1')
   expect(screen.queryByRole('button', { name: 'CANCEL LEAGUE' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /^Disqualify/ })).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: 'START AGAIN →' })).not.toBeInTheDocument()
   expect(screen.queryByRole('region', { name: 'Now playing' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: 'Disqualifications' })).not.toBeInTheDocument()
 })
 
 it('puts running battles first with their tick progress', async () => {
@@ -100,7 +104,51 @@ it('names the champion of a completed league and offers Admins a copy of its set
   show()
   expect(await screen.findByText(/Champion:/)).toHaveTextContent('Champion: Dusk')
   expect(screen.queryByRole('button', { name: 'CANCEL LEAGUE' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /^Disqualify/ })).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'START AGAIN →' })).toHaveAttribute('href', '/leagues/new?from=league-1')
+})
+
+it('disqualifies an entrant after confirmation and records who did it and why', async () => {
+  const disqualified = sampleLeague()
+  disqualified.entrants[2] = { ...disqualified.entrants[2], disqualification: { at: '2026-10-30T01:00:00Z', by: 'admin-1', reason: 'Too slow' } }
+  disqualified.fixtures[0] = { ...disqualified.fixtures[0], status: 'forfeited', forfeit: 'away', result: undefined, winner: 0 }
+  vi.mocked(fetch).mockImplementation(async (_input, init) => reply(200, init?.method === 'POST' ? disqualified : sampleLeague()))
+  const user = userEvent.setup()
+  show()
+  const groupA = await screen.findByRole('table', { name: 'Group A standings' })
+  expect(within(groupA).queryByRole('button', { name: 'Disqualify Gale' })).not.toBeInTheDocument()
+  await user.click(within(groupA).getByRole('button', { name: 'Disqualify Cinder' }))
+  await user.click(screen.getByRole('button', { name: 'KEEP IN LEAGUE' }))
+  expect(screen.queryByRole('form', { name: 'Disqualify Cinder' })).not.toBeInTheDocument()
+  await user.click(within(groupA).getByRole('button', { name: 'Disqualify Cinder' }))
+  const form = screen.getByRole('form', { name: 'Disqualify Cinder' })
+  await user.type(within(form).getByRole('textbox', { name: 'Reason (optional)' }), ' Too slow ')
+  await user.click(within(form).getByRole('button', { name: 'CONFIRM DISQUALIFY' }))
+  const record = await screen.findByRole('region', { name: 'Disqualifications' })
+  const [url, init] = vi.mocked(fetch).mock.calls.find(([, request]) => request?.method === 'POST') ?? []
+  expect(String(url)).toContain('/v1/leagues/league-1/entrants/2/disqualify')
+  expect(init?.body).toBe(JSON.stringify({ reason: 'Too slow' }))
+  expect(record).toHaveTextContent(/Cinder by admin-1 · .+ · Too slow/)
+  expect(screen.queryByRole('form', { name: 'Disqualify Cinder' })).not.toBeInTheDocument()
+  const cinder = within(screen.getByRole('table', { name: 'Group A standings' })).getAllByRole('row')[2]
+  expect(cinder).toHaveClass('league-table__disqualified')
+  expect(cinder).toHaveTextContent('(disqualified)')
+  expect(within(cinder).queryByRole('button')).not.toBeInTheDocument()
+  expect(within(screen.getByRole('table', { name: 'Fixtures in play order' })).getByText('Forfeit · Amber wins')).toBeInTheDocument()
+})
+
+it('shows why a disqualification was refused or failed', async () => {
+  const refusals = [reply(409, { error: { message: 'entrant is the last one who can still win; cancel the league instead' } }), new Response('not json', { status: 200 })]
+  vi.mocked(fetch).mockImplementation(async (_input, init) => init?.method === 'POST' ? refusals.shift() ?? reply(500, {}) : reply(200, sampleLeague()))
+  const user = userEvent.setup()
+  show()
+  await user.click(await screen.findByRole('button', { name: 'Disqualify Basalt' }))
+  const form = screen.getByRole('form', { name: 'Disqualify Basalt' })
+  await user.click(within(form).getByRole('button', { name: 'CONFIRM DISQUALIFY' }))
+  expect(await within(form).findByRole('alert')).toHaveTextContent('cannot be disqualified: entrant is the last one who can still win')
+  await user.click(within(form).getByRole('button', { name: 'CONFIRM DISQUALIFY' }))
+  expect(await within(form).findByText('The entrant could not be disqualified.')).toBeInTheDocument()
+  expect(within(form).getByRole('button', { name: 'CONFIRM DISQUALIFY' })).toBeEnabled()
 })
 
 it('cancels only after confirmation and reports failures', async () => {

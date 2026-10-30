@@ -56,7 +56,7 @@ ai:
       availabilityEnvironmentVariable: OPENAI_PROFILE_AVAILABLE
       scope: cluster
       maxOutputTokens: 1200
-      maxSteps: 3
+      maxSteps: 5
       enabled: true
     - id: gemini-api-balanced
       displayName: Gemini API
@@ -69,7 +69,7 @@ ai:
       # Gemini reasoning tokens count against this ceiling; 1200 can be
       # exhausted before a required function call is emitted.
       maxOutputTokens: 4096
-      maxSteps: 3
+      maxSteps: 5
       enabled: true
     - id: codex-subscription-local
       displayName: Codex / ChatGPT subscription
@@ -77,14 +77,24 @@ ai:
       runtime: cli
       model: gpt-5.6-luna
       modelOptions:
+        - id: gpt-6.1-sol
+          reasoningEfforts: [low, medium, high]
+        - id: gpt-6.1-terra
+          reasoningEfforts: [low, medium, high]
+        - id: gpt-6-astra
+          reasoningEfforts: [low, medium, high]
+        - id: gpt-6-sol
+          reasoningEfforts: [low, medium, high]
         - id: gpt-6-luna
+          reasoningEfforts: [low, medium, high]
+        - id: gpt-5.6-sol
+          reasoningEfforts: [low, medium, high]
+        - id: gpt-5.6-terra
           reasoningEfforts: [low, medium, high]
         - id: gpt-5.6-luna
           reasoningEfforts: [low, medium, high]
-        - id: gpt-6.1-sol
-          reasoningEfforts: [low, medium, high]
       scope: local
-      supportedVersionPrefix: codex-cli 0.155.
+      supportedVersionPrefix: codex-cli 0.159.
       availabilityEnvironmentVariable: CODEX_CLI_PROFILE_AVAILABLE
       maxSteps: 3
       enabled: true
@@ -98,6 +108,8 @@ ai:
         - id: sonnet
           reasoningEfforts: [low, medium, high]
         - id: opus
+          reasoningEfforts: [low, medium, high]
+        - id: fable
           reasoningEfforts: [low, medium, high]
       scope: local
       supportedVersionPrefix: "2.1.267 "

@@ -82,7 +82,7 @@ worker is connected:
 The helper supports `auto`, `codex`, `antigravity`, `claude`, `both` and `all`
 (`gemini` is a compatibility alias). `both` means Codex plus Antigravity, and
 `all` requires all three CLIs. `auto` selects every available authenticated CLI.
-Local CLIs allow the selected stable version or newer: Codex `0.155.0+`,
+Local CLIs allow the selected stable version or newer: Codex `0.159.0+`,
 Antigravity `1.2.0+` and Claude `2.1.267+`. A saved login is required.
 Name a CLI explicitly to see why it was rejected.
 

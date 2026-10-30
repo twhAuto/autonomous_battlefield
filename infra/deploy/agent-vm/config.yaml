@@ -11,14 +11,24 @@ ai:
       runtime: cli
       model: gpt-5.6-luna
       modelOptions:
+        - id: gpt-6.1-sol
+          reasoningEfforts: [low, medium, high]
+        - id: gpt-6.1-terra
+          reasoningEfforts: [low, medium, high]
+        - id: gpt-6-astra
+          reasoningEfforts: [low, medium, high]
+        - id: gpt-6-sol
+          reasoningEfforts: [low, medium, high]
         - id: gpt-6-luna
+          reasoningEfforts: [low, medium, high]
+        - id: gpt-5.6-sol
+          reasoningEfforts: [low, medium, high]
+        - id: gpt-5.6-terra
           reasoningEfforts: [low, medium, high]
         - id: gpt-5.6-luna
           reasoningEfforts: [low, medium, high]
-        - id: gpt-6.1-sol
-          reasoningEfforts: [low, medium, high]
       scope: local
-      supportedVersionPrefix: codex-cli 0.155.
+      supportedVersionPrefix: codex-cli 0.159.
       maxSteps: 3
       enabled: true
     - id: claude-subscription-local
@@ -31,6 +41,8 @@ ai:
         - id: sonnet
           reasoningEfforts: [low, medium, high]
         - id: opus
+          reasoningEfforts: [low, medium, high]
+        - id: fable
           reasoningEfforts: [low, medium, high]
       scope: local
       supportedVersionPrefix: "2.1.267 "

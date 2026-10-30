@@ -116,6 +116,24 @@ it('offers only available controllers, keeping unavailable ones unselectable', a
   expect(values).not.toContain('offline')
 })
 
+it('groups model controllers into API and CLI sections after Scripted', async () => {
+  const cli: ModelProfile = { id: 'codex', displayName: 'Codex subscription', available: true, runtime: 'cli', modelLabel: 'gpt-5.6-luna' }
+  vi.mocked(listModelProfiles).mockResolvedValue([cli, availableProfile, offlineProfile])
+  renderPage()
+  const controller = await controllerSelect('first-controller')
+  expect(controller.firstElementChild).toHaveValue('scripted')
+  const groups = [...controller.querySelectorAll('optgroup')]
+  expect(groups.map(group => [group.label, [...group.querySelectorAll('option')].map(option => option.value)]))
+    .toEqual([['API', ['fast']], ['CLI', ['codex']]])
+})
+
+it('omits a controller section with no available profiles', async () => {
+  vi.mocked(listModelProfiles).mockResolvedValue([availableProfile, offlineProfile])
+  renderPage()
+  const controller = await controllerSelect('first-controller')
+  expect([...controller.querySelectorAll('optgroup')].map(group => group.label)).toEqual(['API'])
+})
+
 it('rejects a tick limit outside the scenario maximum', async () => {
   const user = userEvent.setup()
   renderPage()

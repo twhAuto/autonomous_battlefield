@@ -251,22 +251,22 @@ probe builds no economy and the hexes beside mines would otherwise decide where 
 buildings stand. Both sides build the same four training buildings on mirrored sites
 in front of their castles and buy every general upgrade level; one side also buys
 both unlocks and trains Gunners, Heavy Cavalry and Cannons instead of Crossbowmen,
-Raider Cavalry and Catapults. The classic mirror ends at tick 174, while the unlocked
-side wins from either map side by tick 78, and an unlocked mirror ends by tick 146.
+Raider Cavalry and Catapults. The classic mirror ends at tick 200, while the unlocked
+side wins from either map side by tick 105, and an unlocked mirror ends by tick 107.
 Results depend on where the training buildings stand: with a source behind its
 castle the classic army can win, so the probe compares units, not placement. `TestFrontierUpgradeBalanceProbe` compares a
 level-I upgrade plus troops with an equal-cost army at the opening; both draw.
 `TestScriptedBotsUnlockAndTrainLateGameUnits` runs the scripted bots on the live
 ruleset: both claim home and mid-field mines, buy both unlocks after level II, train
-Gunners and Heavy Cavalry, and the battle ends with a winner (tick 378).
+Gunners and Heavy Cavalry, and the battle ends with a winner (tick 201).
 
 `TestScriptedBotsFinishEveryMap` plays the scripted bots against each other on every
 map twice, with the two faction IDs swapped between runs. Each seat must hold the same
 state on every tick of both runs, so faction IDs never decide a battle, and every
 battle must end with a winner before the 800-tick limit; current results range from
-tick 209 (Highland Crown) to 609 (Castle Siege). Because both sides run the same bot,
-the winning seat shows each map's side bias: the first seat wins Highland Crown and
-River Fords, the second Castle Siege, Frontier Siege and Long March. Narrow chokepoints let both armies hold a front: drafts with one- and
+tick 167 (Highland Crown) to 369 (Castle Siege). Because both sides run the same bot,
+the winning seat shows each map's side bias: the first seat wins Highland Crown,
+Frontier Siege and Castle Siege, the second River Fords and Long March. Narrow chokepoints let both armies hold a front: drafts with one- and
 two-row fords, or a 13-row Long March, reached the limit without a winner. Scarce
 gold has the same effect at chokepoints, because once the mines are empty both sides
 fight on castle income alone; River Fords at 1,500 gold per mine stalled, so it

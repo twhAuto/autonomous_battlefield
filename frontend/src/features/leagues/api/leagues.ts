@@ -1,17 +1,25 @@
-// League API payloads and requests: create, list, read and cancel AI leagues.
+// League API payloads and requests: create, list, read and cancel AI leagues, and
+// disqualify their entrants.
 
-import { createApiClient } from '../../../shared/api/request'
+import { createApiClient, errorMessage } from '../../../shared/api/request'
 import type { LeagueMatch } from '../../../shared/domain/leagueMatches'
 import type { BattleController } from '../../battles/api/battles'
 
 export type LeagueStatus = 'running' | 'completed' | 'cancelled'
 export type LeagueStage = 'group' | 'quarterfinal' | 'semifinal' | 'final'
-export type FixtureStatus = 'pending' | 'running' | 'completed' | 'void' | 'cancelled'
+export type FixtureStatus = 'pending' | 'running' | 'completed' | 'void' | 'cancelled' | 'forfeited'
 export type GroupLetter = 'A' | 'B' | 'C' | 'D'
 
 export interface LeagueSettings { scenarioIds: string[]; tickCount: number; tickDuration?: string; decisionIntervalTicks?: number }
 export interface LeagueProgress { settled: number; total: number }
-export interface LeagueEntrant { index: number; group: GroupLetter; factionId: string; factionName: string; controller: BattleController }
+/** Who removed an entrant from its league, when, and the reason given ('' for none). */
+export interface LeagueDisqualification { at: string; by: string; reason: string }
+export interface LeagueEntrant {
+  index: number; group: GroupLetter; factionId: string; factionName: string; controller: BattleController
+  /** True once the entrant can no longer win the league. */
+  eliminated: boolean
+  disqualification: LeagueDisqualification | null
+}
 /** An entrant's group record; placement is null until the group decides it. */
 export interface LeagueStanding { entrant: number; placement: number | null; won: number; lost: number }
 export interface LeagueTie { stage: LeagueStage; tie: number; homeEntrant: number; awayEntrant: number; winner: number | null }
@@ -24,7 +32,9 @@ export interface LeagueFixture {
   battleProgress?: { currentTick: number; requestedTicks: number }
   /** Present once completed: the battle's winner, null for a draw. */
   result?: { winner: number | null; reason: string }
-  /** The match winner once completed or void, by tiebreak when the battle had none. */
+  /** Present once forfeited: the disqualified side, or both. */
+  forfeit?: 'home' | 'away' | 'both'
+  /** The match winner once completed, void or forfeited, by tiebreak when the battle had none. */
   winner: number | null
 }
 export interface League {
@@ -87,4 +97,18 @@ export async function cancelLeague(id: string): Promise<League> {
   if (response.ok) return (await response.json()) as League
   if (response.status === 409) throw new LeagueApiError('This league has already finished.', 409)
   throw new LeagueApiError('The league could not be cancelled.', response.status)
+}
+
+const disqualifyErrors: Record<number, string> = {
+  400: 'The reason is too long. Keep it to 200 characters.',
+  403: 'Only administrators can disqualify entrants.',
+  404: 'This entrant or league no longer exists. Reload and try again.',
+}
+
+/** Removes an entrant from a running league; a 409 carries the server's reason it cannot. */
+export async function disqualifyEntrant(id: string, entrant: number, reason: string): Promise<League> {
+  const response = await leagueFetch(`/v1/leagues/${encodeURIComponent(id)}/entrants/${entrant}/disqualify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) })
+  if (response.ok) return (await response.json()) as League
+  const detail = response.status === 409 ? await errorMessage(response) : ''
+  throw new LeagueApiError(disqualifyErrors[response.status] ?? (detail ? `The entrant cannot be disqualified: ${detail}.` : 'The entrant could not be disqualified.'), response.status)
 }

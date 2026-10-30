@@ -7,8 +7,9 @@ that plan, consumes the receipt, repairs, then verifies. `authorize` is the one-
 operator step that lets Jenkins reach the VM with a dedicated key. The worker secret
 always comes from the production application .env, so a rotation reaches the worker
 on the next apply. The worker binary comes from the backend image production runs, so
-an apply after a release upgrades the worker to the same code. No secret is printed,
-logged, written to a report or put in argv.
+an apply after a release upgrades the worker to the same code. Codex comes from the
+release pinned in infra/deploy/agent-vm/cli-releases.json, verified against its
+archive digests. No secret is printed, logged, written to a report or put in argv.
 """
 import argparse
 import contextlib
@@ -56,9 +57,17 @@ RECEIPT_SECONDS = 1800
 MANAGED_SETTINGS = ROOT / 'infra/deploy/agent-vm/managed-settings.json'
 GUEST_CONFIG = '/etc/battlefield-agent/config.yaml'
 MODEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,79}')
-GUEST_REPAIRS = {'sync-worker-secret', 'restart-worker', 'enable-worker', 'sync-worker-config', 'upgrade-worker', 'resume-worker'}
+GUEST_REPAIRS = {'sync-worker-secret', 'restart-worker', 'enable-worker', 'sync-worker-config', 'upgrade-worker',
+                 'upgrade-codex', 'resume-worker'}
 WORKER_BINARY = '/usr/local/bin/battlefield-agent'
-STAGED_BINARY = '/var/lib/battlefield-cli-upgrade/battlefield-agent'
+STAGING = '/var/lib/battlefield-cli-upgrade/'
+STAGED_BINARY = STAGING + 'battlefield-agent'
+CLI_RELEASES = ROOT / 'infra/deploy/agent-vm/cli-releases.json'
+CODEX_BINARIES = ('codex', 'codex-code-mode-host')
+CODEX_ARCHIVE = 'https://github.com/openai/codex/releases/download/rust-v{version}/{name}-x86_64-unknown-linux-musl.tar.gz'
+CODEX_CACHE = HOME / '.cache/autonomous-battlefield/codex'
+VERSION = re.compile(r'(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})')
+SHA256 = re.compile(r'[0-9a-f]{64}')
 # The in-cluster agent runs the same /app/agent binary from the deployed backend image.
 RELEASE_DEPLOYMENT = ['-n', 'battlefield', 'get', 'deployment', 'battlefield-agent',
                       '-o', 'jsonpath={.spec.template.spec.containers[0].image}']
@@ -154,6 +163,49 @@ def desired_config(current, settings):
     return yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
 
 
+def cli_releases(path=CLI_RELEASES):
+    """The reviewed Codex release: its version and the published SHA256 of each archive."""
+    releases = json.loads(Path(path).read_text())
+    codex = releases.get('codex') if isinstance(releases, dict) and set(releases) == {'codex'} else None
+    archives = codex.get('archives') if isinstance(codex, dict) and set(codex) == {'version', 'archives'} else None
+    if (not isinstance(archives, dict) or set(archives) != set(CODEX_BINARIES)
+            or not isinstance(codex['version'], str) or not VERSION.fullmatch(codex['version'])
+            or not all(isinstance(digest, str) and SHA256.fullmatch(digest) for digest in archives.values())):
+        raise ValueError('CLI releases need the Codex version and the SHA256 of both release archives')
+    return releases
+
+
+def codex_prefix(version):
+    """The version family Codex profiles accept, in the form `codex --version` prints."""
+    major, minor, _ = version.split('.')
+    return f'codex-cli {major}.{minor}.'
+
+
+def with_codex_prefix(current, prefix):
+    """Point the Codex profiles at a version family; return the text unchanged when they already match."""
+    import yaml
+    config = yaml.safe_load(current)
+    profiles = [profile for profile in config['ai']['profiles'] if profile.get('provider') == 'codex-cli']
+    if all(profile.get('supportedVersionPrefix') == prefix for profile in profiles):
+        return current
+    for profile in profiles:
+        profile['supportedVersionPrefix'] = prefix
+    return yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
+
+
+def config_states(config, prefix):
+    """Digests of a config before and after a Codex update moves it to the version family `prefix`."""
+    variants = {config, with_codex_prefix(config, prefix)} if prefix else {config}
+    return {hashlib.sha256(variant.encode()).hexdigest() for variant in variants}
+
+
+def codex_profiles(config):
+    """The enabled Codex profiles, which a worker must still serve after a Codex update."""
+    import yaml
+    return [profile['id'] for profile in yaml.safe_load(config)['ai']['profiles']
+            if profile.get('provider') == 'codex-cli' and profile.get('enabled')]
+
+
 def host_files(bridge_port):
     """AB-162 boot start and the bridge watchdog, owned by this job rather than bootstrap."""
     start = f'''#!/bin/sh
@@ -243,6 +295,7 @@ try:
     status = json.load(urllib.request.urlopen('http://127.0.0.1:8083/status', timeout=5))
 except Exception:
     status = None  # Workers older than the drain support have no status endpoint.
+codex = {'codex': pathlib.Path('/usr/local/bin/codex'), 'codex-code-mode-host': pathlib.Path('/usr/local/bin/codex-code-mode-host')}
 print(json.dumps({
     'machine_id': pathlib.Path('/etc/machine-id').read_text().strip(),
     'domain_uuid': pathlib.Path('/sys/class/dmi/id/product_uuid').read_text().strip().lower(),
@@ -253,6 +306,7 @@ print(json.dumps({
     'worker_enabled': unit('is-enabled') == 'enabled',
     'worker_health': health,
     'binary_sha256': hashlib.sha256(pathlib.Path('/usr/local/bin/battlefield-agent').read_bytes()).hexdigest(),
+    'codex_sha256': {name: hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None for name, path in codex.items()},
     'status': status,
 }))
 '''
@@ -426,6 +480,66 @@ source.unlink(missing_ok=True)
 print(json.dumps({'changed': current != wanted}))
 '''
 
+# Checks the staged Codex executables before the worker is drained. `--version` runs
+# with an empty home, so it reads no login state.
+GUEST_CHECK_CODEX = r'''
+import hashlib, json, pathlib, subprocess, sys, tempfile
+request = json.loads(sys.stdin.read())
+for item in request['files'].values():
+    staged = pathlib.Path(item['source'])
+    if hashlib.sha256(staged.read_bytes()).hexdigest() != item['target_sha256']:
+        raise SystemExit('staged Codex does not match the pinned release; nothing was changed')
+    staged.chmod(0o700)
+with tempfile.TemporaryDirectory() as home:
+    result = subprocess.run([request['files']['codex']['source'], '--version'], env={'PATH': '/usr/bin:/bin', 'HOME': home},
+                            capture_output=True, text=True, timeout=30)
+if result.returncode or result.stdout.strip() != 'codex-cli ' + request['version']:
+    raise SystemExit('staged Codex does not report the pinned version; nothing was changed')
+print(json.dumps({'valid': True}))
+'''
+
+# Swaps both Codex executables and the worker config's Codex version family in one
+# step, so the restarted worker accepts the version it finds. Each file may already
+# hold its target content when an interrupted install or restore resumes.
+GUEST_INSTALL_CODEX = r'''
+import hashlib, json, os, pathlib, subprocess, sys, tempfile
+request = json.loads(sys.stdin.read())
+targets = {'codex': pathlib.Path('/usr/local/bin/codex'), 'codex-code-mode-host': pathlib.Path('/usr/local/bin/codex-code-mode-host')}
+config = pathlib.Path('/etc/battlefield-agent/config.yaml')
+def digest(content):
+    return hashlib.sha256(content).hexdigest()
+''' + GUEST_PUBLISH + r'''
+current = {name: digest(targets[name].read_bytes()) for name in request['files']}
+for name, item in request['files'].items():
+    if current[name] not in (item['expected_sha256'], item['target_sha256']):
+        raise SystemExit('Codex differs from its registered release; not changed')
+config_current, config_target = digest(config.read_bytes()), digest(request['config'].encode())
+if config_current not in (request['config_expected_sha256'], config_target):
+    raise SystemExit('worker configuration differs from its registered content; not changed')
+contents = {}
+for name, item in request['files'].items():
+    if current[name] != item['target_sha256']:
+        contents[name] = pathlib.Path(item['source']).read_bytes()
+        if digest(contents[name]) != item['target_sha256']:
+            raise SystemExit('staged Codex does not match the release; not changed')
+for name, content in contents.items():
+    publish(targets[name], content, 0o755)
+if config_current != config_target:
+    publish(config, request['config'], 0o644)
+marker = pathlib.Path('/etc/battlefield-cli-bootstrap/guest.json')
+if marker.exists():
+    data = json.loads(marker.read_text())
+    entries = {'/usr/local/bin/' + name: item['target_sha256'] for name, item in request['files'].items()}
+    entries['/etc/battlefield-agent/config.yaml'] = config_target
+    if any(data['files'].get(path) != value for path, value in entries.items()):
+        data['files'].update(entries)
+        publish(marker, json.dumps(data, indent=2) + '\n', 0o600)
+subprocess.run(['systemctl', 'restart', 'battlefield-worker'], check=True)
+for item in request['files'].values():
+    pathlib.Path(item['source']).unlink(missing_ok=True)
+print(json.dumps({'changed': bool(contents) or config_current != config_target}))
+'''
+
 
 def write_private(path, content):
     """Atomically replace a private host file, keeping mode 0600."""
@@ -454,6 +568,7 @@ class Worker:
         # The host's registered copy of the guest config, which bootstrap reconciles against.
         self.registered_config = self.private(self.config['guest']['config'])
         self.release_info = None
+        self.codex_info = None
 
     @staticmethod
     def private(path):
@@ -520,6 +635,8 @@ class Worker:
         checks['automation_key'] = AUTOMATION_KEY.is_file()
         self.release_info = self.release()
         checks['release'] = {'image_digest': self.release_info['digest']} if self.release_info else None
+        self.codex_info = self.codex_release()
+        checks['codex_release'] = {'version': self.codex_info['version']} if self.codex_info else None
         checks['guest'] = None
         if checks['domain'] == 'running' and checks['automation_key']:
             try:
@@ -533,11 +650,13 @@ class Worker:
                 registered = self.registered_config.read_text()
                 desired = desired_config(registered, managed_settings())
                 actual = guest.pop('config_sha256')
-                guest['config_registered'] = actual == hashlib.sha256(registered.encode()).hexdigest()
+                codex, prefix = self.codex_checks(guest.pop('codex_sha256'), registered)
+                guest['config_registered'] = actual in config_states(registered, prefix)
                 guest['config_current'] = desired == registered
                 # An interrupted sync left the guest updated but the registered copy behind.
-                guest['config_pending'] = not guest['config_current'] and actual == hashlib.sha256(desired.encode()).hexdigest()
+                guest['config_pending'] = not guest['config_current'] and actual in config_states(desired, prefix)
                 guest.update(self.binary_checks(guest.pop('binary_sha256'), guest.pop('status')))
+                guest.update(codex)
             checks['guest'] = guest
         return checks
 
@@ -611,6 +730,55 @@ class Worker:
             old.unlink()  # Keep only the release production runs now.
         write_private(cached, content)  # Atomic: an interrupted copy never becomes the cached release.
         return cached
+
+    def codex_checks(self, installed, config):
+        """Compare the guest's Codex with its registration and the pinned release.
+
+        Also returns the pinned version family, or None when the release is unknown.
+        """
+        artifacts = self.config['guest']['artifacts']
+        registered = {name: artifacts[name]['sha256'] for name in CODEX_BINARIES}
+        if not self.codex_info:
+            return {'codex_known': False, 'codex_registered': installed == registered, 'codex_current': False}, None
+        pinned = {name: self.codex_info['binaries'][name]['sha256'] for name in CODEX_BINARIES}
+        prefix = codex_prefix(self.codex_info['version'])
+        return {
+            'codex_known': True,
+            # An interrupted update or restore leaves each executable at one of the two releases.
+            'codex_registered': all(installed.get(name) in (registered[name], pinned[name]) for name in CODEX_BINARIES),
+            'codex_current': installed == pinned == registered and with_codex_prefix(config, prefix) == config,
+        }, prefix
+
+    def codex_release(self):
+        """The pinned Codex executables, from release archives verified on every use, or None if unavailable."""
+        pinned = cli_releases()['codex']
+        archives = [digest + '-' + name + '.tar.gz' for name, digest in pinned['archives'].items()]
+        try:
+            CODEX_CACHE.mkdir(mode=0o700, parents=True, exist_ok=True)
+            for old in CODEX_CACHE.iterdir():
+                if old.name not in archives:
+                    old.unlink()  # Keep only the pinned release.
+            binaries = {name: self.codex_binary(pinned['version'], name, digest) for name, digest in pinned['archives'].items()}
+        except (ValueError, OSError, tarfile.TarError):
+            return None
+        return {'version': pinned['version'], 'binaries': binaries}
+
+    def codex_binary(self, version, name, archive_sha256):
+        """Extract one executable from its release archive, downloaded once and checked against the pin each time."""
+        cached = CODEX_CACHE / (archive_sha256 + '-' + name + '.tar.gz')
+        if not cached.exists():
+            with urllib.request.urlopen(CODEX_ARCHIVE.format(version=version, name=name), timeout=120) as response:
+                write_private(cached, response.read(RELEASE_MAX_BYTES + 1))
+        archive = self.private(cached).read_bytes()
+        if hashlib.sha256(archive).hexdigest() != archive_sha256:
+            cached.unlink()  # The next run downloads it again.
+            raise ValueError('The Codex release archive does not match its pinned digest')
+        with tarfile.open(fileobj=io.BytesIO(archive)) as archive_file:
+            member = archive_file.getmember(name + '-x86_64-unknown-linux-musl')
+            if not member.isreg() or not 0 < member.size <= RELEASE_MAX_BYTES:
+                raise ValueError('The Codex release archive has no usable executable')
+            content = archive_file.extractfile(member).read()
+        return {'content': content, 'sha256': hashlib.sha256(content).hexdigest()}
 
     @staticmethod
     def repairs(checks):
@@ -711,6 +879,9 @@ class Worker:
         if 'upgrade-worker' in repairs:
             self.upgrade_worker(guest)  # Drains, restarts and verifies the new binary.
             guest = dict(guest, worker_active=True, drain_supported=True)
+        if 'upgrade-codex' in repairs:
+            self.upgrade_codex(guest)  # Drains, restarts and checks the worker still serves Codex.
+            guest = dict(guest, worker_active=True)
         if 'sync-worker-config' in repairs:
             self.drain(guest)
             with self.resuming_on_failure(guest):
@@ -765,10 +936,10 @@ class Worker:
                 raise ValueError('CLI decisions were still running after 5 minutes; the worker resumed claiming '
                                  'and nothing was changed') from error
 
-    def stage_binary(self, content):
-        command = 'sudo -n sh -c ' + shlex.quote(f'umask 077; mkdir -p {Path(STAGED_BINARY).parent}; cat > {STAGED_BINARY}')
+    def stage_binary(self, content, staged=STAGED_BINARY):
+        command = 'sudo -n sh -c ' + shlex.quote(f'umask 077; mkdir -p {STAGING}; cat > {staged}')
         if self.ssh(self.private(AUTOMATION_KEY), command, content, timeout=300).returncode:
-            raise ValueError('Could not copy the worker binary to the CLI guest')
+            raise ValueError('Could not copy the ' + Path(staged).name + ' executable to the CLI guest')
 
     def upgrade_worker(self, guest):
         """Install the production release: validate, drain, swap, verify, then register.
@@ -796,9 +967,12 @@ class Worker:
                              'the registered worker binary was restored') from error
         self.register_binary(content, release['sha256'])
 
-    def release_healthy(self):
+    def release_healthy(self, profiles=()):
+        """Healthy, claiming, and serving the given profiles after a restart."""
         activity = self.guest_python(GUEST_ACTIVITY, {})
-        return activity['health'] == 204 and isinstance(activity['status'], dict) and not activity['status']['draining']
+        status = activity['status']
+        return (activity['health'] == 204 and isinstance(status, dict) and not status['draining']
+                and set(profiles) <= set(status.get('profiles') or []))
 
     def restore_binary(self, registered, failed):
         artifact = self.private(self.config['guest']['artifacts']['battlefield-agent']['path']).read_bytes()
@@ -814,6 +988,58 @@ class Worker:
         write_private(artifact, content)
         registration = json.loads(self.private(CLI_CONFIG).read_text())
         registration['guest']['artifacts']['battlefield-agent']['sha256'] = digest
+        self.config = self.bootstrap.validate(registration)
+        write_private(CLI_CONFIG, json.dumps(registration, indent=2) + '\n')
+
+    def upgrade_codex(self, guest):
+        """Install the pinned Codex release: check, drain, swap, verify, then register.
+
+        The worker config's Codex version family changes with the executables. A release
+        the restarted worker does not serve is replaced by the registered Codex and
+        config again, and the registration only changes once the worker serves it.
+        """
+        release = self.codex_info
+        registered = {name: self.config['guest']['artifacts'][name]['sha256'] for name in CODEX_BINARIES}
+        pinned = {name: release['binaries'][name]['sha256'] for name in CODEX_BINARIES}
+        contents = {name: release['binaries'][name]['content'] for name in CODEX_BINARIES}
+        config = self.registered_config.read_text()
+        if guest['config_pending']:
+            # An interrupted settings sync left the guest ahead of the registered copy; update from there.
+            config = desired_config(config, managed_settings())
+        updated = with_codex_prefix(config, codex_prefix(release['version']))
+        for name in CODEX_BINARIES:
+            self.stage_binary(contents[name], STAGING + name)
+        install = codex_install(registered, pinned, config, updated)
+        self.guest_python(GUEST_CHECK_CODEX, {'files': install['files'], 'version': release['version']})
+        self.drain(guest)
+        try:
+            self.guest_python(GUEST_INSTALL_CODEX, install)
+            self.wait_for(lambda: self.release_healthy(codex_profiles(updated)), 90, 'not serving Codex')
+        except Exception as error:
+            # The install may have replaced files before failing, so always restore.
+            with self.resuming_on_failure(guest):
+                self.restore_codex(registered, pinned, config, updated)
+            raise ValueError('The Codex update failed to install, or the worker did not serve Codex with it; '
+                             'the registered Codex release was restored') from error
+        self.register_codex(contents, pinned, updated)
+
+    def restore_codex(self, registered, failed, config, updated):
+        artifacts = self.config['guest']['artifacts']
+        for name in CODEX_BINARIES:
+            artifact = self.private(artifacts[name]['path']).read_bytes()
+            if hashlib.sha256(artifact).hexdigest() != registered[name]:
+                raise ValueError('The Codex update failed and the registered Codex copy is unusable; '
+                                 'restore it with the CLI bootstrap')
+            self.stage_binary(artifact, STAGING + name)
+        self.guest_python(GUEST_INSTALL_CODEX, codex_install(failed, registered, updated, config))
+
+    def register_codex(self, contents, digests, config):
+        """Record the installed Codex and config where the CLI bootstrap expects them."""
+        write_private(self.registered_config, config)
+        registration = json.loads(self.private(CLI_CONFIG).read_text())
+        for name in CODEX_BINARIES:
+            write_private(self.private(registration['guest']['artifacts'][name]['path']), contents[name])
+            registration['guest']['artifacts'][name]['sha256'] = digests[name]
         self.config = self.bootstrap.validate(registration)
         write_private(CLI_CONFIG, json.dumps(registration, indent=2) + '\n')
 
@@ -850,6 +1076,13 @@ class Worker:
               '"battlefield-cli-automation" line from ~vm-admin/.ssh/authorized_keys.')
 
 
+def codex_install(expected, target, config, updated):
+    """The guest request moving both Codex executables and the worker config from one release to the other."""
+    return {'files': {name: {'source': STAGING + name, 'expected_sha256': expected[name], 'target_sha256': target[name]}
+                      for name in CODEX_BINARIES},
+            'config': updated, 'config_expected_sha256': hashlib.sha256(config.encode()).hexdigest()}
+
+
 def host_units_missing(checks):
     return bool(checks['stale_host_files'] or not checks['boot_start_enabled']
                 or not checks['bridge_watchdog_active'] or not checks['watchdog_enabled'])
@@ -871,8 +1104,7 @@ def guest_repairs(guest):
         needed.append('restart-worker')
     elif not upgrade and guest['draining']:
         needed.append('resume-worker')
-    if upgrade:
-        needed.append('upgrade-worker')
+    needed += release_updates(guest, upgrade)
     if not guest['worker_enabled']:
         needed.append('enable-worker')
     if ((guest['config_registered'] or guest['config_pending']) and not guest['config_current']
@@ -881,9 +1113,22 @@ def guest_repairs(guest):
     return needed
 
 
+def release_updates(guest, upgrade):
+    """The worker release first; Codex only under the release worker, which reports the profiles it serves."""
+    updates = ['upgrade-worker'] if upgrade else []
+    if needs_codex_update(guest) and (upgrade or guest['binary_current']):
+        updates.append('upgrade-codex')
+    return updates
+
+
 def needs_upgrade(guest):
     """Upgrade a registered binary that differs from production, or finish an interrupted upgrade."""
     return guest['release_known'] and (guest['binary_pending'] or (guest['binary_registered'] and not guest['binary_current']))
+
+
+def needs_codex_update(guest):
+    """Update registered Codex that differs from the pinned release, or finish an interrupted update."""
+    return guest['codex_known'] and guest['codex_registered'] and not guest['codex_current']
 
 
 def guest_problems(guest):
@@ -900,6 +1145,7 @@ def guest_problems(guest):
         (guest['config_registered'] or guest['config_pending'], 'CLI worker configuration differs from its registered content; inspect it, it is not repaired automatically'),
         (guest['config_current'], 'CLI worker settings differ from infra/deploy/agent-vm/managed-settings.json'),
         (guest['binary_registered'] or guest['binary_current'], 'CLI worker binary differs from its registered release; inspect it, it is not repaired automatically'),
+        (guest['codex_registered'], 'CLI worker Codex differs from its registered release; inspect it, it is not repaired automatically'),
         (not guest['draining'], 'CLI worker is draining and claims no new decisions'),
         (guest['config_current'] or not guest['config_needs_upgrade'], 'CLI worker settings need the production worker release; apply upgrades it first'),
     ]
@@ -911,11 +1157,16 @@ def notices(checks):
     guest = checks['guest'] or {}
     if not (guest.get('reachable') and guest.get('identity_matches')):
         return []
+    found = []
     if not guest['release_known']:
-        return ['Could not read the production worker release, so the upgrade status is unknown']
-    if not guest['binary_current'] or guest['binary_pending']:
-        return ['CLI worker binary differs from the production release; run apply to upgrade it']
-    return []
+        found.append('Could not read the production worker release, so the upgrade status is unknown')
+    elif not guest['binary_current'] or guest['binary_pending']:
+        found.append('CLI worker binary differs from the production release; run apply to upgrade it')
+    if not guest['codex_known']:
+        found.append('Could not read the pinned Codex release, so the Codex update status is unknown')
+    elif guest['codex_registered'] and not guest['codex_current']:
+        found.append('CLI worker Codex differs from infra/deploy/agent-vm/cli-releases.json; run apply to update it')
+    return found
 
 
 def trusted_revision(expected):

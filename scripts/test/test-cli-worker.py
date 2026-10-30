@@ -14,6 +14,7 @@ import tempfile
 import time
 import unittest
 from unittest import mock
+import urllib.error
 
 ROOT = Path(__file__).resolve().parents[2]
 SECRET = 'a' * 64
@@ -38,7 +39,8 @@ def healthy(**overrides):
                         'worker_active': True, 'worker_enabled': True, 'worker_health': 204,
                         'config_registered': True, 'config_current': True, 'config_pending': False,
                         'release_known': True, 'binary_registered': True, 'binary_current': True, 'binary_pending': False,
-                        'drain_supported': True, 'draining': False, 'config_needs_upgrade': False}}
+                        'drain_supported': True, 'draining': False, 'config_needs_upgrade': False,
+                        'codex_known': True, 'codex_registered': True, 'codex_current': True}}
     if 'guest' in overrides:
         checks['guest'] = overrides.pop('guest')
     for key, value in overrides.items():
@@ -119,6 +121,12 @@ class PlanningTests(unittest.TestCase):
             # Concurrency waits for a binary that accepts it, unless this apply upgrades first.
             (healthy(config_current=False, config_needs_upgrade=True, binary_current=False, release_known=False), []),
             (healthy(config_current=False, config_needs_upgrade=True, binary_current=False), ['upgrade-worker', 'sync-worker-config']),
+            # Codex follows the pinned release, under the release worker that reports the profiles it serves.
+            (healthy(codex_current=False), ['upgrade-codex']),
+            (healthy(codex_current=False, binary_current=False), ['upgrade-worker', 'upgrade-codex']),
+            (healthy(codex_current=False, binary_current=False, release_known=False), []),
+            (healthy(codex_current=False, codex_known=False), []),
+            (healthy(codex_current=False, codex_registered=False), []),
         ]
         for checks, expected in cases:
             with self.subTest(expected=expected):
@@ -153,6 +161,44 @@ class PlanningTests(unittest.TestCase):
         self.assertEqual(worker.notices(healthy()), [])
         self.assertEqual(worker.notices(healthy(guest=None)), [])
 
+    def test_codex_drift_is_a_problem_but_an_older_codex_is_a_notice(self):
+        drift = healthy(codex_registered=False, codex_current=False)
+        self.assertIn('CLI worker Codex differs from its registered release; inspect it, it is not repaired automatically',
+                      worker.Worker.problems(drift))
+        self.assertEqual(worker.notices(drift), [])
+        older = healthy(codex_current=False)
+        self.assertEqual(worker.Worker.problems(older), [])
+        self.assertEqual(worker.notices(older), ['CLI worker Codex differs from infra/deploy/agent-vm/cli-releases.json; run apply to update it'])
+        self.assertEqual(worker.notices(healthy(codex_known=False, codex_current=False)),
+                         ['Could not read the pinned Codex release, so the Codex update status is unknown'])
+        self.assertEqual(len(worker.notices(healthy(binary_current=False, codex_current=False))), 2)
+
+    def test_codex_checks_compare_registration_pin_and_version_family(self):
+        old = {name: name + '-old' for name in worker.CODEX_BINARIES}
+        new = {name: name + '-new' for name in worker.CODEX_BINARIES}
+        instance = object.__new__(worker.Worker)
+        instance.config = {'guest': {'artifacts': {name: {'sha256': old[name]} for name in worker.CODEX_BINARIES}}}
+        instance.codex_info = {'version': '0.159.2', 'binaries': {name: {'sha256': new[name]} for name in worker.CODEX_BINARIES}}
+        older, prefix = instance.codex_checks(old, CODEX_CONFIG)
+        self.assertEqual((older, prefix), ({'codex_known': True, 'codex_registered': True, 'codex_current': False}, 'codex-cli 0.159.'))
+        # An interrupted install leaves each executable at either release.
+        mixed = dict(old, codex=new['codex'])
+        self.assertTrue(instance.codex_checks(mixed, CODEX_CONFIG)[0]['codex_registered'])
+        self.assertFalse(instance.codex_checks(dict(old, codex='other'), CODEX_CONFIG)[0]['codex_registered'])
+        # Current needs the executables, their registration and the registered config at the pin.
+        instance.config['guest']['artifacts'] = {name: {'sha256': new[name]} for name in worker.CODEX_BINARIES}
+        self.assertFalse(instance.codex_checks(new, CODEX_CONFIG)[0]['codex_current'])
+        target = worker.with_codex_prefix(CODEX_CONFIG, prefix)
+        self.assertTrue(instance.codex_checks(new, target)[0]['codex_current'])
+        instance.codex_info = None
+        self.assertEqual(instance.codex_checks(new, target), ({'codex_known': False, 'codex_registered': True, 'codex_current': False}, None))
+
+    def test_config_states_include_an_interrupted_codex_update(self):
+        moved = worker.with_codex_prefix(CODEX_CONFIG, 'codex-cli 0.159.')
+        self.assertEqual(worker.config_states(CODEX_CONFIG, 'codex-cli 0.159.'), {sha(CODEX_CONFIG.encode()), sha(moved.encode())})
+        self.assertEqual(worker.config_states(moved, 'codex-cli 0.159.'), {sha(moved.encode())})
+        self.assertEqual(worker.config_states(CODEX_CONFIG, None), {sha(CODEX_CONFIG.encode())})
+
     def test_binary_checks_compare_registration_and_release(self):
         instance = object.__new__(worker.Worker)
         instance.config = {'guest': {'artifacts': {'battlefield-agent': {'sha256': 'old'}}}}
@@ -175,6 +221,7 @@ class PlanningTests(unittest.TestCase):
         instance.unit_state = lambda unit, query='is-active': 'enabled' if query == 'is-enabled' else 'active'
         instance.host_files_current = lambda: []
         instance.release = lambda: None
+        instance.codex_release = lambda: None
         for status, reachable in ((204, True), (200, True), (503, False), (0, False)):
             instance.gateway = lambda path, secret=None, status=status: status if path == '/readyz' else 401
             with self.subTest(status=status), mock.patch.object(worker, 'AUTOMATION_KEY', Path('/nonexistent')):
@@ -205,6 +252,23 @@ CONFIG = """ai:
       enabled: true
 """
 SETTINGS = {'agentConcurrency': 4, 'models': {'claude-subscription-local': 'sonnet', 'gemini-subscription-local': 'gemini-3.8-flash-medium'}}
+CODEX_CONFIG = CONFIG + """    - id: codex-subscription-local
+      provider: codex-cli
+      runtime: cli
+      model: gpt-5.6-luna
+      supportedVersionPrefix: codex-cli 0.155.
+      enabled: true
+    - id: codex-spare
+      provider: codex-cli
+      runtime: cli
+      model: gpt-5.6-luna
+      supportedVersionPrefix: codex-cli 0.155.
+      enabled: false
+"""
+
+
+def sha(content):
+    return hashlib.sha256(content).hexdigest()
 
 
 class ConfigTests(unittest.TestCase):
@@ -307,6 +371,52 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual({p['id']: p['model'] for p in profiles}, settings['models'])
             self.assertEqual({p['id']: p['modelOptions'] for p in profiles if 'modelOptions' in p}, settings['modelOptions'])
 
+    def test_codex_version_family_changes_only_codex_profiles(self):
+        import yaml
+        updated = worker.with_codex_prefix(CODEX_CONFIG, 'codex-cli 0.159.')
+        profiles = yaml.safe_load(updated)['ai']['profiles']
+        self.assertEqual([p.get('supportedVersionPrefix') for p in profiles], [None, None, 'codex-cli 0.159.', 'codex-cli 0.159.'])
+        original = yaml.safe_load(CODEX_CONFIG)
+        for profile in original['ai']['profiles'][2:]:
+            profile['supportedVersionPrefix'] = 'codex-cli 0.159.'
+        self.assertEqual(yaml.safe_load(updated), original)
+        self.assertIs(worker.with_codex_prefix(updated, 'codex-cli 0.159.'), updated)
+        self.assertIs(worker.with_codex_prefix(CONFIG, 'codex-cli 0.159.'), CONFIG)
+        self.assertEqual(worker.codex_prefix('0.159.2'), 'codex-cli 0.159.')
+        self.assertEqual(worker.codex_profiles(CODEX_CONFIG), ['codex-subscription-local'])
+
+    def test_cli_releases_need_a_version_and_both_archive_digests(self):
+        valid = {'codex': {'version': '0.159.2', 'archives': {'codex': 'a' * 64, 'codex-code-mode-host': 'b' * 64}}}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'cli-releases.json'
+            path.write_text(json.dumps(valid))
+            self.assertEqual(worker.cli_releases(path), valid)
+            codex = valid['codex']
+            for bad in ({}, dict(valid, claude={}), {'codex': dict(codex, version='0.159')},
+                        {'codex': dict(codex, version='0.159.2-alpha.1')}, {'codex': dict(codex, version='00.159.2')},
+                        {'codex': dict(codex, archives={'codex': 'a' * 64})},
+                        {'codex': dict(codex, archives=dict(codex['archives'], codex='A' * 64))},
+                        {'codex': dict(codex, url='https://example.invalid/codex')}, []):
+                path.write_text(json.dumps(bad))
+                with self.subTest(bad=bad), self.assertRaises(ValueError):
+                    worker.cli_releases(path)
+
+    def test_codex_profiles_accept_the_pinned_release(self):
+        import yaml
+        prefix = worker.codex_prefix(worker.cli_releases()['codex']['version'])
+        sources = [(ROOT / 'backend/config.yaml').read_text(), (ROOT / 'infra/deploy/agent-vm/config.yaml').read_text()]
+        for document in yaml.safe_load_all((ROOT / 'infra/deploy/base/infrastructure/configmap.yaml').read_text()):
+            if document and document.get('kind') == 'ConfigMap':
+                sources += [value for value in document['data'].values() if 'profiles' in value]
+        launcher_tests = load('cli_agent_tests', ROOT / 'scripts/test/test-cli-agent.py')
+        generated = launcher_tests.CLIProfiles().run_profile('codex', 'codex')
+        self.assertEqual(generated.returncode, 0, generated.stderr)
+        sources.append(generated.stdout)  # The launcher's minimum local version.
+        self.assertEqual(len(sources), 4)
+        for source in sources:
+            codex = [p for p in yaml.safe_load(source)['ai']['profiles'] if p['provider'] == 'codex-cli']
+            self.assertEqual([p['supportedVersionPrefix'] for p in codex], [prefix])
+
     def test_sync_config_updates_guest_then_the_registered_copy(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -379,6 +489,16 @@ class ApplyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'rejects the managed settings'):
             instance.apply(['sync-worker-config'], SECRET)
         self.assertEqual(calls, [('drain', True), ('ssh', 'sudo -n systemctl kill --kill-whom=main --signal=SIGUSR2 battlefield-worker')])
+
+    def test_codex_updates_after_the_worker_release_and_before_the_config_sync(self):
+        instance, calls = self.worker_with(healthy(binary_current=False, codex_current=False, config_current=False,
+                                                   drain_supported=False)['guest'])
+        instance.upgrade_worker = lambda guest: calls.append(('upgrade', 'worker'))
+        instance.upgrade_codex = lambda guest: calls.append(('upgrade', 'codex', guest['drain_supported']))
+        instance.drain = lambda guest: calls.append(('drain', guest['drain_supported']))
+        instance.apply(['upgrade-worker', 'upgrade-codex', 'sync-worker-config'], SECRET)
+        self.assertEqual(calls, [('upgrade', 'worker'), ('upgrade', 'codex', True), ('drain', True), ('guest', 'config'),
+                                 ('ssh', 'sudo -n systemctl restart battlefield-worker')])
 
 
 class DrainTests(unittest.TestCase):
@@ -523,6 +643,187 @@ class UpgradeTests(unittest.TestCase):
             instance.upgrade_worker(healthy(binary_current=False)['guest'])
         self.assertEqual(signals, ['SIGUSR2'])
         self.assertEqual(self.artifact.read_bytes(), self.old)
+
+
+class CodexUpgradeTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.old = {name: b'old ' + name.encode() for name in worker.CODEX_BINARIES}
+        self.new = {name: b'new ' + name.encode() for name in worker.CODEX_BINARIES}
+        artifacts = {}
+        for name in worker.CODEX_BINARIES:
+            (self.root / name).write_bytes(self.old[name])
+            artifacts[name] = {'path': str(self.root / name), 'sha256': sha(self.old[name])}
+        self.config = self.root / 'config.yaml'
+        self.config.write_text(CODEX_CONFIG)
+        self.updated = worker.with_codex_prefix(CODEX_CONFIG, 'codex-cli 0.159.')
+        self.registration = self.root / 'cli.json'
+        self.registration.write_text(json.dumps({'guest': {'artifacts': artifacts}}))
+        patch = mock.patch.object(worker, 'CLI_CONFIG', self.registration)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def worker_with(self, healthy_after=True):
+        instance = object.__new__(worker.Worker)
+        instance.config = json.loads(self.registration.read_text())
+        instance.bootstrap = mock.Mock(validate=lambda value: value)
+        instance.registered_config = self.config
+        instance.codex_info = {'version': '0.159.2', 'binaries': {
+            name: {'content': self.new[name], 'sha256': sha(self.new[name])} for name in worker.CODEX_BINARIES}}
+        instance.private = lambda path: Path(path)
+        steps = []
+        instance.ssh = lambda key, remote, data=None, timeout=120: steps.append(
+            ('stage', remote.rsplit('/', 1)[-1].rstrip("'"), sha(data))) or mock.Mock(returncode=0)
+        names = {id(worker.GUEST_CHECK_CODEX): 'check', id(worker.GUEST_INSTALL_CODEX): 'install'}
+        instance.guest_python = lambda code, payload: steps.append((names[id(code)], payload)) or {}
+        instance.drain = lambda guest: steps.append(('drain', None))
+        instance.release_healthy = lambda profiles=(): steps.append(('serving', list(profiles))) or healthy_after
+
+        def wait_for(condition, seconds, message):
+            if not condition():
+                raise ValueError(message)
+        instance.wait_for = wait_for
+        return instance, steps
+
+    def test_update_checks_drains_swaps_codex_with_its_version_family_then_registers(self):
+        instance, steps = self.worker_with()
+        instance.upgrade_codex(healthy(codex_current=False)['guest'])
+        self.assertEqual([step[0] for step in steps], ['stage', 'stage', 'check', 'drain', 'install', 'serving'])
+        self.assertEqual(steps[:2], [('stage', name, sha(self.new[name])) for name in worker.CODEX_BINARIES])
+        self.assertEqual(steps[2][1]['version'], '0.159.2')
+        install = steps[4][1]
+        self.assertEqual({name: item['target_sha256'] for name, item in install['files'].items()},
+                         {name: sha(self.new[name]) for name in worker.CODEX_BINARIES})
+        self.assertEqual((install['config'], install['config_expected_sha256']), (self.updated, sha(CODEX_CONFIG.encode())))
+        self.assertEqual(steps[5], ('serving', ['codex-subscription-local']))
+        registration = json.loads(self.registration.read_text())['guest']['artifacts']
+        for name in worker.CODEX_BINARIES:
+            self.assertEqual((self.root / name).read_bytes(), self.new[name])
+            self.assertEqual(registration[name]['sha256'], sha(self.new[name]))
+        self.assertEqual(self.config.read_text(), self.updated)
+
+    def test_codex_the_worker_does_not_serve_is_restored_and_keeps_the_registration(self):
+        instance, steps = self.worker_with(healthy_after=False)
+        guest = healthy(codex_current=False)['guest']
+        with self.assertRaisesRegex(ValueError, 'registered Codex release was restored'):
+            instance.upgrade_codex(guest)
+        self.assertEqual([step[0] for step in steps[-3:]], ['stage', 'stage', 'install'])
+        restore = steps[-1][1]
+        self.assertEqual({name: (item['expected_sha256'], item['target_sha256']) for name, item in restore['files'].items()},
+                         {name: (sha(self.new[name]), sha(self.old[name])) for name in worker.CODEX_BINARIES})
+        self.assertEqual((restore['config'], restore['config_expected_sha256']), (CODEX_CONFIG, sha(self.updated.encode())))
+        registration = json.loads(self.registration.read_text())['guest']['artifacts']
+        for name in worker.CODEX_BINARIES:
+            self.assertEqual((self.root / name).read_bytes(), self.old[name])
+            self.assertEqual(registration[name]['sha256'], sha(self.old[name]))
+        self.assertEqual(self.config.read_text(), CODEX_CONFIG)
+
+    def test_a_failed_restore_still_resumes_claims(self):
+        instance, steps = self.worker_with()
+        signals = []
+        instance.signal_worker = signals.append
+        def install(code, payload):
+            if code is worker.GUEST_INSTALL_CODEX:
+                raise ValueError('The CLI guest command failed')
+            return {}
+        instance.guest_python = install
+        guest = healthy(codex_current=False)['guest']
+        with self.assertRaisesRegex(ValueError, 'guest command failed'):
+            instance.upgrade_codex(guest)
+        self.assertEqual(signals, ['SIGUSR2'])
+        self.assertEqual(self.config.read_text(), CODEX_CONFIG)
+
+    def test_update_starts_from_settings_an_interrupted_sync_left_on_the_guest(self):
+        # The guest holds the managed settings, but the registered copy was not updated yet.
+        pending = worker.desired_config(CODEX_CONFIG, SETTINGS)
+        moved = worker.with_codex_prefix(pending, 'codex-cli 0.159.')
+        instance, steps = self.worker_with()
+        guest = healthy(codex_current=False, config_current=False, config_registered=False, config_pending=True)['guest']
+        with mock.patch.object(worker, 'managed_settings', return_value=SETTINGS):
+            instance.upgrade_codex(guest)
+            install = steps[4][1]
+            self.assertEqual((install['config'], install['config_expected_sha256']), (moved, sha(pending.encode())))
+            self.assertEqual(self.config.read_text(), moved)
+            # The planned settings sync that follows finds nothing left to change.
+            sent = []
+            instance.guest_python = lambda code, payload: sent.append(payload) or {'changed': False}
+            instance.sync_config()
+        self.assertEqual(sent[0]['content'], moved)
+        self.assertEqual(sent[0]['expected_sha256'], sha(moved.encode()))
+
+
+class CodexReleaseTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.cache = Path(directory.name) / 'codex'
+        self.archives, self.executables = {}, {}
+        for name in worker.CODEX_BINARIES:
+            self.executables[name] = b'executable ' + name.encode()
+            archive = io.BytesIO()
+            with tarfile.open(fileobj=archive, mode='w:gz') as tar:
+                info = tarfile.TarInfo(name + '-x86_64-unknown-linux-musl')
+                info.size = len(self.executables[name])
+                tar.addfile(info, io.BytesIO(self.executables[name]))
+            self.archives[name] = archive.getvalue()
+        self.pin = {'codex': {'version': '0.159.2', 'archives': {name: sha(self.archives[name]) for name in worker.CODEX_BINARIES}}}
+        self.urls = []
+        patches = [mock.patch.object(worker, 'CODEX_CACHE', self.cache),
+                   mock.patch.object(worker, 'cli_releases', return_value=self.pin),
+                   mock.patch.object(worker.urllib.request, 'urlopen', self.urlopen)]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        self.instance = object.__new__(worker.Worker)
+        self.instance.private = worker.Worker.private
+
+    def urlopen(self, url, timeout):
+        self.urls.append(url)
+        name = url.rsplit('/', 1)[-1].removesuffix('-x86_64-unknown-linux-musl.tar.gz')
+        return contextlib.nullcontext(io.BytesIO(self.archives[name]))
+
+    def test_downloads_each_pinned_archive_once_and_extracts_its_executable(self):
+        release = self.instance.codex_release()
+        self.assertEqual(release['version'], '0.159.2')
+        self.assertEqual(self.urls, ['https://github.com/openai/codex/releases/download/rust-v0.159.2/' + name
+                                     + '-x86_64-unknown-linux-musl.tar.gz' for name in worker.CODEX_BINARIES])
+        for name in worker.CODEX_BINARIES:
+            binary = release['binaries'][name]
+            self.assertEqual((binary['content'], binary['sha256']), (self.executables[name], sha(self.executables[name])))
+            cached = self.cache / (self.pin['codex']['archives'][name] + '-' + name + '.tar.gz')
+            self.assertEqual(cached.read_bytes(), self.archives[name])
+            self.assertEqual(cached.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.instance.codex_release(), release)
+        self.assertEqual(len(self.urls), 2)
+
+    def test_a_changed_cache_fails_its_digest_and_is_downloaded_again(self):
+        self.instance.codex_release()
+        cached = self.cache / (self.pin['codex']['archives']['codex-code-mode-host'] + '-codex-code-mode-host.tar.gz')
+        cached.write_bytes(b'replaced')
+        self.assertIsNone(self.instance.codex_release())
+        self.assertFalse(cached.exists())
+        self.assertEqual(self.instance.codex_release()['binaries']['codex-code-mode-host']['content'],
+                         self.executables['codex-code-mode-host'])
+        self.assertEqual(len(self.urls), 3)
+
+    def test_another_pin_replaces_the_cache(self):
+        (self.cache).mkdir(mode=0o700)
+        stale = self.cache / ('0' * 64 + '-codex.tar.gz')
+        stale.write_bytes(b'old release')
+        self.instance.codex_release()
+        self.assertFalse(stale.exists())
+        self.assertEqual(len(list(self.cache.iterdir())), 2)
+
+    def test_a_digest_mismatch_or_unreachable_release_is_unknown(self):
+        self.archives['codex'] = b'tampered'
+        self.assertIsNone(self.instance.codex_release())
+        self.assertFalse((self.cache / (self.pin['codex']['archives']['codex'] + '-codex.tar.gz')).exists())
+        def unreachable(url, timeout):
+            raise urllib.error.URLError('offline')
+        with mock.patch.object(worker.urllib.request, 'urlopen', unreachable):
+            self.assertIsNone(self.instance.codex_release())
 
 
 class ReleaseTests(unittest.TestCase):
@@ -768,6 +1069,8 @@ class GuestScriptTests(unittest.TestCase):
                 .replace("pathlib.Path('/sys/class/dmi/id/product_uuid')", f"pathlib.Path({str(self.root / 'product_uuid')!r})")
                 .replace("pathlib.Path('/etc/battlefield-agent/config.yaml')", f"pathlib.Path({str(self.root / 'config.yaml')!r})")
                 .replace("pathlib.Path('/usr/local/bin/battlefield-agent')", f"pathlib.Path({str(self.binary)!r})")
+                .replace("pathlib.Path('/usr/local/bin/codex')", f"pathlib.Path({str(self.root / 'codex')!r})")
+                .replace("pathlib.Path('/usr/local/bin/codex-code-mode-host')", f"pathlib.Path({str(self.root / 'codex-code-mode-host')!r})")
                 .replace("check_config('/usr/local/bin/battlefield-agent'", f"check_config({str(self.binary)!r}")
                 .replace("check_config(binary, '/etc/battlefield-agent/config.yaml')", f"check_config(binary, {str(self.root / 'config.yaml')!r})")
                 .replace('str(path)', "'/etc/battlefield-agent/worker.env'"))
@@ -894,6 +1197,80 @@ class GuestScriptTests(unittest.TestCase):
         accepted = worker.desired_config(CONFIG, SETTINGS)
         self.run_script(worker.GUEST_CONFIG_SYNC, dict(request, content=accepted))
         self.assertEqual(config.read_text(), accepted)
+
+    def codex_install(self, current, target, config, updated):
+        """Install `current` Codex and config, stage `target`, and return the request moving between them."""
+        for name in worker.CODEX_BINARIES:
+            (self.root / name).write_bytes(current[name])
+            (self.root / ('staged-' + name)).write_bytes(target[name])
+        (self.root / 'config.yaml').write_text(config)
+        request = worker.codex_install({n: sha(current[n]) for n in current}, {n: sha(target[n]) for n in target}, config, updated)
+        for name, item in request['files'].items():
+            item['source'] = str(self.root / ('staged-' + name))
+        return request
+
+    def test_codex_install_swaps_both_executables_and_the_version_family_then_restarts(self):
+        old = {name: b'old ' + name.encode() for name in worker.CODEX_BINARIES}
+        new = {name: b'new ' + name.encode() for name in worker.CODEX_BINARIES}
+        updated = worker.with_codex_prefix(CODEX_CONFIG, 'codex-cli 0.159.')
+        request = self.codex_install(old, new, CODEX_CONFIG, updated)
+        self.assertTrue(self.run_script(worker.GUEST_INSTALL_CODEX, request)['changed'])
+        files = json.loads(self.marker.read_text())['files']
+        for name in worker.CODEX_BINARIES:
+            self.assertEqual((self.root / name).read_bytes(), new[name])
+            self.assertEqual((self.root / name).stat().st_mode & 0o777, 0o755)
+            self.assertEqual(files['/usr/local/bin/' + name], sha(new[name]))
+            self.assertFalse((self.root / ('staged-' + name)).exists())
+        self.assertEqual((self.root / 'config.yaml').read_text(), updated)
+        self.assertEqual(files['/etc/battlefield-agent/config.yaml'], sha(updated.encode()))
+        self.assertIn('restart battlefield-worker', self.calls.read_text())
+        # Resuming finds every file in place and only restarts.
+        self.assertFalse(self.run_script(worker.GUEST_INSTALL_CODEX, request)['changed'])
+        # A restore moves both back, even from a half-finished install.
+        (self.root / 'codex-code-mode-host').write_bytes(old['codex-code-mode-host'])
+        restore = worker.codex_install({n: sha(new[n]) for n in new}, {n: sha(old[n]) for n in old}, updated, CODEX_CONFIG)
+        for name, item in restore['files'].items():
+            (self.root / ('staged-' + name)).write_bytes(old[name])
+            item['source'] = str(self.root / ('staged-' + name))
+        self.assertTrue(self.run_script(worker.GUEST_INSTALL_CODEX, restore)['changed'])
+        self.assertEqual([(self.root / name).read_bytes() for name in worker.CODEX_BINARIES], list(old.values()))
+        self.assertEqual((self.root / 'config.yaml').read_text(), CODEX_CONFIG)
+
+    def test_codex_install_refuses_drift_or_a_corrupt_stage_and_changes_nothing(self):
+        old = {name: b'old ' + name.encode() for name in worker.CODEX_BINARIES}
+        new = {name: b'new ' + name.encode() for name in worker.CODEX_BINARIES}
+        updated = worker.with_codex_prefix(CODEX_CONFIG, 'codex-cli 0.159.')
+        request = self.codex_install(dict(old, codex=b'unregistered'), new, CODEX_CONFIG, updated)
+        request['files']['codex']['expected_sha256'] = sha(old['codex'])
+        self.assertIn('differs from its registered release', self.run_failing(worker.GUEST_INSTALL_CODEX, request))
+        request = self.codex_install(old, new, CODEX_CONFIG, updated)
+        request['config_expected_sha256'] = '0' * 64
+        self.assertIn('configuration differs', self.run_failing(worker.GUEST_INSTALL_CODEX, request))
+        request = self.codex_install(old, dict(new, **{'codex-code-mode-host': b'corrupt'}), CODEX_CONFIG, updated)
+        request['files']['codex-code-mode-host']['target_sha256'] = sha(new['codex-code-mode-host'])
+        self.assertIn('does not match the release', self.run_failing(worker.GUEST_INSTALL_CODEX, request))
+        self.assertEqual([(self.root / name).read_bytes() for name in worker.CODEX_BINARIES], list(old.values()))
+        self.assertEqual((self.root / 'config.yaml').read_text(), CODEX_CONFIG)
+        self.assertFalse(self.calls.exists())
+
+    def test_codex_check_verifies_the_stage_and_the_reported_version(self):
+        staged = {'codex': b'#!/bin/sh\necho "codex-cli 0.159.2"\n', 'codex-code-mode-host': b'helper'}
+        files = {}
+        for name, content in staged.items():
+            (self.root / ('staged-' + name)).write_bytes(content)
+            files[name] = {'source': str(self.root / ('staged-' + name)), 'expected_sha256': '0' * 64, 'target_sha256': sha(content)}
+        self.assertTrue(self.run_script(worker.GUEST_CHECK_CODEX, {'files': files, 'version': '0.159.2'})['valid'])
+        self.assertIn('does not report the pinned version', self.run_failing(worker.GUEST_CHECK_CODEX, {'files': files, 'version': '0.159.3'}))
+        files['codex-code-mode-host']['target_sha256'] = '0' * 64
+        self.assertIn('does not match the pinned release', self.run_failing(worker.GUEST_CHECK_CODEX, {'files': files, 'version': '0.159.2'}))
+
+    def test_inspect_reports_codex_digests(self):
+        payload = {'secret_sha256': '0' * 64}
+        self.assertEqual(self.run_script(worker.GUEST_INSPECT, payload)['codex_sha256'], {'codex': None, 'codex-code-mode-host': None})
+        for name in worker.CODEX_BINARIES:
+            (self.root / name).write_bytes(name.encode())
+        self.assertEqual(self.run_script(worker.GUEST_INSPECT, payload)['codex_sha256'],
+                         {name: sha(name.encode()) for name in worker.CODEX_BINARIES})
 
 
 if __name__ == '__main__':

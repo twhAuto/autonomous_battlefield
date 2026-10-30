@@ -45,7 +45,7 @@ history, but receive gameplay-only responses: events and replay events without
 payloads, battles without
 inspection fields, and a reduced model-profile list. Decision history, saved
 decision context, [leagues](#leagues) and [analytics](#analytics) require Developer
-or Admin; only Admins create or cancel a league.
+or Admin; only Admins create or cancel a league or disqualify its entrants.
 
 Selecting a model controller, for a battle or for background generation, requires
 an enabled, verified profile and a role allowed by the
@@ -287,7 +287,7 @@ of lookups it made. A request belonging to another battle or attempt returns
 ## Leagues
 
 A league plays AI entrants against each other in background battles. Admins create
-and cancel leagues; Developers and Admins read them.
+and cancel leagues and disqualify entrants; Developers and Admins read them.
 
 `POST /v1/leagues` takes a client-supplied `id`, a `name`, one to five
 `scenarioIds`, the battle timing (`tickCount`, optional `tickDuration` and
@@ -335,11 +335,27 @@ mid-league voids that entrant's remaining fixtures.
 `GET /v1/leagues/{id}` returns the settings, entrants, each group's win and loss
 records with placements once decided, `knockout` ties, and every fixture with its
 match, battle, progress, result and winner as the [`LeagueFixture`](openapi.yaml)
-schema describes.
+schema describes. Each entrant reports whether it is `eliminated` (two group losses
+or a knockout loss) and its `disqualification`, if any.
 `GET /v1/leagues` lists summaries, newest first. `POST /v1/leagues/{id}/cancel`
 cancels unfinished fixtures and stops the running battle; repeating it returns `200`
 and stops any league battle still running. Cancelling a completed league returns
 `409`.
+
+`POST /v1/leagues/{id}/entrants/{entrant}/disqualify` removes an entrant, given by
+its entry index, from a running league, for example a model too slow to keep the
+league moving. The body is a JSON object with an optional `reason` of up to 200
+characters, stored with the time and the Admin's identity. The entrant loses the
+match it is playing, whose battle is stopped, and every match it reaches later is
+settled at once without a battle. Matches already decided stand, including one whose
+battle completed before the request. A forfeited fixture has status `forfeited` and
+names the disqualified side in `forfeit`. The match goes to the other side and counts
+in the group record and the bracket like any other; when both sides were disqualified
+before the match opened, the higher seed goes through and forfeits its next match.
+The request returns `409` when the league is not running, when the entrant is already
+eliminated, or when no other entrant that can still win would remain undisqualified;
+cancel the league instead. This guarantees a disqualified entrant never becomes
+champion. Repeating it returns `200` with the league unchanged.
 
 ## Analytics
 

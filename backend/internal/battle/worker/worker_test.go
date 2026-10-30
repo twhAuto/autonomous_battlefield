@@ -138,6 +138,31 @@ func TestWorkerRunStopsOnCancellationAndClaimFailure(t *testing.T) {
 	})
 }
 
+func TestUndecodableSnapshotFailsOnlyItsBattle(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	repository := &fakeBattleRepository{job: &queue.Job{Lease: queue.Lease{BattleID: "bad", Attempt: 1, Owner: "worker-1"}, ScenarioError: errors.New("unexpected end of JSON input")}}
+	worker, _ := New(cancelOnFailure{repository, cancel}, nil, testWorkerConfig())
+	if err := worker.Run(ctx); err != nil {
+		t.Fatalf("Run() error = %v, want the engine to keep claiming", err)
+	}
+	if repository.failedCode != "invalid_scenario" || repository.failedReason != "unexpected end of JSON input" {
+		t.Fatalf("failure = %q %q, want invalid_scenario with the decode error", repository.failedCode, repository.failedReason)
+	}
+}
+
+// cancelOnFailure ends the run once the worker fails a battle, so a test can tell that
+// the claim loop outlived the failure.
+type cancelOnFailure struct {
+	*fakeBattleRepository
+	cancel context.CancelFunc
+}
+
+func (r cancelOnFailure) FailBattle(ctx context.Context, lease queue.Lease, code, message string) error {
+	defer r.cancel()
+	return r.fakeBattleRepository.FailBattle(ctx, lease, code, message)
+}
+
 // exhaustedSweepFailure fails the pre-claim sweep, which must stop the claim loop just
 // as a claim failure does.
 type exhaustedSweepFailure struct{ *fakeBattleRepository }
@@ -301,6 +326,7 @@ type fakeBattleRepository struct {
 	requeueErr   error
 	failErr      error
 	failedCode   string
+	failedReason string
 	heartbeats   int
 	pausedChecks int
 }
@@ -366,8 +392,8 @@ func (r *fakeBattleRepository) RequeueBattle(context.Context, queue.Lease) error
 	return nil
 }
 
-func (r *fakeBattleRepository) FailBattle(_ context.Context, _ queue.Lease, code, _ string) error {
-	r.failedCode = code
+func (r *fakeBattleRepository) FailBattle(_ context.Context, _ queue.Lease, code, message string) error {
+	r.failedCode, r.failedReason = code, message
 	return r.failErr
 }
 

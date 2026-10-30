@@ -252,9 +252,9 @@ http.server.HTTPServer(('127.0.0.1',8083),Handler).serve_forever()
 ''')
     guest_config=PRIVATE/'config.yaml'
     guest_config.write_text((ROOT/'infra/deploy/agent-vm/config.yaml').read_text().replace('enabled: true','enabled: false'))
-    artifacts={}
+    artifacts={}; codex=json.loads((ROOT/'infra/deploy/agent-vm/cli-releases.json').read_text())['codex']['version']
     for name in ('codex','codex-code-mode-host'):
-        path=PRIVATE/name; path.write_text('#!/bin/sh\nprintf "codex-cli 0.155.0\\n"\n'); artifacts[name]=path
+        path=PRIVATE/name; path.write_text(f'#!/bin/sh\nprintf "codex-cli {codex}\\n"\n'); artifacts[name]=path
     files=[cli.file_entry(worker,'/usr/local/bin/battlefield-agent','0755'),
            cli.file_entry(ROOT/'infra/deploy/agent-vm/worker.service','/etc/systemd/system/battlefield-worker.service','0644'),
            cli.file_entry(ROOT/'scripts/ops/verify-agent-isolation.py','/usr/local/bin/verify-agent-isolation.py','0755'),

@@ -1,6 +1,6 @@
-// Shapes a league for clients: settings, entrants, group records and placements,
-// knockout ties and every fixture with its match, battle, progress while running, result
-// and winner. Entrants are referred to by index.
+// Shapes a league for clients: settings, entrants with any disqualification, group
+// records and placements, knockout ties and every fixture with its match, battle,
+// progress while running, result, forfeit and winner. Entrants are referred to by index.
 
 package api
 
@@ -28,12 +28,22 @@ type leagueJSON struct {
 	CompletedAt *time.Time      `json:"completedAt"`
 }
 
+// entrantJSON is an entrant; Eliminated once it can no longer win, Disqualification null
+// unless an admin disqualified it.
 type entrantJSON struct {
-	Index       int                   `json:"index"`
-	Group       string                `json:"group"`
-	FactionID   string                `json:"factionId"`
-	FactionName string                `json:"factionName"`
-	Controller  game.ControllerConfig `json:"controller"`
+	Index            int                   `json:"index"`
+	Group            string                `json:"group"`
+	FactionID        string                `json:"factionId"`
+	FactionName      string                `json:"factionName"`
+	Controller       game.ControllerConfig `json:"controller"`
+	Eliminated       bool                  `json:"eliminated"`
+	Disqualification *disqualificationJSON `json:"disqualification"`
+}
+
+type disqualificationJSON struct {
+	At     time.Time `json:"at"`
+	By     string    `json:"by"`
+	Reason string    `json:"reason"`
 }
 
 type groupJSON struct {
@@ -72,10 +82,12 @@ type fixtureJSON struct {
 	Attempts   int     `json:"attempts"`
 	BattleID   *string `json:"battleId"`
 	// BattleProgress is present while the fixture runs; Result once it completed, with
-	// Winner null for a draw. Winner is the match winner once the fixture is completed or
-	// void, after the tiebreak where the battle had none.
+	// Winner null for a draw. Forfeit names the disqualified side of a forfeited fixture.
+	// Winner is the match winner once the fixture is completed, void or forfeited, after
+	// the tiebreak where the battle had none.
 	BattleProgress *battleProgressJSON `json:"battleProgress,omitempty"`
 	Result         *resultJSON         `json:"result,omitempty"`
+	Forfeit        string              `json:"forfeit,omitempty"`
 	Winner         *int                `json:"winner"`
 }
 
@@ -96,8 +108,13 @@ func leagueResponse(l *league.League) leagueJSON {
 		Progress:  progressJSON{Total: league.TotalFixtures(l.GroupCount)},
 		CreatedAt: l.CreatedAt, CompletedAt: l.CompletedAt,
 	}
+	eliminated := l.Eliminated()
 	for _, e := range l.Entrants {
-		response.Entrants = append(response.Entrants, entrantJSON{Index: e.Index, Group: league.GroupLetter(e.Group), FactionID: e.FactionID, FactionName: e.FactionName, Controller: e.Controller})
+		item := entrantJSON{Index: e.Index, Group: league.GroupLetter(e.Group), FactionID: e.FactionID, FactionName: e.FactionName, Controller: e.Controller, Eliminated: eliminated[e.Index]}
+		if d := e.Disqualified; d != nil {
+			item.Disqualification = &disqualificationJSON{At: d.At, By: d.By, Reason: d.Reason}
+		}
+		response.Entrants = append(response.Entrants, item)
 	}
 	for group := range l.GroupCount {
 		standings := []standingJSON{}
@@ -124,7 +141,7 @@ func leagueResponse(l *league.League) leagueJSON {
 
 func fixtureResponse(l *league.League, f league.Fixture) fixtureJSON {
 	item := fixtureJSON{ID: f.ID, Sequence: f.Sequence, Stage: f.Stage, Round: f.Round, Tie: f.Tie, Match: league.MatchName(f.Stage, f.Round, f.Tie),
-		Home: f.Home, Away: f.Away, ScenarioID: f.ScenarioID, Status: f.Status, Attempts: f.Attempts, BattleID: f.BattleID}
+		Home: f.Home, Away: f.Away, ScenarioID: f.ScenarioID, Status: f.Status, Attempts: f.Attempts, BattleID: f.BattleID, Forfeit: f.Forfeit}
 	if f.Group != nil {
 		letter := league.GroupLetter(*f.Group)
 		item.Group = &letter

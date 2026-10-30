@@ -89,9 +89,18 @@ export function entrantName(league: League, index: number) {
   return league.entrants[index]?.factionName ?? `Entrant ${index + 1}`
 }
 
-/** The fixture's outcome: its battle's winner, the tiebreak winner after a draw or a void fixture, or its status while undecided. */
+/** A forfeited fixture's outcome: a walkover without a battle, a forfeit of one that started, or the seed's walkover when both sides were disqualified. */
+function forfeitOutcome(league: League, fixture: LeagueFixture) {
+  if (fixture.winner === null) return 'Forfeited'
+  const winner = entrantName(league, fixture.winner)
+  if (fixture.forfeit === 'both') return `Walkover · ${winner} advances on seed`
+  return `${fixture.battleId ? 'Forfeit' : 'Walkover'} · ${winner} wins`
+}
+
+/** The fixture's outcome: its battle's winner, the tiebreak winner after a draw or a void fixture, a forfeit, or its status while undecided. */
 export function fixtureOutcome(league: League, fixture: LeagueFixture) {
   const { result, winner } = fixture
+  if (fixture.status === 'forfeited') return forfeitOutcome(league, fixture)
   if (result && result.winner !== null) return `${entrantName(league, result.winner)} wins`
   if (!result && fixture.status !== 'void') return fixture.status[0].toUpperCase() + fixture.status.slice(1)
   const decided = result ? 'Draw' : 'Void'

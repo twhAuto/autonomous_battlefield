@@ -884,6 +884,49 @@ paths:
         '409': {$ref: '#/components/responses/Conflict'}
         '500': {$ref: '#/components/responses/Internal'}
 
+  /v1/leagues/{id}/entrants/{entrant}/disqualify:
+    parameters:
+      - {$ref: '#/components/parameters/LeagueId'}
+      - name: entrant
+        in: path
+        required: true
+        description: The entrant's index in entry order.
+        schema: {type: integer, minimum: 0}
+    post:
+      tags: [Leagues]
+      operationId: disqualifyLeagueEntrant
+      summary: Disqualify an entrant from a running league
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: |
+        Admins only. The entrant loses the match it is playing, whose battle is
+        stopped, and every match it reaches later is forfeited without a battle;
+        matches already decided stand. Repeating the call returns `200` with the
+        league unchanged. `409 conflict` when the league is not running, the entrant
+        is already eliminated, or no other entrant that can still win would remain
+        undisqualified.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason: {type: string, maxLength: 200, description: Optional; stored trimmed.}
+      responses:
+        '200':
+          description: The league after the disqualification.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/League'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/Internal'}
+
   /v1/analytics:
     get:
       tags: [Analytics]
@@ -1338,7 +1381,8 @@ components:
         id: {type: string}
         continuousProduction: {type: boolean, default: false, description: Repeating per-building unit selection and on/off settings; absent or false retains historical batch recruitment.}
         alternatingTurns: {type: boolean, default: false, description: 'Each tick, the factions act in seat order with the first seat alternating, and equal-speed units of the two factions take turns; absent or false orders buildings and units by ID.'}
-        maximumUnitCount: {type: integer, minimum: 0, maximum: 200, description: 'Per-faction cap on living units plus paid units in training; absent or 0 is unlimited. Rulesets v8 and v9 use 40; v10 to v12 use 50.'}
+        alternatingWindows: {type: boolean, default: false, description: 'Requires alternatingTurns. The first seat also changes from one decision window to the next, so neither seat leads every window; absent or false alternates on tick parity alone.'}
+        maximumUnitCount: {type: integer, minimum: 0, maximum: 200, description: 'Per-faction cap on living units plus paid units in training; absent or 0 is unlimited. Rulesets v8 and v9 use 40; v10 to v13 use 50.'}
         upgrades:
           type: array
           items: {$ref: '#/components/schemas/UpgradeRule'}
@@ -1963,13 +2007,22 @@ components:
           type: array
           items:
             type: object
-            required: [index, group, factionId, factionName, controller]
+            required: [index, group, factionId, factionName, controller, eliminated, disqualification]
             properties:
               index: {type: integer}
               group: {type: string, enum: [A, B, C, D]}
               factionId: {type: string, format: uuid}
               factionName: {type: string, description: Copied when the league was created.}
               controller: {$ref: '#/components/schemas/Controller'}
+              eliminated: {type: boolean, description: True after two group losses or a knockout loss.}
+              disqualification:
+                description: Null unless an Admin disqualified the entrant.
+                type: [object, 'null']
+                required: [at, by, reason]
+                properties:
+                  at: {type: string, format: date-time}
+                  by: {type: string, description: The Admin's user ID.}
+                  reason: {type: string, maxLength: 200, description: Empty when none was given.}
         groups:
           description: |
             Each group's records, ordered by wins, then fewer losses, then entry
@@ -1986,7 +2039,7 @@ components:
         knockout:
           description: |
             Ties in stage order, each one match. `winner` is null until the match is
-            completed or void.
+            completed, void or forfeited.
           type: array
           items:
             type: object
@@ -2016,7 +2069,8 @@ components:
       description: |
         One match, played as one battle; the home entrant, chosen by a coin flip,
         takes the first spawn side. A failed or stopped battle is retried once with a
-        new battle, then the fixture is void.
+        new battle, then the fixture is void. A match a disqualified entrant was
+        playing or reaches later is `forfeited`, with or without a battle.
       type: object
       required: [id, sequence, stage, round, tie, homeEntrant, awayEntrant, scenarioId, status, attempts, battleId, winner]
       properties:
@@ -2030,7 +2084,7 @@ components:
         homeEntrant: {type: integer}
         awayEntrant: {type: integer}
         scenarioId: {type: string}
-        status: {type: string, enum: [pending, running, completed, void, cancelled]}
+        status: {type: string, enum: [pending, running, completed, void, cancelled, forfeited]}
         attempts: {type: integer, minimum: 0, maximum: 2}
         battleId: {type: [string, 'null'], format: uuid}
         battleProgress:
@@ -2047,9 +2101,13 @@ components:
           properties:
             winner: {type: [integer, 'null'], description: The battle's winner; null for a draw.}
             reason: {type: string, examples: [castle_destroyed, tick_limit]}
+        forfeit:
+          description: Present once forfeited, naming the disqualified side; with `both`, the higher seed wins.
+          type: string
+          enum: [home, away, both]
         winner:
           type: [integer, 'null']
-          description: The match winner once the fixture is completed or void, by the league tiebreak where the battle had none; null before.
+          description: The match winner once the fixture is completed, void or forfeited, by the league tiebreak where the battle had none; null before.
 
     AnalyticsController:
       description: 'A model controller, or `{type: scripted}`.'
@@ -2409,7 +2467,7 @@ components:
       properties:
         name: {type: string}
         rationale: {type: string, maxLength: 600}
-        actionWeights: {type: object, additionalProperties: {type: integer}}
+        actionWeights: {type: object, additionalProperties: {type: integer, minimum: 0, maximum: 10000}, description: Action kind to weight, where 1000 is 1x; an omitted or 0 weight counts as 1000.}
         targetBonuses: {type: object, additionalProperties: {type: integer}}
         reserveGold: {type: integer}
         spendOrder: {type: array, items: {type: string}}
