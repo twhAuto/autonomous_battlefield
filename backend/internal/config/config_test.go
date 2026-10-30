@@ -607,6 +607,49 @@ api:
 // current loader and requires the catalog paths that pre-embedding images need after
 // an image-only rollback.
 func TestBaseConfigMapKeepsRolledBackImagesWorking(t *testing.T) {
+	// decode is the strict decoder every binary uses, so this also proves current
+	// images accept the ConfigMap.
+	raw, err := decode(baseConfigMapFile(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw.API.ScenarioCatalogPath != "/app/scenarios" || raw.API.RulesetCatalogPath != "/app/rulesets" {
+		t.Fatalf("rollback catalog paths = %q, %q", raw.API.ScenarioCatalogPath, raw.API.RulesetCatalogPath)
+	}
+	if err := errors.Join(checkLegacyVariableKeys(raw), checkRetiredCatalogPaths(raw)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestShippedAPIProfilesAllowEverySubmission requires each API profile in the shipped
+// configurations to have steps for the context fetch, one unit-details lookup and every
+// submission a decision accepts before it closes, the repair budget the prompt states.
+func TestShippedAPIProfilesAllowEverySubmission(t *testing.T) {
+	required := 2 + ai.InvalidSubmissionLimit
+	for _, path := range []string{filepath.Join("..", "..", "config.yaml"), baseConfigMapFile(t)} {
+		raw, err := decode(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		apiProfiles := 0
+		for _, profile := range raw.AI.Profiles {
+			if profile.Runtime != "api" {
+				continue
+			}
+			apiProfiles++
+			if profile.MaxSteps < required {
+				t.Errorf("%s: API profile %q maxSteps = %d, want at least %d", path, profile.ID, profile.MaxSteps, required)
+			}
+		}
+		if apiProfiles == 0 {
+			t.Errorf("%s has no API profiles", path)
+		}
+	}
+}
+
+// baseConfigMapFile writes the config.yaml held by the cluster ConfigMap to a file.
+func baseConfigMapFile(t *testing.T) string {
+	t.Helper()
 	manifest, err := os.ReadFile(filepath.Join("..", "..", "..", "infra", "deploy", "base", "infrastructure", "configmap.yaml"))
 	if err != nil {
 		t.Fatal(err)
@@ -617,20 +660,9 @@ func TestBaseConfigMapKeepsRolledBackImagesWorking(t *testing.T) {
 	if err := yaml.Unmarshal(manifest, &configMap); err != nil {
 		t.Fatal(err)
 	}
-	// decode is the strict decoder every binary uses, so this also proves current
-	// images accept the ConfigMap.
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(configMap.Data["config.yaml"]), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := decode(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if raw.API.ScenarioCatalogPath != "/app/scenarios" || raw.API.RulesetCatalogPath != "/app/rulesets" {
-		t.Fatalf("rollback catalog paths = %q, %q", raw.API.ScenarioCatalogPath, raw.API.RulesetCatalogPath)
-	}
-	if err := errors.Join(checkLegacyVariableKeys(raw), checkRetiredCatalogPaths(raw)); err != nil {
-		t.Fatal(err)
-	}
+	return path
 }

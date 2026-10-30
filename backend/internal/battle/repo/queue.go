@@ -73,7 +73,7 @@ func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDurati
 	}
 	job.Lease.Owner = workerID
 	if err := json.Unmarshal(snapshot, &job.Scenario); err != nil {
-		return nil, fmt.Errorf("decode claimed battle %q scenario: %w", job.Lease.BattleID, err)
+		job.ScenarioError = fmt.Errorf("decode claimed battle %q scenario: %w", job.Lease.BattleID, err)
 	}
 	return &job, nil
 }

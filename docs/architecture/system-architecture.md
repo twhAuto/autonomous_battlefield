@@ -64,7 +64,9 @@ flowchart TB
 
 PostgreSQL is the durable coordination point. The API and engine do not call each
 other directly, and the engine and agent do not call each other directly. Each
-workload can fail or restart while preserving battle and decision state.
+workload can fail or restart without losing stored battles, events or decisions; a
+battle whose engine stops is reclaimed and rerun from tick 0 (see
+[battle retries](#battle-retries)).
 
 ## 3. Runtime components
 
@@ -485,8 +487,9 @@ queued or lease-expired battle has used `engine.maxAttempts` (default 3) such
 attempts, the next claim pass marks it `failed` with `attempts_exhausted` instead of
 starting another attempt. A rolling restart that requeues within
 `engine.shutdownTimeout` therefore never spends the budget; one that misses it lets
-the lease expire, and that attempt counts. A stored scenario that cannot construct a
-match fails immediately with `invalid_scenario` and is not retried. Together with
+the lease expire, and that attempt counts. A stored scenario that cannot be decoded or
+cannot construct a match fails immediately with `invalid_scenario` and is not
+retried; the engine's other slots keep running. Together with
 `battle_timeout` (see [battle expiry](#55-battle-expiry)), these are the engine's
 terminal battle error codes.
 

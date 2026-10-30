@@ -277,21 +277,29 @@ func TestClaimBattleMapsQueueErrors(t *testing.T) {
 	}{
 		{name: "empty", db: &battleDB{row: battleRow(func(...any) error { return pgx.ErrNoRows })}, want: queue.ErrNoBattleAvailable},
 		{name: "claim", db: &battleDB{row: battleRow(func(...any) error { return errDatabase })}, want: errDatabase},
-		{name: "scenario JSON", db: &battleDB{row: battleRow(func(destinations ...any) error {
-			return assignBattleValues(destinations, []any{"battle-1", 1, []byte("{"), uint64(1), "", ""})
-		})}, want: errDatabase},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := NewPostgres(test.db).ClaimBattle(context.Background(), "worker-1", time.Minute, 3)
-			if test.name == "scenario JSON" {
-				if err == nil || !strings.Contains(err.Error(), "decode claimed battle") {
-					t.Fatalf("ClaimBattle() error = %v", err)
-				}
-			} else if !errors.Is(err, test.want) {
+			if !errors.Is(err, test.want) {
 				t.Fatalf("ClaimBattle() error = %v, want %v", err, test.want)
 			}
 		})
+	}
+}
+
+// TestClaimBattleKeepsUndecodableSnapshotClaimed returns the claimed job with its decode
+// error, so the worker can fail that battle and keep claiming others.
+func TestClaimBattleKeepsUndecodableSnapshotClaimed(t *testing.T) {
+	db := &battleDB{row: battleRow(func(destinations ...any) error {
+		return assignBattleValues(destinations, []any{"battle-1", 1, []byte("{"), uint64(1), "", ""})
+	})}
+	job, err := NewPostgres(db).ClaimBattle(context.Background(), "worker-1", time.Minute, 3)
+	if err != nil || job == nil || job.Lease != (queue.Lease{BattleID: "battle-1", Attempt: 1, Owner: "worker-1"}) {
+		t.Fatalf("ClaimBattle() = %+v, %v", job, err)
+	}
+	if job.ScenarioError == nil || !strings.Contains(job.ScenarioError.Error(), `decode claimed battle "battle-1" scenario`) {
+		t.Fatalf("scenario error = %v", job.ScenarioError)
 	}
 }
 

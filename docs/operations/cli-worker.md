@@ -122,7 +122,9 @@ matches neither the registration nor the release is reported and never replaced.
 
 ### Draining
 
-Restarting the worker cancels running decisions, which then fall back for that turn.
+Restarting the worker cancels running decisions. Each reports its failure as the
+worker stops, so the engine falls back for that turn without waiting out the decision
+timeout.
 Before a restart for a new binary or new settings, the job waits until no CLI
 decision is running, for at most five minutes:
 

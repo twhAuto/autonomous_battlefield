@@ -19,7 +19,10 @@ const (
 	ControllerModel    = "model"
 	ContextSchema      = "battlefield.decision-context.v4"
 	PlanSchema         = "battlefield.strategy-plan.v3"
-	ToolSchema         = "battlefield.mcp-tools.v8"
+	ToolSchema         = "battlefield.mcp-tools.v9"
+	// InvalidSubmissionLimit is the number of invalid model submissions that closes a
+	// decision, so a model gets that many submissions: one plan and its repairs.
+	InvalidSubmissionLimit = 3
 )
 
 type DecisionSession struct {

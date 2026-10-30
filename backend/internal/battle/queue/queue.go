@@ -22,8 +22,11 @@ type Lease struct {
 }
 
 type Job struct {
-	Lease          Lease
-	Scenario       game.Scenario
+	Lease    Lease
+	Scenario game.Scenario
+	// ScenarioError reports a stored scenario snapshot that could not be decoded. The
+	// claim still succeeds, so the worker fails that one battle instead of stopping.
+	ScenarioError  error
 	RequestedTicks uint64
 	Traceparent    string
 	Tracestate     string

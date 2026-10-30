@@ -29,6 +29,25 @@ func TestDirectPurchaseSubmission(t *testing.T) {
 	}
 }
 
+func TestModelZeroActionWeightIsRejected(t *testing.T) {
+	record := ai.DecisionRecord{Version: 1, TargetTick: 10, Runtime: "api", Observation: ai.DecisionContext{Legal: ai.LegalChoices{ActionKinds: []string{"attack", "defend"}}}}
+	submission := ai.PlanSubmission{ExpectedVersion: 1, TargetTick: 10, IdempotencyKey: "once", Plan: controller.PlanProposal{Name: "hold", ActionWeights: map[string]int64{"attack": 0, "defend": 1000}}}
+	issues := ValidateSubmission(record, submission)
+	if len(issues) != 1 || issues[0].Field != "plan.actionWeights.attack" || issues[0].Code != "invalid" {
+		t.Fatalf("zero weight issues = %+v", issues)
+	}
+	submission.Plan.ActionWeights["attack"] = 1
+	if issues := ValidateSubmission(record, submission); len(issues) != 0 {
+		t.Fatalf("minimum weight rejected: %+v", issues)
+	}
+	// The engine still reads a stored or scripted zero as the default weight.
+	record.Runtime = "scripted"
+	submission.Plan.ActionWeights["attack"] = 0
+	if issues := ValidateSubmission(record, submission); len(issues) != 0 {
+		t.Fatalf("scripted zero weight rejected: %+v", issues)
+	}
+}
+
 func TestExpansionOrdersValidateAgainstFrozenChoices(t *testing.T) {
 	r := ai.DecisionRecord{Version: 1, TargetTick: 10, Observation: ai.DecisionContext{Legal: ai.LegalChoices{ActionKinds: []string{"attack"}, Units: []game.UnitType{{ID: "catapult"}}, Buildings: []game.BuildingType{{ID: "defense_tower"}}, EconomySites: []controller.Coordinate{{X: 9, Y: 7}}, RecruitmentSources: []string{"a:barracks:1"}}}}
 	construction := []controller.ConstructionOrder{{BuildingType: "defense_tower", Position: controller.Coordinate{X: 9, Y: 7}}}
