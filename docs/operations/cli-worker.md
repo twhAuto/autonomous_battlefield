@@ -158,9 +158,10 @@ SSH stdin.
 [`infra/deploy/agent-vm/cli-releases.json`](../../infra/deploy/agent-vm/cli-releases.json)
 pins the guest's Codex: its version and the SHA-256 that GitHub publishes for each
 of the two Linux amd64 musl archives, `codex` and its `codex-code-mode-host` helper.
-Verify and plan download both archives from the official `openai/codex` release,
-check them against those digests, and cache the extracted executables privately in
-`~/.cache/autonomous-battlefield/codex`. Plan proposes `upgrade-codex` when the
+Verify and plan download both archives from the official `openai/codex` release
+once, into a private cache in `~/.cache/autonomous-battlefield/codex`, and check
+them against those digests every time they extract the executables. A cached
+archive that fails the check is deleted and downloaded again on the next run. Plan proposes `upgrade-codex` when the
 guest's `/usr/local/bin/codex` and `/usr/local/bin/codex-code-mode-host` are the
 registered ones and differ from the pinned release, or when the registered config
 does not yet accept its version. Only the production worker release reports which
@@ -189,7 +190,9 @@ update.
    `cli.guest/config.yaml`.
 
 A run interrupted after step 3 is proposed again by the next plan and finishes the
-registration. Executables that match neither the registration nor the pinned
+registration. When an interrupted settings sync left the guest config ahead of the
+registered copy, the update starts from the synced settings, so it records both
+changes. Executables that match neither the registration nor the pinned
 release are reported and never replaced. Provider logins in the worker's home are
 not touched.
 

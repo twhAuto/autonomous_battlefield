@@ -193,6 +193,12 @@ def with_codex_prefix(current, prefix):
     return yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
 
 
+def config_states(config, prefix):
+    """Digests of a config before and after a Codex update moves it to the version family `prefix`."""
+    variants = {config, with_codex_prefix(config, prefix)} if prefix else {config}
+    return {hashlib.sha256(variant.encode()).hexdigest() for variant in variants}
+
+
 def codex_profiles(config):
     """The enabled Codex profiles, which a worker must still serve after a Codex update."""
     import yaml
@@ -644,13 +650,11 @@ class Worker:
                 registered = self.registered_config.read_text()
                 desired = desired_config(registered, managed_settings())
                 actual = guest.pop('config_sha256')
-                codex, codex_config = self.codex_checks(guest.pop('codex_sha256'), registered)
-                # An interrupted Codex update leaves the guest at the pinned Codex version family.
-                guest['config_registered'] = actual in (hashlib.sha256(registered.encode()).hexdigest(),
-                                                        hashlib.sha256(codex_config.encode()).hexdigest())
+                codex, prefix = self.codex_checks(guest.pop('codex_sha256'), registered)
+                guest['config_registered'] = actual in config_states(registered, prefix)
                 guest['config_current'] = desired == registered
                 # An interrupted sync left the guest updated but the registered copy behind.
-                guest['config_pending'] = not guest['config_current'] and actual == hashlib.sha256(desired.encode()).hexdigest()
+                guest['config_pending'] = not guest['config_current'] and actual in config_states(desired, prefix)
                 guest.update(self.binary_checks(guest.pop('binary_sha256'), guest.pop('status')))
                 guest.update(codex)
             checks['guest'] = guest
@@ -730,48 +734,51 @@ class Worker:
     def codex_checks(self, installed, config):
         """Compare the guest's Codex with its registration and the pinned release.
 
-        Also returns the registered config moved to the pinned Codex version family.
+        Also returns the pinned version family, or None when the release is unknown.
         """
         artifacts = self.config['guest']['artifacts']
         registered = {name: artifacts[name]['sha256'] for name in CODEX_BINARIES}
         if not self.codex_info:
-            return {'codex_known': False, 'codex_registered': installed == registered, 'codex_current': False}, config
+            return {'codex_known': False, 'codex_registered': installed == registered, 'codex_current': False}, None
         pinned = {name: self.codex_info['binaries'][name]['sha256'] for name in CODEX_BINARIES}
-        target = with_codex_prefix(config, codex_prefix(self.codex_info['version']))
+        prefix = codex_prefix(self.codex_info['version'])
         return {
             'codex_known': True,
             # An interrupted update or restore leaves each executable at one of the two releases.
             'codex_registered': all(installed.get(name) in (registered[name], pinned[name]) for name in CODEX_BINARIES),
-            'codex_current': installed == pinned == registered and target == config,
-        }, target
+            'codex_current': installed == pinned == registered and with_codex_prefix(config, prefix) == config,
+        }, prefix
 
     def codex_release(self):
-        """The pinned Codex executables, extracted once from verified release archives, or None if unavailable."""
+        """The pinned Codex executables, from release archives verified on every use, or None if unavailable."""
         pinned = cli_releases()['codex']
+        archives = [digest + '-' + name + '.tar.gz' for name, digest in pinned['archives'].items()]
         try:
             CODEX_CACHE.mkdir(mode=0o700, parents=True, exist_ok=True)
-            binaries = {name: self.codex_binary(pinned['version'], name, digest) for name, digest in pinned['archives'].items()}
             for old in CODEX_CACHE.iterdir():
-                if old not in [binary['path'] for binary in binaries.values()]:
+                if old.name not in archives:
                     old.unlink()  # Keep only the pinned release.
+            binaries = {name: self.codex_binary(pinned['version'], name, digest) for name, digest in pinned['archives'].items()}
         except (ValueError, OSError, tarfile.TarError):
             return None
         return {'version': pinned['version'], 'binaries': binaries}
 
     def codex_binary(self, version, name, archive_sha256):
-        """Download one release archive, check its published digest and cache its executable."""
-        cached = CODEX_CACHE / (archive_sha256 + '-' + name)
+        """Extract one executable from its release archive, downloaded once and checked against the pin each time."""
+        cached = CODEX_CACHE / (archive_sha256 + '-' + name + '.tar.gz')
         if not cached.exists():
             with urllib.request.urlopen(CODEX_ARCHIVE.format(version=version, name=name), timeout=120) as response:
-                archive = response.read(RELEASE_MAX_BYTES + 1)
-            if hashlib.sha256(archive).hexdigest() != archive_sha256:
-                raise ValueError('The Codex release archive does not match its pinned digest')
-            with tarfile.open(fileobj=io.BytesIO(archive)) as archive_file:
-                member = archive_file.getmember(name + '-x86_64-unknown-linux-musl')
-                if not member.isreg() or not 0 < member.size <= RELEASE_MAX_BYTES:
-                    raise ValueError('The Codex release archive has no usable executable')
-                write_private(cached, archive_file.extractfile(member).read())
-        return {'path': cached, 'sha256': hashlib.sha256(self.private(cached).read_bytes()).hexdigest()}
+                write_private(cached, response.read(RELEASE_MAX_BYTES + 1))
+        archive = self.private(cached).read_bytes()
+        if hashlib.sha256(archive).hexdigest() != archive_sha256:
+            cached.unlink()  # The next run downloads it again.
+            raise ValueError('The Codex release archive does not match its pinned digest')
+        with tarfile.open(fileobj=io.BytesIO(archive)) as archive_file:
+            member = archive_file.getmember(name + '-x86_64-unknown-linux-musl')
+            if not member.isreg() or not 0 < member.size <= RELEASE_MAX_BYTES:
+                raise ValueError('The Codex release archive has no usable executable')
+            content = archive_file.extractfile(member).read()
+        return {'content': content, 'sha256': hashlib.sha256(content).hexdigest()}
 
     @staticmethod
     def repairs(checks):
@@ -994,10 +1001,11 @@ class Worker:
         release = self.codex_info
         registered = {name: self.config['guest']['artifacts'][name]['sha256'] for name in CODEX_BINARIES}
         pinned = {name: release['binaries'][name]['sha256'] for name in CODEX_BINARIES}
-        contents = {name: Path(release['binaries'][name]['path']).read_bytes() for name in CODEX_BINARIES}
-        if any(hashlib.sha256(contents[name]).hexdigest() != pinned[name] for name in CODEX_BINARIES):
-            raise ValueError('The cached Codex release changed; run a new plan')
+        contents = {name: release['binaries'][name]['content'] for name in CODEX_BINARIES}
         config = self.registered_config.read_text()
+        if guest['config_pending']:
+            # An interrupted settings sync left the guest ahead of the registered copy; update from there.
+            config = desired_config(config, managed_settings())
         updated = with_codex_prefix(config, codex_prefix(release['version']))
         for name in CODEX_BINARIES:
             self.stage_binary(contents[name], STAGING + name)
