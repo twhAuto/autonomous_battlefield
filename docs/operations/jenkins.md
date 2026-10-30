@@ -331,7 +331,7 @@ For `main`, the pipeline runs:
 8. A read-only CLI worker check (`cli-worker.py verify`). A down or out-of-sync
    worker marks the build unstable, never failed, and never triggers rollback;
    repair it with [`battlefield-platform/cli`](cli-worker.md). A worker older than
-   the release is only a notice.
+   the release, or Codex other than the pinned release, is only a notice.
 
 [Deployment component mapping](deployment.md#change-to-deployment-mapping) lists
 the paths that select each rollout stage, and the
