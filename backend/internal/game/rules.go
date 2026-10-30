@@ -16,6 +16,9 @@ func ValidateRuleset(ruleset Ruleset) error {
 	if !validRulesetMetadata(ruleset) {
 		return fmt.Errorf("%w: ID, version, budget, and starting gold are invalid", ErrInvalidRuleset)
 	}
+	if ruleset.AlternatingWindows && !ruleset.AlternatingTurns {
+		return fmt.Errorf("%w: alternating windows require alternating turns", ErrInvalidRuleset)
+	}
 	if len(ruleset.Units) == 0 {
 		return fmt.Errorf("%w: units are required", ErrInvalidRuleset)
 	}
