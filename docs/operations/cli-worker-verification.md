@@ -277,7 +277,7 @@ managed way to change that. Do not hand-edit its environment or profiles; see th
 Only after recording these checks, set `BATTLEFIELD_CLI_ISOLATION_VERIFIED=true` in
 the API's private AI configuration and enable the desired CLI availability flag.
 Production startup rejects advertised CLI profiles without this flag, but the flag
-is an operator attestation, not proof of isolation. Invite Developers only after
+is an operator attestation, not proof of isolation. Invite Testers only after
 the gate passes; Players can be invited earlier while CLI stays off.
 
 ## Verify before advertising availability

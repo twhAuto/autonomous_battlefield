@@ -591,7 +591,7 @@ the lifecycle handler, behind a real HTTP server. It uses a PostgreSQL schema of
 its own through `TEST_DATABASE_URL`, and skips when that variable is unset. It
 uses the production Cloudflare Access verifier. A local test issuer publishes a
 signing key at `/cdn-cgi/access/certs`, and the test sends signed tokens for
-Player, Developer, Admin and CI identities. An in-process engine worker processes
+Player, Tester, Admin and CI identities. An in-process engine worker processes
 queued battles, so a scripted `castle-siege` battle actually runs to
 completion.
 

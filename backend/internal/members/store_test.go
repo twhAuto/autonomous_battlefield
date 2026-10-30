@@ -52,7 +52,7 @@ func testStore(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(db.Close)
-	s := &Store{DB: db, Roles: map[string]authn.Role{"owner@example.com": authn.Admin, "dev@example.com": authn.Developer, "seed@example.com": authn.Player}, Writer: groupFunc(func(context.Context, []string) error { return nil })}
+	s := &Store{DB: db, Roles: map[string]authn.Role{"owner@example.com": authn.Admin, "tester@example.com": authn.Tester, "seed@example.com": authn.Player}, Writer: groupFunc(func(context.Context, []string) error { return nil })}
 	if err = s.Initialize(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestProtectedAndInvalidMembers(t *testing.T) {
 			t.Fatal("invalid accepted", email)
 		}
 	}
-	for _, email := range []string{"Owner@example.com", "dev@example.com"} {
+	for _, email := range []string{"Owner@example.com", "tester@example.com"} {
 		if !errors.Is(s.Change(ctx, "owner", email, "", true), ErrProtected) {
 			t.Fatal("privilege accepted", email)
 		}

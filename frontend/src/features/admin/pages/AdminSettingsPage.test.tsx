@@ -10,7 +10,7 @@ const models = [
   { id: 'api', displayName: 'OpenAI API', modelLabel: 'Configured GPT', provider: 'openai', runtime: 'api', scope: 'cluster', available: true },
   { id: 'cli', displayName: 'Codex subscription', modelLabel: 'Configured Codex', provider: 'codex-cli', runtime: 'cli', scope: 'local', available: false, unavailableReason: 'Local runtime is offline.' },
 ]
-function settings() { return { version: 0, models, policy: { providers: { openai: true, 'codex-cli': true }, profiles: { api: { enabled: true, allowedRoles: ['admin', 'developer'] }, cli: { enabled: true, allowedRoles: ['admin', 'developer'] } } } } }
+function settings() { return { version: 0, models, policy: { providers: { openai: true, 'codex-cli': true }, profiles: { api: { enabled: true, allowedRoles: ['admin', 'tester'] }, cli: { enabled: true, allowedRoles: ['admin', 'tester'] } } } } }
 function json(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status }) }
 function renderPage(setRole = vi.fn()) {
   return render(<MemoryRouter><SessionContext.Provider value={{ enabled: true, authenticated: true, actor: { id: 'actual-admin', role: 'admin' } }}><RolePreviewContext.Provider value={{ role: null, setRole }}><AdminSettingsPage /></RolePreviewContext.Provider></SessionContext.Provider></MemoryRouter>)
@@ -115,7 +115,7 @@ describe('AdminSettingsPage', () => {
     renderPage(); await screen.findByText('Configured GPT · API')
     const api = within(screen.getByText('OpenAI API').closest('article')!)
     await user.click(api.getByRole('checkbox', { name: 'Administrator' }))
-    await user.click(api.getByRole('checkbox', { name: 'Developer' }))
+    await user.click(api.getByRole('checkbox', { name: 'Tester' }))
     expect(api.getByText('No roles allowed')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Discard changes' }))
     expect(api.getByRole('checkbox', { name: 'Administrator' })).toBeChecked()

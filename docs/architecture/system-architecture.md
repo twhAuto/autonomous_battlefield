@@ -574,7 +574,8 @@ filters read current values, so membership may change between requests.
 Production API manifests require `BATTLEFIELD_ENV=production`; startup accepts only
 `BATTLEFIELD_AUTH_MODE=cloudflare` with valid issuer (`BATTLEFIELD_ACCESS_ISSUER`),
 audience (`BATTLEFIELD_ACCESS_AUDIENCE`), HTTPS origin (`BATTLEFIELD_PUBLIC_ORIGIN`)
-and nonconflicting email/role assignments (`BATTLEFIELD_ACCESS_ROLES`). JWT
+and nonconflicting email/role assignments (`BATTLEFIELD_ACCESS_ROLES`, keyed by
+`admin`, `tester` and `player`). JWT
 verification uses RS256, a fixed issuer's JWKS with one-hour key cache and a
 30-second refresh throttle, and required identity/
 time/audience checks. The audience claim accepts a single string or an array of
@@ -586,10 +587,10 @@ bounded `auth_failure` reason in the server log
 sessions and logout; the application issues no production auth cookie, and logout
 sends the browser to `/cdn-cgi/access/logout`.
 
-Players, Developers and Admins share gameplay/faction reads. Mutation ownership is
+Players, Testers and Admins share gameplay/faction reads. Mutation ownership is
 stored in PostgreSQL and taken from the authenticated request, never client JSON.
 Legacy rows belong to `legacy-admin`. Only Admin can manage another owner's rows.
-Decision history/context require Developer/Admin. Player gameplay projections run
+Decision history/context require Tester/Admin. Player gameplay projections run
 after shared cache retrieval and omit model diagnostics, raw prompts and internal
 errors. The frontend hides inspection panels and stops their requests for Players.
 Cloudflare Access admission and MFA are independent deployment requirements. For
@@ -612,7 +613,7 @@ PostgreSQL (`player_members`, `player_membership_sync` and
 removed-member tombstones across restarts. Every initialization also durably
 revokes and audits prior Player invitations for configured privileged identities,
 so subsequent privileged-role removal cannot resurrect Player access.
-Admin/Developer roles and CI identities continue through their existing
+Admin/Tester roles and CI identities continue through their existing
 authentication paths; membership cannot elevate roles.
 After signature/issuer/audience/time validation, Player authentication reads current
 desired access and confirmed membership version with a two-second deadline and no
@@ -646,12 +647,12 @@ share settings; read failures make models unavailable. The policy can restrict
 access but cannot activate missing credentials or deployment-disabled runtimes.
 Role overrides supersede configured `allowedRoles`; an explicit empty role list
 denies everyone. Players can select API or CLI profiles only when explicitly included
-in the profile's allowed roles; default roles remain Admin and Developer. Disables
+in the profile's allowed roles; default roles are Admin and Tester. Disables
 apply to new battle selection and background-generation admission; already accepted jobs
 and frozen controller snapshots continue unchanged. This is not an emergency stop.
 
 Role preview keeps the administrator's authenticated session and identity while
-applying Player or Developer read permissions. The browser sends
+applying Player or Tester read permissions. The browser sends
 `X-Battlefield-Preview-Role`; authentication validates the real administrator before
 preview middleware substitutes the effective role ahead of route authorization.
 Both transport and server reject mutations during preview, and the browser clears

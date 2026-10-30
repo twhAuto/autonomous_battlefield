@@ -44,7 +44,7 @@ or the Admin role. Players can read shared factions, battles, events, replays an
 history, but receive gameplay-only responses: events and replay events without
 payloads, battles without
 inspection fields, and a reduced model-profile list. Decision history, saved
-decision context, [leagues](#leagues) and [analytics](#analytics) require Developer
+decision context, [leagues](#leagues) and [analytics](#analytics) require Tester
 or Admin; only Admins create or cancel a league or disqualify its entrants.
 
 Selecting a model controller, for a battle or for background generation, requires
@@ -287,7 +287,7 @@ of lookups it made. A request belonging to another battle or attempt returns
 ## Leagues
 
 A league plays AI entrants against each other in background battles. Admins create
-and cancel leagues and disqualify entrants; Developers and Admins read them.
+and cancel leagues and disqualify entrants; Testers and Admins read them.
 
 `POST /v1/leagues` takes a client-supplied `id`, a `name`, one to five
 `scenarioIds`, the battle timing (`tickCount`, optional `tickDuration` and
@@ -359,7 +359,7 @@ champion. Repeating it returns `200` with the league unchanged.
 
 ## Analytics
 
-`GET /v1/analytics` summarizes completed battles for Developers and Admins: per
+`GET /v1/analytics` summarizes completed battles for Testers and Admins: per
 controller (scripted, or profile, model and reasoning effort) the win, draw and loss
 record, castle wins, a 95% Wilson interval on the win rate, mean ticks to win,
 fallback and invalid-plan rates, mean decision latency and tokens per battle; the
@@ -410,7 +410,7 @@ only while `desiredAccess` is true and `version` equals `syncedVersion`; removin
 access denies further API requests immediately. Repeating an unchanged grant or
 removal is idempotent. Emails are trimmed and lowercased, and must use a dotted DNS
 domain, a local part of at most 64 bytes and a total of at most 254 bytes. A
-configured Admin or Developer email returns `409`. `syncError` is a sanitized
+configured Admin or Tester email returns `409`. `syncError` is a sanitized
 group-level failure, and automatic retries continue with bounded backoff. No route
 accepts a role or returns Cloudflare credentials. See
 [Player invitations](../operations/player-invitations.md) for the lifecycle.
@@ -420,7 +420,7 @@ accepts a role or returns Cloudflare credentials. See
 Both routes require Admin outside role preview and return `no-store`. A provider or
 profile without a stored entry defaults to enabled, with the profile's configured
 roles. A `PUT` must list every configured provider and profile, with no extras, and
-roles drawn once each from `admin`, `developer` and `player`; an empty
+roles drawn once each from `admin`, `tester` and `player`; an empty
 `allowedRoles` denies everyone. A stale `version` returns `409`. The policy
 restricts only new battle selections and generation admissions, and cannot enable a
 profile whose credentials or runtime are unavailable. See

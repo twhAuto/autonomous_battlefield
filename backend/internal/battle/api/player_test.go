@@ -21,8 +21,8 @@ func TestPlayerProjectionAfterSharedCachedRead(t *testing.T) {
 	if e != nil || strings.Contains(string(raw), secret) {
 		t.Fatal(string(raw), e)
 	}
-	dev := player.WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "dev", Role: authn.Developer}))
-	raw, e = json.Marshal(battleResponseFor(dev, run))
+	tester := player.WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "tester", Role: authn.Tester}))
+	raw, e = json.Marshal(battleResponseFor(tester, run))
 	if e != nil || !strings.Contains(string(raw), secret) {
 		t.Fatal("shared cache was mutated", string(raw), e)
 	}
@@ -59,7 +59,7 @@ func TestBattleResponsesExposeNextProduction(t *testing.T) {
 		{name: "settled", run: battleservice.BattleRun{Status: "completed", RequestedTicks: 100, ScenarioSnapshot: scenario, CurrentState: game.State{Tick: 12}}, want: `"production":null`},
 	}
 	for _, tt := range cases {
-		for _, role := range []authn.Role{authn.Player, authn.Developer} {
+		for _, role := range []authn.Role{authn.Player, authn.Tester} {
 			request := httptest.NewRequest("GET", "/v1/battles/battle", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "caller", Role: role}))
 			raw, err := json.Marshal(battleResponseFor(request, &tt.run))
 			if err != nil || !strings.Contains(string(raw), tt.want) {
@@ -71,7 +71,7 @@ func TestBattleResponsesExposeNextProduction(t *testing.T) {
 
 func TestBattleResponsesReportTheUnitCapAndContestedTerritoryOnlyWhenSet(t *testing.T) {
 	run := &battleservice.BattleRun{ID: "battle", Status: "running", ScenarioSnapshot: game.Scenario{Ruleset: game.Ruleset{MaximumUnitCount: 40}}}
-	for _, role := range []authn.Role{authn.Player, authn.Developer} {
+	for _, role := range []authn.Role{authn.Player, authn.Tester} {
 		request := httptest.NewRequest("GET", "/v1/battles/battle", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "viewer", Role: role}))
 		read := func() map[string]any {
 			raw, err := json.Marshal(battleResponseFor(request, run))

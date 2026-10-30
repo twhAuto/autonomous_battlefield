@@ -40,7 +40,7 @@ The frontend is a React/Vite single-page application.
 ## Routes and session
 
 Home and primary navigation share destinations in this order: Stage battle,
-Factions, Battle history, and, for Developers and Admins, Leagues and Statistics.
+Factions, Battle history, and, for Testers and Admins, Leagues and Statistics.
 Admin appears only in primary navigation for Admins outside role preview.
 The compact home has no promotional hero. Factions
 combines directory access with its Create faction action; the creation and
@@ -49,7 +49,7 @@ editing routes keep the Factions navigation item active.
 Routes: `/` (Home), `/battles/new`, `/battles`, `/battles/:id`, `/factions`,
 `/factions/new`, `/factions/:id/edit`, `/leagues`, `/leagues/new`, `/leagues/:id`,
 `/analytics`, `/admin`, and `/admin/members`. League and statistics routes mount for
-Developers and Admins, including in Developer preview. The league setup form at
+Testers and Admins, including in Tester preview. The league setup form at
 `/leagues/new`, the start, cancel and disqualify actions, and the admin routes are only for
 Admins outside role preview; anyone else opening `/leagues/new` gets the not-found
 page. `/admin/members` also requires the session's `members` capability. Unknown

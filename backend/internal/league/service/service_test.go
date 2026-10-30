@@ -128,7 +128,7 @@ func TestCreateLeagueRejectsInvalidShapes(t *testing.T) {
 }
 
 func TestCreateLeagueRequiresAdminAndSurfacesDependencyErrors(t *testing.T) {
-	for _, role := range []authn.Role{authn.Developer, authn.Player, authn.CI} {
+	for _, role := range []authn.Role{authn.Tester, authn.Player, authn.CI} {
 		if _, err := newHarness().service.CreateLeague(actorContext(role), validInput(8)); !errors.Is(err, authn.ErrForbidden) {
 			t.Errorf("%s: err = %v", role, err)
 		}
@@ -180,15 +180,15 @@ func TestReadsRequireInspection(t *testing.T) {
 	if _, err := h.service.CreateLeague(actorContext(authn.Admin), validInput(8)); err != nil {
 		t.Fatal(err)
 	}
-	developer := actorContext(authn.Developer)
-	if got, err := h.service.GetLeague(developer, strings.ToUpper(leagueID)); err != nil || got.ID != leagueID {
+	tester := actorContext(authn.Tester)
+	if got, err := h.service.GetLeague(tester, strings.ToUpper(leagueID)); err != nil || got.ID != leagueID {
 		t.Fatalf("get = %+v, %v", got, err)
 	}
-	if list, err := h.service.ListLeagues(developer, 0); err != nil || len(list) != 1 || h.repo.listLimit != defaultListMax {
+	if list, err := h.service.ListLeagues(tester, 0); err != nil || len(list) != 1 || h.repo.listLimit != defaultListMax {
 		t.Fatalf("list = %+v, %v, limit %d", list, err, h.repo.listLimit)
 	}
 	for _, limit := range []int{-1, 101} {
-		if _, err := h.service.ListLeagues(developer, limit); !errors.Is(err, ErrInvalidLeague) {
+		if _, err := h.service.ListLeagues(tester, limit); !errors.Is(err, ErrInvalidLeague) {
 			t.Errorf("limit %d: err = %v", limit, err)
 		}
 	}
@@ -199,10 +199,10 @@ func TestReadsRequireInspection(t *testing.T) {
 	if _, err := h.service.ListLeagues(player, 0); !errors.Is(err, authn.ErrForbidden) {
 		t.Errorf("player list err = %v", err)
 	}
-	if _, err := h.service.GetLeague(developer, "league"); !errors.Is(err, ErrInvalidLeague) {
+	if _, err := h.service.GetLeague(tester, "league"); !errors.Is(err, ErrInvalidLeague) {
 		t.Errorf("bad ID err = %v", err)
 	}
-	if _, err := h.service.GetLeague(developer, factionID(1)); !errors.Is(err, ErrLeagueNotFound) {
+	if _, err := h.service.GetLeague(tester, factionID(1)); !errors.Is(err, ErrLeagueNotFound) {
 		t.Errorf("missing err = %v", err)
 	}
 }
@@ -228,8 +228,8 @@ func TestCancelLeagueStopsRunningBattlesAndRetriesFailedStops(t *testing.T) {
 	if again, err := h.service.CancelLeague(admin, leagueID); err != nil || again.Status != league.StatusCancelled || fmt.Sprint(h.battles.stopped) != fmt.Sprint([]string{battleID, other, other}) {
 		t.Fatalf("repeat cancel = %+v, %v, stopped %v", again, err, h.battles.stopped)
 	}
-	if _, err := h.service.CancelLeague(actorContext(authn.Developer), leagueID); !errors.Is(err, authn.ErrForbidden) {
-		t.Fatalf("developer cancel err = %v", err)
+	if _, err := h.service.CancelLeague(actorContext(authn.Tester), leagueID); !errors.Is(err, authn.ErrForbidden) {
+		t.Fatalf("tester cancel err = %v", err)
 	}
 	if _, err := h.service.CancelLeague(admin, "league"); !errors.Is(err, ErrInvalidLeague) {
 		t.Fatalf("bad ID err = %v", err)

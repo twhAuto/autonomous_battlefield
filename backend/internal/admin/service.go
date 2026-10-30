@@ -77,7 +77,7 @@ func (s *Service) Save(ctx context.Context, settings Settings, actorID string) (
 func defaultProfileAccess(p ai.ModelProfile) profile.Access {
 	roles := p.AllowedRoles
 	if len(roles) == 0 {
-		roles = []string{"admin", "developer"}
+		roles = []string{"admin", "tester"}
 	}
 	return profile.Access{Enabled: true, AllowedRoles: roles}
 }
@@ -87,7 +87,7 @@ func validRoles(roles []string) bool {
 	}
 	seen := map[string]bool{}
 	for _, role := range roles {
-		if (role != "admin" && role != "developer" && role != "player") || seen[role] {
+		if (role != "admin" && role != "tester" && role != "player") || seen[role] {
 			return false
 		}
 		seen[role] = true

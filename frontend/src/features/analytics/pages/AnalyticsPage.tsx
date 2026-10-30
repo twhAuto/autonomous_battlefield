@@ -1,4 +1,4 @@
-// Statistics across completed battles for Developers and Admins: the model leaderboard,
+// Statistics across completed battles for Testers and Admins: the model leaderboard,
 // head-to-head records, units, upgrades, factions, and map and side balance. One filter
 // row scopes every section; filters live in the URL.
 

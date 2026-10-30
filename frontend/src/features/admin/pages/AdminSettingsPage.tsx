@@ -6,7 +6,7 @@ import { getModelSettings, saveModelSettings, type AccessPolicy, type AccessRole
 
 type ModelProfile = ModelSettings['models'][number]
 
-const roleNames: Record<AccessRole, string> = { admin: 'Administrator', developer: 'Developer', player: 'Player' }
+const roleNames: Record<AccessRole, string> = { admin: 'Administrator', tester: 'Tester', player: 'Player' }
 function Switch({ checked, label, disabled, onChange }: Readonly<{ checked: boolean; label: string; disabled: boolean; onChange(): void }>) {
   return <button className="admin-switch" type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={onChange}>{checked ? 'On' : 'Off'}</button>
 }
@@ -122,7 +122,7 @@ export function AdminSettingsPage() {
     <section className="admin-account" aria-labelledby="admin-preview-title">
       <span className="admin-kicker">ROLE PREVIEW</span><h2 id="admin-preview-title">View as another role</h2>
       <p>Explore the app with that role’s model visibility and inspection permissions, using your own account. Preview is read-only.</p>
-      <div className="admin-preview-actions">{(['developer', 'player'] as const).map(role => <button type="button" key={role} disabled={dirty || saving || loading} onClick={() => enterPreview(role)}>View as {roleNames[role]}</button>)}</div>
+      <div className="admin-preview-actions">{(['tester', 'player'] as const).map(role => <button type="button" key={role} disabled={dirty || saving || loading} onClick={() => enterPreview(role)}>View as {roleNames[role]}</button>)}</div>
       {dirty && <p>Save or discard your changes before entering preview or refreshing.</p>}
     </section>
     <section className="admin-account" aria-labelledby="admin-account-title">

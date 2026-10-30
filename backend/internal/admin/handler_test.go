@@ -96,7 +96,7 @@ func TestSettingsValidationAndAuthorization(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &s); err != nil {
 		t.Fatal(err)
 	}
-	for _, role := range []authn.Role{authn.Player, authn.Developer} {
+	for _, role := range []authn.Role{authn.Player, authn.Tester} {
 		if request(h, "PUT", s, role).Code != 403 || request(h, "GET", nil, role).Code != 403 {
 			t.Fatal("unauthorized settings access")
 		}

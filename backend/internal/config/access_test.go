@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"go.yaml.in/yaml/v3"
 	"strings"
 	"testing"
@@ -36,6 +37,18 @@ func TestProductionAccessConfiguration(t *testing.T) {
 		})
 	}
 }
+func TestTesterRoleAcceptsItsLegacyKey(t *testing.T) {
+	for _, assignments := range []string{`{"tester":["qa@example.com"]}`, `{"developer":["qa@example.com"]}`} {
+		t.Setenv("BATTLEFIELD_ACCESS_ROLES", assignments)
+		if roles, err := cloudflareRoles(); err != nil || roles["qa@example.com"] != authn.Tester {
+			t.Fatalf("%s: %v %v", assignments, roles, err)
+		}
+	}
+	t.Setenv("BATTLEFIELD_ACCESS_ROLES", `{"tester":["qa@example.com"],"developer":["qa@example.com"]}`)
+	if _, err := cloudflareRoles(); err == nil {
+		t.Fatal("one identity assigned under both tester keys")
+	}
+}
 func TestExplicitDevelopmentMode(t *testing.T) {
 	t.Setenv("BATTLEFIELD_AUTH_MODE", "")
 	t.Setenv("BATTLEFIELD_AUTH_ENABLED", "")
@@ -64,9 +77,9 @@ func TestCLIProductionGateAndProfileRoles(t *testing.T) {
 	if e := validateAIProfile(p, true); e != nil {
 		t.Fatal(e)
 	}
-	p.AllowedRoles = []string{"player"}
+	p.AllowedRoles = []string{"player", "tester"}
 	if e := validateAIProfile(p, true); e != nil {
-		t.Fatal("explicit player CLI access rejected", e)
+		t.Fatal("explicit player and tester CLI access rejected", e)
 	}
 	for _, roles := range [][]string{{"root"}, {"admin", "admin"}} {
 		p.AllowedRoles = roles

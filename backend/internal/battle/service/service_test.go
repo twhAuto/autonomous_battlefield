@@ -58,7 +58,7 @@ func TestCreateBattleExemptsOnlyAdminFromAllowances(t *testing.T) {
 	for _, tc := range []struct {
 		role authn.Role
 		want bool
-	}{{authn.Admin, true}, {authn.Developer, false}, {authn.Player, false}, {authn.CI, false}} {
+	}{{authn.Admin, true}, {authn.Tester, false}, {authn.Player, false}, {authn.CI, false}} {
 		battleRepo := &fakeBattleRepo{}
 		factions := &battleFactionRepo{factions: map[string]*faction.Faction{
 			"4db8d152-1e04-4d10-8824-859c6ed72878": {ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Northwind"},
@@ -84,7 +84,7 @@ func TestDecisionBudgetExemptionAppliesOnlyToAdmins(t *testing.T) {
 		role      authn.Role
 		requested bool
 		want      bool
-	}{{authn.Admin, true, true}, {authn.Admin, false, false}, {authn.Developer, true, false}, {authn.Player, true, false}} {
+	}{{authn.Admin, true, true}, {authn.Admin, false, false}, {authn.Tester, true, false}, {authn.Player, true, false}} {
 		battleRepo := &fakeBattleRepo{}
 		factions := &battleFactionRepo{factions: map[string]*faction.Faction{
 			"4db8d152-1e04-4d10-8824-859c6ed72878": {ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Northwind"},
@@ -212,7 +212,7 @@ func TestPlayerCLIBattleSelectionFollowsAdminPolicy(t *testing.T) {
 		ids[1]: {ID: ids[1], Name: "B"},
 	}}
 	policy := profile.AccessPolicy{Profiles: map[string]profile.Access{
-		"cli": {Enabled: true, AllowedRoles: []string{"admin", "developer", "player"}},
+		"cli": {Enabled: true, AllowedRoles: []string{"admin", "tester", "player"}},
 	}}
 	base := profile.NewCatalog("cluster", []ai.ModelProfile{{
 		ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true,
@@ -236,7 +236,7 @@ func TestPlayerCLIBattleSelectionFollowsAdminPolicy(t *testing.T) {
 		t.Fatalf("controller=%#v", selected)
 	}
 
-	policy.Profiles["cli"] = profile.Access{Enabled: true, AllowedRoles: []string{"admin", "developer"}}
+	policy.Profiles["cli"] = profile.Access{Enabled: true, AllowedRoles: []string{"admin", "tester"}}
 	input.ID = "8f22e693-bacd-46bb-b942-64fa613cd388"
 	if _, err := service.CreateBattle(ctx, input); !errors.Is(err, authn.ErrForbidden) {
 		t.Fatalf("revoked Player CLI battle error = %v, want permission denied", err)
@@ -588,7 +588,7 @@ func (r *fakeBattleRepo) ListBattles(_ context.Context, query BattleHistoryQuery
 }
 
 func TestBattleControlOwnershipAllRoles(t *testing.T) {
-	for _, role := range []authn.Role{authn.Player, authn.Developer, authn.Admin} {
+	for _, role := range []authn.Role{authn.Player, authn.Tester, authn.Admin} {
 		for _, owner := range []string{"self", "other", authn.LegacyOwner} {
 			for _, operation := range []string{"stop", "pause", "resume"} {
 				t.Run(string(role)+owner+operation, func(t *testing.T) {

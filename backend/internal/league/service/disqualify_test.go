@@ -52,7 +52,7 @@ func TestDisqualifyEntrantRefusals(t *testing.T) {
 		reason  string
 		want    error
 	}{
-		"developer":       {actorContext(authn.Developer), leagueID, 0, "", authn.ErrForbidden},
+		"tester":          {actorContext(authn.Tester), leagueID, 0, "", authn.ErrForbidden},
 		"malformed ID":    {admin, "league", 0, "", ErrInvalidLeague},
 		"long reason":     {admin, leagueID, 0, strings.Repeat("é", maxReasonLength+1), ErrInvalidLeague},
 		"unknown league":  {admin, "9d7a1d2c-6c43-4cf8-9a6e-0c5a1f3b2e11", 0, "", ErrLeagueNotFound},

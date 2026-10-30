@@ -111,7 +111,7 @@ func TestGetLeagueRouteShowsFixtureResults(t *testing.T) {
 	// A void fixture has no result, but its match goes to the earlier entrant.
 	void := &stored.Fixtures[1]
 	void.Status = league.FixtureVoid
-	read := h.do(authn.Developer, http.MethodGet, "/v1/leagues/"+testLeagueID, "")
+	read := h.do(authn.Tester, http.MethodGet, "/v1/leagues/"+testLeagueID, "")
 	body := decode(t, read)
 	fixtures := body["fixtures"].([]any)
 	completed, voided := fixtures[0].(map[string]any), fixtures[1].(map[string]any)
@@ -134,7 +134,7 @@ func TestGetLeagueRouteShowsRunningBattleProgress(t *testing.T) {
 	battleID := "11111111-1111-4111-8111-111111111111"
 	stored.Fixtures[0].Status, stored.Fixtures[0].BattleID = league.FixtureRunning, &battleID
 	stored.Fixtures[0].Battle = &league.BattleOutcome{Status: "running", CurrentTick: 120, RequestedTicks: 500}
-	read := h.do(authn.Developer, http.MethodGet, "/v1/leagues/"+testLeagueID, "")
+	read := h.do(authn.Tester, http.MethodGet, "/v1/leagues/"+testLeagueID, "")
 	fixtures := decode(t, read)["fixtures"].([]any)
 	progress, ok := fixtures[0].(map[string]any)["battleProgress"].(map[string]any)
 	if read.Code != http.StatusOK || !ok || progress["currentTick"] != 120.0 || progress["requestedTicks"] != 500.0 {
@@ -150,7 +150,7 @@ func TestListLeaguesRouteShowsChampions(t *testing.T) {
 	champion := 3
 	stored := h.repo.leagues[testLeagueID]
 	stored.Status, stored.Champion = league.StatusCompleted, &champion
-	list := h.do(authn.Developer, http.MethodGet, "/v1/leagues?limit=5", "")
+	list := h.do(authn.Tester, http.MethodGet, "/v1/leagues?limit=5", "")
 	body := decode(t, list)
 	item := body["leagues"].([]any)[0].(map[string]any)
 	if list.Code != http.StatusOK || item["entrantCount"] != 8.0 || item["champion"].(map[string]any)["factionName"] != "Faction" || h.repo.listLimit != 5 {
@@ -175,26 +175,26 @@ func TestLeagueRoutesMapErrors(t *testing.T) {
 		{"malformed body", authn.Admin, http.MethodPost, "/v1/leagues", "{", nil, 400, ""},
 		{"unknown group", authn.Admin, http.MethodPost, "/v1/leagues", createBody(func(b map[string]any) { b["entrants"].([]map[string]any)[0]["group"] = "E" }), nil, 400, ""},
 		{"invalid league", authn.Admin, http.MethodPost, "/v1/leagues", createBody(func(b map[string]any) { b["name"] = "" }), nil, 400, ""},
-		{"developer create", authn.Developer, http.MethodPost, "/v1/leagues", createBody(nil), nil, 403, ""},
+		{"tester create", authn.Tester, http.MethodPost, "/v1/leagues", createBody(nil), nil, 403, ""},
 		{"missing map", authn.Admin, http.MethodPost, "/v1/leagues", createBody(nil), func(h *harness) { h.battles.err = battleservice.ErrScenarioNotFound }, 404, ""},
 		{"unavailable model", authn.Admin, http.MethodPost, "/v1/leagues", createBody(nil), func(h *harness) { h.battles.err = battleservice.ErrModelProfileUnavailable }, 422, ""},
 		{"reused ID", authn.Admin, http.MethodPost, "/v1/leagues", createBody(func(b map[string]any) { b["tickCount"] = 400 }), func(h *harness) {
 			h.do(authn.Admin, http.MethodPost, "/v1/leagues", createBody(nil))
 		}, 409, "already_exists"},
 		{"storage failure", authn.Admin, http.MethodPost, "/v1/leagues", createBody(nil), func(h *harness) { h.repo.err = errors.New("database down") }, 500, ""},
-		{"bad limit", authn.Developer, http.MethodGet, "/v1/leagues?limit=zero", "", nil, 400, ""},
-		{"zero limit", authn.Developer, http.MethodGet, "/v1/leagues?limit=0", "", nil, 400, ""},
-		{"limit too high", authn.Developer, http.MethodGet, "/v1/leagues?limit=101", "", nil, 400, ""},
+		{"bad limit", authn.Tester, http.MethodGet, "/v1/leagues?limit=zero", "", nil, 400, ""},
+		{"zero limit", authn.Tester, http.MethodGet, "/v1/leagues?limit=0", "", nil, 400, ""},
+		{"limit too high", authn.Tester, http.MethodGet, "/v1/leagues?limit=101", "", nil, 400, ""},
 		{"player list", authn.Player, http.MethodGet, "/v1/leagues", "", nil, 403, ""},
-		{"list failure", authn.Developer, http.MethodGet, "/v1/leagues", "", func(h *harness) { h.repo.err = errors.New("database down") }, 500, ""},
-		{"slot read failure", authn.Developer, http.MethodGet, "/v1/leagues", "", func(h *harness) { h.repo.slotsErr = errors.New("database down") }, 500, ""},
-		{"missing league", authn.Developer, http.MethodGet, "/v1/leagues/" + testLeagueID, "", nil, 404, ""},
-		{"bad league ID", authn.Developer, http.MethodGet, "/v1/leagues/league", "", nil, 400, ""},
+		{"list failure", authn.Tester, http.MethodGet, "/v1/leagues", "", func(h *harness) { h.repo.err = errors.New("database down") }, 500, ""},
+		{"slot read failure", authn.Tester, http.MethodGet, "/v1/leagues", "", func(h *harness) { h.repo.slotsErr = errors.New("database down") }, 500, ""},
+		{"missing league", authn.Tester, http.MethodGet, "/v1/leagues/" + testLeagueID, "", nil, 404, ""},
+		{"bad league ID", authn.Tester, http.MethodGet, "/v1/leagues/league", "", nil, 400, ""},
 		{"completed cancel", authn.Admin, http.MethodPost, "/v1/leagues/" + testLeagueID + "/cancel", "", func(h *harness) {
 			h.do(authn.Admin, http.MethodPost, "/v1/leagues", createBody(nil))
 			h.repo.leagues[testLeagueID].Status = league.StatusCompleted
 		}, 409, ""},
-		{"developer disqualify", authn.Developer, http.MethodPost, disqualifyPath("0"), "{}", created, 403, ""},
+		{"tester disqualify", authn.Tester, http.MethodPost, disqualifyPath("0"), "{}", created, 403, ""},
 		{"entrant not a number", authn.Admin, http.MethodPost, disqualifyPath("first"), "{}", created, 400, ""},
 		{"malformed disqualify body", authn.Admin, http.MethodPost, disqualifyPath("0"), `{"reason": 1}`, created, 400, ""},
 		{"missing entrant", authn.Admin, http.MethodPost, disqualifyPath("8"), "{}", created, 404, ""},

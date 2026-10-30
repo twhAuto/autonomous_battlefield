@@ -14,7 +14,7 @@ type Role string
 const (
 	Player      Role = "player"
 	CI          Role = "ci"
-	Developer   Role = "developer"
+	Tester      Role = "tester"
 	Admin       Role = "admin"
 	LegacyOwner      = "legacy-admin"
 )
@@ -38,7 +38,7 @@ type actorObserverKey struct{}
 func WithActorObserver(ctx context.Context, observe func(Actor)) context.Context {
 	return context.WithValue(ctx, actorObserverKey{}, observe)
 }
-func (a Actor) CanInspect() bool { return a.Role == Admin || a.Role == Developer }
+func (a Actor) CanInspect() bool { return a.Role == Admin || a.Role == Tester }
 func (a Actor) CanManage(owner string) bool {
 	return a.Role != CI && a.ID != "" && (a.Role == Admin || a.ID == owner)
 }
@@ -84,7 +84,7 @@ type Permission string
 const (
 	// PermissionPlay admits players and anyone who can inspect.
 	PermissionPlay Permission = "play"
-	// PermissionInspect admits developers and administrators.
+	// PermissionInspect admits testers and administrators.
 	PermissionInspect Permission = "inspect"
 	// PermissionAdmin admits administrators only.
 	PermissionAdmin Permission = "admin"

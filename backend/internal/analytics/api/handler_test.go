@@ -38,7 +38,7 @@ func serve(t *testing.T, repo *fakeRepo, role authn.Role, target string) *httpte
 
 func TestGetReportParsesFiltersAndReturnsTheReport(t *testing.T) {
 	repo := &fakeRepo{}
-	response := serve(t, repo, authn.Developer, "/v1/analytics?rulesVersion=8&since=2026-10-01T00:00:00Z&excludeFallback=true&leagueId=9d7a1d2c-6c43-4cf8-9a6e-0c5a1f3b2e10")
+	response := serve(t, repo, authn.Tester, "/v1/analytics?rulesVersion=8&since=2026-10-01T00:00:00Z&excludeFallback=true&leagueId=9d7a1d2c-6c43-4cf8-9a6e-0c5a1f3b2e10")
 	var body map[string]any
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || response.Code != http.StatusOK {
 		t.Fatalf("status %d body %s", response.Code, response.Body.String())
@@ -56,9 +56,9 @@ func TestGetReportErrors(t *testing.T) {
 		err    error
 		status int
 	}{
-		{"bad since", authn.Developer, "/v1/analytics?since=yesterday", nil, http.StatusBadRequest},
-		{"bad fallback flag", authn.Developer, "/v1/analytics?excludeFallback=maybe", nil, http.StatusBadRequest},
-		{"bad league", authn.Developer, "/v1/analytics?leagueId=league", nil, http.StatusBadRequest},
+		{"bad since", authn.Tester, "/v1/analytics?since=yesterday", nil, http.StatusBadRequest},
+		{"bad fallback flag", authn.Tester, "/v1/analytics?excludeFallback=maybe", nil, http.StatusBadRequest},
+		{"bad league", authn.Tester, "/v1/analytics?leagueId=league", nil, http.StatusBadRequest},
 		{"player", authn.Player, "/v1/analytics", nil, http.StatusForbidden},
 		{"storage", authn.Admin, "/v1/analytics", errors.New("database down"), http.StatusInternalServerError},
 	} {

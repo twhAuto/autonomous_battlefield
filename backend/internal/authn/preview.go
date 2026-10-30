@@ -20,7 +20,7 @@ func RolePreview(next http.Handler) http.Handler {
 			apierror.Write(w, r, 403, "administrator preview required")
 			return
 		}
-		if role != "player" && role != "developer" {
+		if role != "player" && role != "tester" {
 			apierror.Write(w, r, 400, "invalid preview role")
 			return
 		}
