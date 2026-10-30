@@ -2,7 +2,7 @@
 // league the server returns. A disqualified entrant loses the match it is playing, and
 // every match it would play later goes to its opponent.
 
-import { useState, type FormEvent } from 'react'
+import { useState, type SubmitEvent } from 'react'
 import { disqualifyEntrant, LeagueApiError, type League } from '../api/leagues'
 import { entrantName } from '../presentation/leagues'
 
@@ -14,7 +14,7 @@ export function DisqualifyEntrant({ league, entrant, onDone, onClose }: Readonly
   const [busy, setBusy] = useState(false)
   const name = entrantName(league, entrant)
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
     setBusy(true)
     setError('')
