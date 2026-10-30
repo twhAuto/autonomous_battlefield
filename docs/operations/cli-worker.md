@@ -178,7 +178,7 @@ update.
 2. Drains the worker.
 3. Replaces both executables and sets every Codex profile's `supportedVersionPrefix`
    in `/etc/battlefield-agent/config.yaml` to the pinned version family, for example
-   `codex-cli 0.155.` for 0.155.0, with their ownership-marker fingerprints. Then it
+   `codex-cli 0.159.` for 0.159.2, with their ownership-marker fingerprints. Then it
    restarts the worker. The worker accepts only a Codex whose version starts with
    that prefix, so the executables and the prefix change together.
 4. Waits up to 90 seconds for the worker to report healthy, not draining and serving

@@ -94,7 +94,7 @@ ai:
         - id: gpt-5.6-luna
           reasoningEfforts: [low, medium, high]
       scope: local
-      supportedVersionPrefix: codex-cli 0.155.
+      supportedVersionPrefix: codex-cli 0.159.
       availabilityEnvironmentVariable: CODEX_CLI_PROFILE_AVAILABLE
       maxSteps: 3
       enabled: true

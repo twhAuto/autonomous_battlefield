@@ -37,7 +37,7 @@ cli_minimum_version() {
 
 # Local CLIs allow the selected version or newer.
 resolve_version_prefixes() {
-  codex_version_prefix='codex-cli 0.155.'
+  codex_version_prefix='codex-cli 0.159.'
   claude_version_prefix='2.1.267 '
   antigravity_version_prefix='1.2.'
   codex_minimum_version="$(cli_minimum_version "${codex_version_prefix}")"
