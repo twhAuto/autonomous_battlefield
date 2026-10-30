@@ -8,7 +8,9 @@ isolated `battlefield-agent` VM. Three things must hold for those battles to run
 - The worker holds the same `BATTLEFIELD_AGENT_SECRET` as production.
 
 The worker binary should also match the release production runs, so it speaks the
-same protocol as the gateway and supports current settings.
+same protocol as the gateway and supports current settings. Codex should match the
+release pinned in [`infra/deploy/agent-vm/cli-releases.json`](../../infra/deploy/agent-vm/cli-releases.json),
+which the selectable Codex models need.
 
 Application delivery does not touch the VM. The manually started Jenkins job
 `battlefield-platform/cli` keeps all of this in order. It runs
@@ -58,7 +60,7 @@ Open `battlefield-platform/cli` → **Build with Parameters**.
 
 | Action | Effect |
 | --- | --- |
-| `verify` (default) | Read-only. Fails and lists every problem: VM state, host units, bridge reachability, whether the gateway accepts the production worker secret, guest identity, worker secret match, worker health, binary drift, a worker left draining, and the boot/watchdog units. A worker binary older than the production release is a notice: it is listed but does not fail. |
+| `verify` (default) | Read-only. Fails and lists every problem: VM state, host units, bridge reachability, whether the gateway accepts the production worker secret, guest identity, worker secret match, worker health, worker binary and Codex drift, a worker left draining, and the boot/watchdog units. A worker binary older than the production release, or Codex other than the pinned release, is a notice: it is listed but does not fail. |
 | `plan` | Records the repairs that `apply` would make, and the production release digest, in a private receipt valid for 30 minutes. |
 | `apply` | Plans, pauses for the registered approver to approve, re-checks that the plan still matches and consumes the receipt. It then repairs, verifies, and fails if anything remains. Reports are archived even when the run fails. |
 
@@ -72,6 +74,7 @@ Apply repairs only what is needed:
 - **`enable-worker`:** re-enables a worker that is running but disabled, so it survives a reboot.
 - **`resume-worker`:** resumes claims on a worker that an interrupted run left draining.
 - **`upgrade-worker`:** installs the production worker release; see [worker upgrades](#worker-upgrades).
+- **`upgrade-codex`:** installs the pinned Codex release; see [Codex updates](#codex-updates).
 - **`sync-worker-config`:** applies [`infra/deploy/agent-vm/managed-settings.json`](../../infra/deploy/agent-vm/managed-settings.json) to `/etc/battlefield-agent/config.yaml`. That is `agentConcurrency` (parallel CLI decisions), each CLI profile's `model`, and the managed profiles' `modelOptions` (including reasoning efforts). `null` removes `agentConcurrency`, so the worker runs one decision at a time. Workers older than the drain support reject the setting, so a value of 1–4 is applied only once the worker runs the production release, or in the same apply that upgrades it. Model options also require the production release binary before configuration sync. Only those fields change. When the worker runs the production release, it validates the new settings (`-check-config`) before they replace the file. The job drains the worker, then updates the guest file, its ownership-marker fingerprint and the host's registered copy (`cli.guest/config.yaml`) together, and restarts the worker.
 
 Secret sync only proceeds when `worker.env` still matches its registered fingerprint
@@ -125,8 +128,8 @@ matches neither the registration nor the release is reported and never replaced.
 Restarting the worker cancels running decisions. Each reports its failure as the
 worker stops, so the engine falls back for that turn without waiting out the decision
 timeout.
-Before a restart for a new binary or new settings, the job waits until no CLI
-decision is running, for at most five minutes:
+Before a restart for a new worker binary, Codex release or settings, the job waits
+until no CLI decision is running, for at most five minutes:
 
 - **Workers with drain support** serve `GET /status` on the
   guest's health port with `draining`, `active` and `concurrency`. The job sends
@@ -150,6 +153,56 @@ production rollout. Reports are archived as `cli-<action>.json`; they contain
 states and fingerprint matches, never secrets. The secret reaches the guest only on
 SSH stdin.
 
+## Codex updates
+
+[`infra/deploy/agent-vm/cli-releases.json`](../../infra/deploy/agent-vm/cli-releases.json)
+pins the guest's Codex: its version and the SHA-256 that GitHub publishes for each
+of the two Linux amd64 musl archives, `codex` and its `codex-code-mode-host` helper.
+Verify and plan download both archives from the official `openai/codex` release
+once, into a private cache in `~/.cache/autonomous-battlefield/codex`, and check
+them against those digests every time they extract the executables. A cached
+archive that fails the check is deleted and downloaded again on the next run. Plan proposes `upgrade-codex` when the
+guest's `/usr/local/bin/codex` and `/usr/local/bin/codex-code-mode-host` are the
+registered ones and differ from the pinned release, or when the registered config
+does not yet accept its version. Only the production worker release reports which
+profiles it serves, so the update waits until the worker runs that release, or runs
+in the same apply right after `upgrade-worker`. If the archives cannot be downloaded
+or do not match, verify reports the Codex status as unknown and plan proposes no
+update.
+
+`upgrade-codex` performs these steps in order:
+
+1. Copies both executables to the guest, checks their SHA-256, and checks that the
+   staged `codex --version` prints the pinned version. A mismatch stops the update
+   with nothing changed.
+2. Drains the worker.
+3. Replaces both executables and sets every Codex profile's `supportedVersionPrefix`
+   in `/etc/battlefield-agent/config.yaml` to the pinned version family, for example
+   `codex-cli 0.155.` for 0.155.0, with their ownership-marker fingerprints. Then it
+   restarts the worker. The worker accepts only a Codex whose version starts with
+   that prefix, so the executables and the prefix change together.
+4. Waits up to 90 seconds for the worker to report healthy, not draining and serving
+   every enabled Codex profile in `GET /status`. If it does not, or step 3 fails, the
+   job reinstalls the registered executables and config from the host copies and
+   fails.
+5. Only then records the release: the host copies in `cli.guest/codex` and
+   `cli.guest/codex-code-mode-host`, their SHA-256 in `cli.json`, and the registered
+   `cli.guest/config.yaml`.
+
+A run interrupted after step 3 is proposed again by the next plan and finishes the
+registration. When an interrupted settings sync left the guest config ahead of the
+registered copy, the update starts from the synced settings, so it records both
+changes. Executables that match neither the registration nor the pinned
+release are reported and never replaced. Provider logins in the worker's home are
+not touched.
+
+To change the Codex release, including a rollback, set its version and both archive
+digests (listed with the GitHub release's assets) in `cli-releases.json`. Set the
+matching `supportedVersionPrefix` on the Codex profiles in `backend/config.yaml`, the
+application ConfigMap and the VM template, and the local minimum in
+`scripts/dev/run-k8s-cli-agent.sh`; a test keeps them equal. Check every selectable
+Codex model with the new release, then merge, promote and run `apply`.
+
 ## Secret rotation
 
 `BATTLEFIELD_AGENT_SECRET` in the production `.env` is the single source of truth.
@@ -162,11 +215,12 @@ consistent with the job's changes.
 After production rollout, the main pipeline runs `cli-worker.py verify`. A
 problem marks the build **unstable** and archives `cli-worker-verify.json`. It
 never fails delivery or triggers a rollback. Repair with this job. A worker binary
-older than the new release only prints a notice; run `apply` to upgrade it.
+older than the new release, or Codex other than the pinned release, only prints a
+notice; run `apply` to update them.
 
 ## Not covered yet
 
-- Updating the provider CLIs (`codex`, `claude`, `agy`) on the guest.
+- Updating Claude Code (`claude`) and Antigravity (`agy`) on the guest.
 - A manual rollback to an earlier worker release. A failed upgrade restores the
   registered binary automatically, but a release that passes its health check
   stays installed until a later release replaces it.
