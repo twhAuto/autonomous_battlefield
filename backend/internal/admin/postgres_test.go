@@ -89,3 +89,25 @@ func TestDurableModelAccessAcrossAPIInstances(t *testing.T) {
 		t.Fatalf("updated_by=%q err=%v", updatedBy, err)
 	}
 }
+
+func TestReadTreatsTheLegacyDeveloperRoleAsTester(t *testing.T) {
+	ctx := context.Background()
+	db, err := pgxpool.New(ctx, isolatedAdminDatabase(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(ctx, `UPDATE model_access_policy SET policy='{"providers":{},"profiles":{"cli":{"enabled":true,"allowedRoles":["admin","developer"]},"api":{"enabled":false,"allowedRoles":[]}}}' WHERE id`); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := (&Postgres{DB: db}).Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := settings.Policy.Profiles["cli"].AllowedRoles; len(got) != 2 || got[0] != "admin" || got[1] != "tester" {
+		t.Fatalf("cli roles = %v", got)
+	}
+	if got := settings.Policy.Profiles["api"].AllowedRoles; len(got) != 0 {
+		t.Fatalf("api roles = %v", got)
+	}
+}

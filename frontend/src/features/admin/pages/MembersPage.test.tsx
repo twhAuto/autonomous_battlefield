@@ -61,7 +61,7 @@ it('keeps failed invitations editable and reports clipboard failure', async () =
   renderPage(); await screen.findByText('No Players have been invited yet.')
   await user.type(screen.getByLabelText('Email address'), 'admin@example.com')
   await user.click(screen.getByRole('button', { name: 'Grant access' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('Administrator and developer')
+  expect(await screen.findByRole('alert')).toHaveTextContent('Administrator and tester')
   expect(screen.getByLabelText('Email address')).toHaveValue('admin@example.com')
   vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('blocked'))
   await user.click(screen.getByRole('button', { name: 'Copy game link' }))
@@ -93,11 +93,11 @@ it('polls synchronization without overlapping requests and stops after unmount',
   expect(fetch).toHaveBeenCalledTimes(calls)
 })
 
-it('exposes the members route to Admins and never loads it for Players or Developers', async () => {
+it('exposes the members route to Admins and never loads it for Players or Testers', async () => {
   vi.mocked(fetch).mockResolvedValue(json({ members: [], gameUrl: 'https://game.example', syncError: '' }))
   const view = render(<MemoryRouter initialEntries={['/admin/members']}><App initialSession={{ authenticated: true, enabled: true, mode: 'cloudflare', actor: { id: 'owner', role: 'admin' }, capabilities: { inspect: true, admin: true, members: true } }} /></MemoryRouter>)
   await screen.findByRole('heading', { name: 'Members' }); view.unmount()
-  for (const role of ['player', 'developer', 'admin'] as const) {
+  for (const role of ['player', 'tester', 'admin'] as const) {
     vi.mocked(fetch).mockClear()
     const other = render(<MemoryRouter initialEntries={['/admin/members']}><App initialSession={{ authenticated: true, enabled: true, mode: 'cloudflare', actor: { id: 'someone', role } }} /></MemoryRouter>)
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Members' })).not.toBeInTheDocument())

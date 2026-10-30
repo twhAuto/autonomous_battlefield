@@ -575,7 +575,7 @@ paths:
       tags: [Battles]
       operationId: listBattleDecisions
       summary: List AI decision history for an attempt
-      description: Requires the Developer or Admin role.
+      description: Requires the Tester or Admin role.
       parameters:
         - name: attempt
           in: query
@@ -611,7 +611,7 @@ paths:
       operationId: getDecisionContext
       summary: Get the saved observation for one decision
       description: |
-        Requires the Developer or Admin role. A request belonging to another battle or
+        Requires the Tester or Admin role. A request belonging to another battle or
         attempt returns `404`. Provider metadata, trace state, submission capabilities,
         and credentials are excluded.
       parameters:
@@ -760,7 +760,7 @@ paths:
       tags: [Leagues]
       operationId: listLeagues
       summary: List leagues, newest first
-      description: Developers and Admins only.
+      description: Testers and Admins only.
       parameters:
         - name: limit
           in: query
@@ -844,7 +844,7 @@ paths:
       tags: [Leagues]
       operationId: getLeague
       summary: Read a league with its tables, knockout and fixtures
-      description: Developers and Admins only.
+      description: Testers and Admins only.
       responses:
         '200':
           description: The league.
@@ -933,7 +933,7 @@ paths:
       operationId: getAnalytics
       summary: Summarize completed battles
       description: |
-        Developers and Admins only. Covers completed battles, newest first, at most
+        Testers and Admins only. Covers completed battles, newest first, at most
         5000 (`truncated` reports a cut). Every list is sorted, so equal data gives an
         equal report. Unit and upgrade figures use only results that carry per-type
         statistics; older results count for outcomes alone.
@@ -1047,7 +1047,7 @@ paths:
         - {$ref: '#/components/parameters/Origin'}
       description: |
         `202` confirms persisted intent, not Cloudflare admission. Granting an
-        unchanged intent is idempotent. A configured Admin or Developer email
+        unchanged intent is idempotent. A configured Admin or Tester email
         returns `409`.
       requestBody:
         required: true
@@ -1279,7 +1279,7 @@ components:
 
     Role:
       type: string
-      enum: [admin, developer, player]
+      enum: [admin, tester, player]
 
     Session:
       type: object
@@ -2327,7 +2327,7 @@ components:
     BattleEvent:
       description: |
         `data` depends on `type`. Players receive every event with an empty `data`
-        object; Developers and Admins receive the payloads below. Positions are
+        object; Testers and Admins receive the payloads below. Positions are
         `{x, y}` objects.
 
         | `type` | `data` fields |
@@ -2592,7 +2592,7 @@ components:
       description: |
         A succeeded job is an editable draft, not a saved faction. Players receive only
         `id`, `status`, `background`, `modelLabel`, `createdAt`, and `expiresAt`; the
-        remaining fields are returned to Developers and Admins.
+        remaining fields are returned to Testers and Admins.
       type: object
       required: [id, status, background, modelLabel, createdAt, expiresAt]
       properties:

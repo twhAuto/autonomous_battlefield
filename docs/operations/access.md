@@ -1,7 +1,7 @@
 # Production access
 
 Production serves **play.ordinalfrontier.com** behind Cloudflare Access (team
-**ordinalfrontier-lab**) through a named Cloudflare Tunnel. Admin and Developer
+**ordinalfrontier-lab**) through a named Cloudflare Tunnel. Admin and Tester
 roles are private operator configuration; optional managed Player invitations live
 in PostgreSQL. No email list is committed to Git.
 
@@ -31,7 +31,7 @@ these properties:
 - Google is the identity provider. Allow policies list exact emails or the managed
   Player group. Never add a domain-wide allow, Bypass, Everyone, or a policy that
   allows all service tokens.
-- Admin and Developer identities require MFA from an IdP and Access policy that
+- Admin and Tester identities require MFA from an IdP and Access policy that
   actually enforce it. Test the challenge: a normal Google login alone is not
   evidence of MFA.
 - Only the tunnel's outbound connection exposes the application. Remove public
@@ -136,7 +136,7 @@ shared domain, identity provider or other shared infrastructure.
 
 The persistent identity is the verified `issuer|subject`. Each request maps the
 verified, normalized email to exactly one role. With managed Players enabled,
-Admin and Developer roles stay in configuration and Player eligibility comes from
+Admin and Tester roles stay in configuration and Player eligibility comes from
 the database on every request; new grants require confirmed Cloudflare
 synchronization. Without managed Players, every role comes from configuration.
 
@@ -144,7 +144,7 @@ synchronization. Without managed Players, every role comes from configuration.
 - Editing or deleting factions and stopping, pausing or resuming battles require
   ownership or Admin. Rows created before ownership existed belong to
   `legacy-admin`, which only Admin can manage. Owners never come from client JSON.
-- Developers can inspect diagnostics and use enabled CLI profiles; the role grants
+- Testers can inspect diagnostics and use enabled CLI profiles; the role grants
   no host or deployment access.
 - Players receive gameplay responses only and cannot fetch decision history or
   saved context.
@@ -166,7 +166,7 @@ is a deployment configuration task.
   are off for Players by default; check **Player** on the profile and save to
   grant it. An empty role selection grants access to nobody.
 - Without an admin override, the profile's configured `allowedRoles` is the default
-  (for example `[player, developer, admin]`). Overrides take precedence; new
+  (for example `[player, tester, admin]`). Overrides take precedence; new
   profiles inherit their defaults, and removed profiles disappear on refresh.
 - Background generation checks the same eligibility.
 - Changes apply to new battles and background-generation requests; existing battles
@@ -179,7 +179,7 @@ is a deployment configuration task.
 To halt AI execution, use the [stop switch](#limits-and-the-stop-switch), not these
 toggles.
 
-**View as Player** or **View as Developer** opens a read-only preview with that
+**View as Player** or **View as Tester** opens a read-only preview with that
 role's actual API visibility and inspection permissions. Save or discard edits
 first. The banner stays visible while you navigate, and **Exit preview** restores
 the administrator view. Preview uses your own identity and ownership, impersonates
@@ -261,7 +261,7 @@ blocks new claims until capacity frees; it does not cancel active jobs.
 Jenkins authenticates to production with a Cloudflare Access service token stored
 as the Secret file credential `battlefield-production-access-service-token`. It is
 used for credential preflight, deployment smoke and k6 smoke load. The token grants
-no Player, Developer or Admin role. The API validates the signed Access application
+no Player, Tester or Admin role. The API validates the signed Access application
 JWT (RS256, fixed issuer and audience, expiry, issue time and signing keys),
 requires its `common_name` to equal `BATTLEFIELD_ACCESS_CI_CLIENT_ID`, and requires
 an empty user subject and email. The resulting `ci` actor can only `GET`

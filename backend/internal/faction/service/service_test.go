@@ -256,7 +256,7 @@ func TestBackgroundCreationAndEditing(t *testing.T) {
 }
 
 func TestFactionOwnershipAllRoles(t *testing.T) {
-	for _, role := range []authn.Role{authn.Player, authn.Developer, authn.Admin} {
+	for _, role := range []authn.Role{authn.Player, authn.Tester, authn.Admin} {
 		for _, owner := range []string{"self", "other", authn.LegacyOwner} {
 			t.Run(string(role)+owner, func(t *testing.T) {
 				checkFactionOwnership(t, role, owner)

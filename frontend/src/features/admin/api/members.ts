@@ -13,7 +13,7 @@ const membersFetch = createApiClient(Error)
 async function check(response: Response) {
   if (response.ok) return
   if (response.status === 400) throw new Error('Enter a valid email address.')
-  if (response.status === 409) throw new Error('Administrator and developer access is managed outside this page.')
+  if (response.status === 409) throw new Error('Administrator and tester access is managed outside this page.')
   if (response.status === 404) throw new Error('This member no longer exists. Refresh the list.')
   throw new Error('Player access could not be loaded or changed. Check that member management is configured and try again.')
 }

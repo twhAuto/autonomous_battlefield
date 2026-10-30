@@ -141,7 +141,7 @@ describe('App', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it.each(['admin', 'developer', 'player'] as const)('offers the %s main-menu destinations allowed by primary navigation', (role) => {
+  it.each(['admin', 'tester', 'player'] as const)('offers the %s main-menu destinations allowed by primary navigation', (role) => {
     render(<MemoryRouter><App initialSession={{
       enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'test-user', role },
     }} /></MemoryRouter>)

@@ -15,7 +15,7 @@ import (
 )
 
 var ErrInvalid = errors.New("enter a valid email address")
-var ErrProtected = errors.New("administrator and developer identities are managed outside this page")
+var ErrProtected = errors.New("administrator and tester identities are managed outside this page")
 var ErrNotFound = errors.New("member not found")
 
 type Store struct {
@@ -48,7 +48,7 @@ type Member struct {
 }
 
 func (s *Store) protected(email string) bool {
-	return s.Roles[email] == authn.Admin || s.Roles[email] == authn.Developer
+	return s.Roles[email] == authn.Admin || s.Roles[email] == authn.Tester
 }
 
 // memberID guards removal so the uuid primary key is compared directly.

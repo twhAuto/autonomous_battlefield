@@ -27,8 +27,8 @@ it('previews across navigation, sends the effective role, and restores admin acc
   expect(screen.getByRole('link', { name: 'Admin' })).toBeInTheDocument()
   await user.click(screen.getByRole('link', { name: 'Admin' }))
   await screen.findByText('No AI model profiles are configured.')
-  await user.click(screen.getByRole('button', { name: 'View as Developer' }))
-  expect(screen.getByRole('status')).toHaveTextContent('Viewing as Developer')
+  await user.click(screen.getByRole('button', { name: 'View as Tester' }))
+  expect(screen.getByRole('status')).toHaveTextContent('Viewing as Tester')
 })
 
 it('blocks mutations in preview before sending them and preserves a clear error', async () => {

@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
@@ -20,7 +21,22 @@ func (p *Postgres) Read(ctx context.Context) (Settings, error) {
 		return s, err
 	}
 	err = json.Unmarshal(raw, &s.Policy)
+	renameLegacyRoles(s.Policy)
 	return s, err
+}
+
+// legacyTesterRole is the retired name of the tester role. Policies saved before the
+// rename may still list it, so reads treat it as tester until a migration rewrites them.
+const legacyTesterRole = "developer"
+
+func renameLegacyRoles(policy profile.AccessPolicy) {
+	for _, access := range policy.Profiles {
+		for i, role := range access.AllowedRoles {
+			if role == legacyTesterRole {
+				access.AllowedRoles[i] = "tester"
+			}
+		}
+	}
 }
 
 func (p *Postgres) Save(ctx context.Context, s Settings, actorID string) (Settings, error) {

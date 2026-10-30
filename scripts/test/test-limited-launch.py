@@ -21,7 +21,7 @@ class LaunchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as out:
             args = SimpleNamespace(hostname='battle.example.com', team='friends', audience='a'*64,
                 tunnel_id='12345678-1234-1234-1234-123456789012', cloudflared_image='cloudflare/cloudflared@sha256:'+'b'*64,
-                output=out, admin=['owner@example.com'], developer=[], player=['friend@example.com'])
+                output=out, admin=['owner@example.com'], tester=[], player=['friend@example.com'])
             config = launch.render(args)
             routes = config['ingress']
             self.assertEqual(routes[-1], {'service': 'http_status:404'})

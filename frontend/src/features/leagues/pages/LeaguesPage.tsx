@@ -1,4 +1,4 @@
-// League registry for Developers and Admins: status, progress and champion, with the
+// League registry for Testers and Admins: status, progress and champion, with the
 // league setup link for Admins.
 
 import { useEffect, useState } from 'react'

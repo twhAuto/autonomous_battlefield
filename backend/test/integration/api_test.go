@@ -48,7 +48,7 @@ const (
 // Each identity maps to the role it receives from the configured role table.
 var integrationRoles = map[string]authn.Role{
 	"alice@example.com": authn.Player, "bob@example.com": authn.Player,
-	"dev@example.com": authn.Developer, "admin@example.com": authn.Admin,
+	"tester@example.com": authn.Tester, "admin@example.com": authn.Admin,
 }
 
 func TestAPIIntegrationAgainstPostgres(t *testing.T) {
@@ -68,7 +68,7 @@ func TestAPIIntegrationAgainstPostgres(t *testing.T) {
 	battleID := randomID(t)
 	t.Run("create and retry", func(t *testing.T) { checkBattleCreationRetries(t, api, alice, bob, battleID, blue, red) })
 	t.Run("poll to completion and view", func(t *testing.T) { checkCompletedBattle(t, api, bob, battleID, blue) })
-	users := integrationUsers{alice: alice, bob: bob, developer: api.as(issuer.user("dev")), admin: api.as(issuer.user("admin"))}
+	users := integrationUsers{alice: alice, bob: bob, tester: api.as(issuer.user("tester")), admin: api.as(issuer.user("admin"))}
 	t.Run("authorization", func(t *testing.T) { checkAuthorization(t, api, users, battleID, blue, red) })
 }
 
@@ -338,15 +338,15 @@ func checkCompletedReplay(t *testing.T, api *integrationAPI, viewer *integration
 	api.expectError(t, viewer.get("/v1/battles/"+battleID+"/replay?tick=4"), http.StatusBadRequest, apierror.CodeInvalidRequest)
 }
 
-// integrationUsers holds one signed-in client per role: two Players, a Developer and an Admin.
-type integrationUsers struct{ alice, bob, developer, admin *integrationClient }
+// integrationUsers holds one signed-in client per role: two Players, a Tester and an Admin.
+type integrationUsers struct{ alice, bob, tester, admin *integrationClient }
 
 func checkAuthorization(t *testing.T, api *integrationAPI, users integrationUsers, completed, blue, red string) {
-	alice, bob, developer, admin := users.alice, users.bob, users.developer, users.admin
+	alice, bob, tester, admin := users.alice, users.bob, users.tester, users.admin
 	decisions := "/v1/battles/" + completed + "/decisions?attempt=1"
 	api.expectError(t, bob.get(decisions), http.StatusForbidden, apierror.CodePermissionDenied)
-	api.expect(t, developer.get(decisions), http.StatusOK)
-	api.expectError(t, developer.get("/v1/admin/model-access"), http.StatusForbidden, apierror.CodePermissionDenied)
+	api.expect(t, tester.get(decisions), http.StatusOK)
+	api.expectError(t, tester.get("/v1/admin/model-access"), http.StatusForbidden, apierror.CodePermissionDenied)
 	api.expect(t, admin.get("/v1/admin/model-access"), http.StatusOK)
 	api.expectError(t, bob.get("/v1/no-such-route"), http.StatusForbidden, apierror.CodePermissionDenied)
 	api.expectError(t, bob.send(http.MethodDelete, "/v1/factions/"+blue, "", nil), http.StatusForbidden, apierror.CodePermissionDenied)

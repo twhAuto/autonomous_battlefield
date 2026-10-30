@@ -3,7 +3,7 @@ import {expect,it} from 'vitest'
 import {SessionContext,usePermissions} from './SessionContext'
 import type {ReactNode} from 'react'
 
-it.each(['player','developer','admin'] as const)('limits %s ownership and inspection',role=>{
+it.each(['player','tester','admin'] as const)('limits %s ownership and inspection',role=>{
  const wrapper=({children}:{children:ReactNode})=><SessionContext.Provider value={{enabled:true,authenticated:true,mode:'cloudflare',actor:{id:'self',role}}}>{children}</SessionContext.Provider>
  const {result}=renderHook(usePermissions,{wrapper})
  expect(result.current.inspect).toBe(role!=='player')

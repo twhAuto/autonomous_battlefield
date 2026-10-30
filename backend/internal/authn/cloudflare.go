@@ -170,13 +170,13 @@ func (c *Cloudflare) actorWithContext(ctx context.Context, claims accessClaims) 
 	}
 	email := strings.ToLower(strings.TrimSpace(claims.Email))
 	role := c.Roles[email]
-	if claims.Sub != "" && email != "" && c.ResolvePlayer != nil && role != Admin && role != Developer {
+	if claims.Sub != "" && email != "" && c.ResolvePlayer != nil && role != Admin && role != Tester {
 		role = ""
 		if c.ResolvePlayer(ctx, email) {
 			role = Player
 		}
 	}
-	if claims.Sub == "" || email == "" || (role != Player && role != Developer && role != Admin) {
+	if claims.Sub == "" || email == "" || (role != Player && role != Tester && role != Admin) {
 		return Actor{}, false
 	}
 	return Actor{ID: c.Issuer + "|" + claims.Sub, Email: email, Role: role}, true

@@ -82,7 +82,7 @@ function AppLayout({ actorID, admin, inspect, logoutError, onLogout }: Readonly<
         </div>
       </header>
 
-      {preview.role && <output className="role-preview-banner"><span>Viewing as {preview.role === 'player' ? 'Player' : 'Developer'} · Read-only preview using your own account. Your administrator permissions are unchanged.</span><button type="button" onClick={() => preview.setRole(null)}>Exit preview</button></output>}
+      {preview.role && <output className="role-preview-banner"><span>Viewing as {preview.role === 'player' ? 'Player' : 'Tester'} · Read-only preview using your own account. Your administrator permissions are unchanged.</span><button type="button" onClick={() => preview.setRole(null)}>Exit preview</button></output>}
       {logoutError && <p className="logout-error" role="alert">{logoutError}</p>}
       <main id="main-content" tabIndex={-1} className={isBattleDetail ? 'main-content--battle' : undefined}><Outlet /></main>
 
@@ -147,11 +147,11 @@ export default function App({ authentication = authenticationClient, initialSess
 
   const canAdmin = session?.actor?.role === 'admin' || (!session?.actor?.role && session?.mode !== 'cloudflare')
 
-  const effectiveSession = useMemo(() => session && canAdmin && previewRole ? { ...session, actor: { ...session?.actor, id: session?.actor?.id ?? 'local-development', role: previewRole }, capabilities: { inspect: previewRole === 'developer', admin: false } } : session, [session, canAdmin, previewRole])
+  const effectiveSession = useMemo(() => session && canAdmin && previewRole ? { ...session, actor: { ...session?.actor, id: session?.actor?.id ?? 'local-development', role: previewRole }, capabilities: { inspect: previewRole === 'tester', admin: false } } : session, [session, canAdmin, previewRole])
   const previewContext = useMemo(() => ({ role: previewRole, setRole: changePreviewRole }), [previewRole, changePreviewRole])
   const adminNow = canAdmin && !previewRole
   const effectiveRole = effectiveSession?.actor?.role ?? (session?.mode === 'cloudflare' ? 'player' : 'admin')
-  const inspect = effectiveRole === 'admin' || effectiveRole === 'developer'
+  const inspect = effectiveRole === 'admin' || effectiveRole === 'tester'
 
   if (sessionError) {
     return (

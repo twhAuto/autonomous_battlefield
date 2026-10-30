@@ -55,7 +55,7 @@ export function MembersPage() {
         <button type="submit" disabled={busy || !data}>Grant access</button>
       </form>
       {data && <p>Share this game link: <a href={data.gameUrl}>{data.gameUrl}</a> <button type="button" onClick={() => { void copyLink() }}>Copy game link</button></p>}
-      <p>No invitation email is sent. Admin and Developer access remains managed separately.</p>
+      <p>No invitation email is sent. Admin and Tester access remains managed separately.</p>
     </section>
     {(error || loadError) && <p role="alert">{error || loadError}</p>}
     {notice && <output className="admin-status">{notice}</output>}

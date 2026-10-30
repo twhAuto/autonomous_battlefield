@@ -20,6 +20,10 @@ const disabledDevelopmentMode = "disabled-development"
 
 var accessClientID = regexp.MustCompile(`^[a-f0-9]{32}\.access$`)
 
+// legacyTesterKey is the retired name of the tester role in BATTLEFIELD_ACCESS_ROLES.
+// It stays accepted so a rollback image and the current image can share one configuration.
+const legacyTesterKey = "developer"
+
 func parseAuthConfig(raw fileConfig, production bool) (authn.Config, error) {
 	mode := strings.TrimSpace(os.Getenv(envAuthMode))
 	if production && mode != authn.ModeCloudflare {
@@ -61,7 +65,10 @@ func cloudflareRoles() (map[string]authn.Role, error) {
 	}
 	roles := map[string]authn.Role{}
 	for role, emails := range assignments {
-		if role != "admin" && role != "developer" && role != "player" {
+		if role == legacyTesterKey {
+			role = string(authn.Tester)
+		}
+		if role != "admin" && role != "tester" && role != "player" {
 			return nil, fmt.Errorf("unknown Access role")
 		}
 		for _, email := range emails {

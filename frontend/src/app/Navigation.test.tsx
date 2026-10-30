@@ -29,21 +29,21 @@ it('exposes mobile navigation and logout, closes on Escape and restores focus', 
 it('shows leagues and statistics only to roles that can inspect', () => {
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))
   const authentication = { session: vi.fn(), login: vi.fn(), logout: vi.fn() }
-  const links = (role: 'player' | 'developer') => {
+  const links = (role: 'player' | 'tester') => {
     const view = render(<MemoryRouter><App authentication={authentication} initialSession={{ enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: role, role } }} /></MemoryRouter>)
     const names = within(screen.getByRole('navigation')).getAllByRole('link').map(link => link.textContent)
     view.unmount()
     return names
   }
   expect(links('player')).toEqual(['Stage battle', 'Factions', 'Battle history'])
-  expect(links('developer')).toEqual(['Stage battle', 'Factions', 'Battle history', 'Leagues', 'Statistics'])
+  expect(links('tester')).toEqual(['Stage battle', 'Factions', 'Battle history', 'Leagues', 'Statistics'])
 })
 
-it('shows not found to a Developer opening the league setup route', () => {
+it('shows not found to a Tester opening the league setup route', () => {
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))
   vi.stubGlobal('fetch', vi.fn())
   const authentication = { session: vi.fn(), login: vi.fn(), logout: vi.fn() }
-  render(<MemoryRouter initialEntries={['/leagues/new']}><App authentication={authentication} initialSession={{ enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'developer', role: 'developer' } }} /></MemoryRouter>)
+  render(<MemoryRouter initialEntries={['/leagues/new']}><App authentication={authentication} initialSession={{ enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'tester', role: 'tester' } }} /></MemoryRouter>)
   expect(screen.getByRole('heading', { name: 'This route is outside the mapped frontier.' })).toBeInTheDocument()
   expect(vi.mocked(fetch).mock.calls.map(([input]) => String(input)).filter(url => url.includes('/v1/leagues/new'))).toEqual([])
 })
