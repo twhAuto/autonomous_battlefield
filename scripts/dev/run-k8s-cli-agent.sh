@@ -229,7 +229,7 @@ write_agent_config() {
       printf '      displayName: Codex / ChatGPT subscription\n'
       printf '      provider: codex-cli\n'
       printf '      prefetchContext: %s\n' "${prefetch_context}"
-      printf '      modelOptions:\n        - id: gpt-6-luna\n          reasoningEfforts: [low, medium, high]\n        - id: gpt-5.6-luna\n          reasoningEfforts: [low, medium, high]\n        - id: gpt-6.1-sol\n          reasoningEfforts: [low, medium, high]\n'
+      printf '      modelOptions:\n        - id: gpt-6.1-sol\n          reasoningEfforts: [low, medium, high]\n        - id: gpt-6.1-terra\n          reasoningEfforts: [low, medium, high]\n        - id: gpt-6-astra\n          reasoningEfforts: [low, medium, high]\n        - id: gpt-6-sol\n          reasoningEfforts: [low, medium, high]\n        - id: gpt-6-luna\n          reasoningEfforts: [low, medium, high]\n        - id: gpt-5.6-sol\n          reasoningEfforts: [low, medium, high]\n        - id: gpt-5.6-terra\n          reasoningEfforts: [low, medium, high]\n        - id: gpt-5.6-luna\n          reasoningEfforts: [low, medium, high]\n'
       printf '      runtime: cli\n'
       printf '      model: gpt-5.6-luna\n'
       printf '      scope: local\n'
@@ -242,7 +242,7 @@ write_agent_config() {
       printf '      displayName: Claude subscription\n'
       printf '      provider: claude-cli\n'
       printf '      prefetchContext: %s\n' "${prefetch_context}"
-      printf '      modelOptions:\n        - id: haiku\n        - id: sonnet\n          reasoningEfforts: [low, medium, high]\n        - id: opus\n          reasoningEfforts: [low, medium, high]\n'
+      printf '      modelOptions:\n        - id: haiku\n        - id: sonnet\n          reasoningEfforts: [low, medium, high]\n        - id: opus\n          reasoningEfforts: [low, medium, high]\n        - id: fable\n          reasoningEfforts: [low, medium, high]\n'
       printf '      runtime: cli\n'
       printf '      model: sonnet\n'
       printf '      scope: local\n'

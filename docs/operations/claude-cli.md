@@ -35,10 +35,10 @@ Host managed policies can still make tools unavailable; permission denials fail
 execution rather than being bypassed. The worker requires a validated MCP
 submission, not merely a successful CLI exit or a textual plan.
 
-Battle setup also offers `haiku` for lighter workloads and `opus` for more
-demanding work. Haiku uses model-default effort so it works with older supported
-CLI versions whose Haiku model does not expose effort settings; Sonnet and Opus
-offer low/medium/high effort. The default remains `sonnet`.
+Battle setup also offers `haiku` for lighter workloads, and `opus` and `fable` for
+more demanding work. Haiku uses model-default effort so it works with older supported
+CLI versions whose Haiku model does not expose effort settings; Sonnet, Opus and
+Fable offer low/medium/high effort. The default is `sonnet`.
 
 The model aliases follow the account's current model versions. To pin a model,
 update `backend/config.yaml`, `infra/deploy/base/infrastructure/configmap.yaml`,

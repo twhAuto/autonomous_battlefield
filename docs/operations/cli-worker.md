@@ -187,12 +187,8 @@ resuming normal use. This PR does not deploy or restart the production VM.
 Keep `modelOptions` and each model's `reasoningEfforts` synchronized across
 `backend/config.yaml`, the application ConfigMap, the VM's `config.yaml`, and
 `managed-settings.json`, plus the host launcher `scripts/dev/run-k8s-cli-agent.sh`.
-The checked-in Codex choices are `gpt-6-luna`, `gpt-5.6-luna` and `gpt-6.1-sol`,
-with low/medium/high efforts. Claude choices are `haiku`, `sonnet` and `opus`;
-Sonnet and Opus expose low/medium/high efforts, while Haiku uses model-default
-effort for compatibility with older supported CLI versions. Antigravity exposes
-`gemini-3.8-flash-low`, `gemini-3.8-flash-medium` and `gemini-3.8-flash-high` as
-model choices; their reasoning level is part of the identifier.
+The [shipped catalog](../architecture/ai-decisions.md#model-selection-and-latency)
+lists the choices and their efforts.
 Options are operator-approved capabilities, not account-access guarantees; validate
 provider/account access before advertising changes. The default model and default
 effort remain unchanged. Antigravity and API profiles have no separate effort selector.

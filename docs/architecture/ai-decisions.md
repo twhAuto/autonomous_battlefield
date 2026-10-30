@@ -521,13 +521,18 @@ Codex receives `model_reasoning_effort`; Claude receives `--effort`. The CLI mod
 identifier is the requested identifier; aliases such as `sonnet` can resolve to a
 new provider version and are not an immutable model-version guarantee.
 
-The shipped CLI catalog includes choices for lighter workloads: Claude `haiku`, OpenAI
-`gpt-6-luna` (the published name is GPT-6 Luna), and Antigravity
-`gemini-3.8-flash-low`. Codex Luna offers low/medium/high effort. Haiku uses
-model-default effort because the alias can resolve to a model without effort
-support on older supported CLIs. Antigravity's Flash low/medium/high variants
-encode reasoning in the model ID. Profile defaults remain `gpt-5.6-luna`,
-`sonnet` and `gemini-3.8-flash-medium`.
+The shipped CLI catalog offers every model the Codex subscription lists:
+`gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`,
+`gpt-5.6-sol`, `gpt-5.6-terra` and `gpt-5.6-luna` (the published names are, for
+example, GPT-6 Luna). The GPT-6.1 models need Codex 0.159 or newer. Claude offers
+`haiku`, `sonnet`, `opus` and `fable`, and Antigravity `gemini-3.8-flash-low`,
+`-medium` and `-high`. Codex models, Sonnet, Opus and Fable offer low/medium/high
+effort; higher efforts are left out so decisions finish within the decision
+timeout. Haiku uses model-default effort because the alias can resolve to a model
+without effort support on older supported CLIs. Antigravity's Flash variants encode
+reasoning in the model ID. Profile defaults are `gpt-5.6-luna`, `sonnet` and
+`gemini-3.8-flash-medium`. Battle and league setup list model profiles under
+separate API and CLI headings.
 See the provider catalogs for [OpenAI](https://developers.openai.com/api/docs/models/gpt-6-luna),
 [Claude](https://code.claude.com/docs/en/model-config) and
 [Antigravity](https://antigravity.google/docs/models). Subscription availability

@@ -8,6 +8,38 @@
   "modelOptions": {
     "codex-subscription-local": [
       {
+        "id": "gpt-6.1-sol",
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "id": "gpt-6.1-terra",
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "id": "gpt-6-astra",
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "id": "gpt-6-sol",
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
         "id": "gpt-6-luna",
         "reasoningEfforts": [
           "low",
@@ -16,7 +48,7 @@
         ]
       },
       {
-        "id": "gpt-5.6-luna",
+        "id": "gpt-5.6-sol",
         "reasoningEfforts": [
           "low",
           "medium",
@@ -24,7 +56,15 @@
         ]
       },
       {
-        "id": "gpt-6.1-sol",
+        "id": "gpt-5.6-terra",
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "id": "gpt-5.6-luna",
         "reasoningEfforts": [
           "low",
           "medium",
@@ -46,6 +86,14 @@
       },
       {
         "id": "opus",
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "id": "fable",
         "reasoningEfforts": [
           "low",
           "medium",
