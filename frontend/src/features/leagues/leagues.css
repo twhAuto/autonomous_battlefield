@@ -47,15 +47,14 @@
 .league-table abbr { text-decoration: none; }
 .league-table__qualifier td:first-child { box-shadow: inset 2px 0 0 var(--lime); }
 .league-table__disqualified th[scope="row"] strong { color: var(--muted); text-decoration: line-through; }
-.league-table .league-table__action { min-height: 28px; padding: 0 10px; font-size: 10px; }
-/* An entrant's disqualification: its mark beside the name, the confirmation an Admin
-   fills in, and the list of who was removed. */
+/* An entrant's disqualification: its mark beside the name, the panel an Admin picks the
+   entrant in, and the list of who was removed. */
 .league-dq { display: inline-block; margin-left: 8px; padding: 0 5px; color: #ff9e85; border: 1px solid rgba(255, 158, 133, .55); font: 10px 'DM Mono', monospace; letter-spacing: .08em; vertical-align: middle; }
-.league-disqualify { display: flex; flex-direction: column; gap: 12px; margin: 16px 0 0; padding: 16px; background: #151a14; border: 1px solid rgba(255, 158, 133, .55); }
+.league-disqualify { display: flex; flex-direction: column; gap: 12px; max-width: 560px; margin: 16px 0 0 auto; padding: 16px; background: #151a14; border: 1px solid rgba(255, 158, 133, .55); }
 .league-disqualify p { margin: 0; }
 .league-disqualify label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font: 11px 'DM Mono', monospace; letter-spacing: .1em; text-transform: uppercase; }
-.league-disqualify input { width: 100%; height: 44px; padding: 0 12px; outline: 0; color: #e7ebdf; background: #111510; border: 1px solid #454d41; font: 14px inherit; text-transform: none; letter-spacing: normal; }
-.league-disqualify input:focus { border-color: var(--lime); }
+.league-disqualify input, .league-disqualify select { width: 100%; height: 44px; padding: 0 12px; outline: 0; color: #e7ebdf; background: #111510; border: 1px solid #454d41; font: 14px inherit; text-transform: none; letter-spacing: normal; }
+.league-disqualify input:focus, .league-disqualify select:focus { border-color: var(--lime); }
 .league-disqualifications { margin: 24px 0; }
 .league-disqualifications ul { display: grid; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; color: #c8cfc1; font-size: 14px; }
 /* A group's five matches under its table, in play order. */
