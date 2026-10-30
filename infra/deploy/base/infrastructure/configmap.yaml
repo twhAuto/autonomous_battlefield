@@ -98,11 +98,21 @@ data:
           runtime: cli
           model: gpt-5.6-luna
           modelOptions:
+            - id: gpt-6.1-sol
+              reasoningEfforts: [low, medium, high]
+            - id: gpt-6.1-terra
+              reasoningEfforts: [low, medium, high]
+            - id: gpt-6-astra
+              reasoningEfforts: [low, medium, high]
+            - id: gpt-6-sol
+              reasoningEfforts: [low, medium, high]
             - id: gpt-6-luna
               reasoningEfforts: [low, medium, high]
-            - id: gpt-5.6-luna
+            - id: gpt-5.6-sol
               reasoningEfforts: [low, medium, high]
-            - id: gpt-6.1-sol
+            - id: gpt-5.6-terra
+              reasoningEfforts: [low, medium, high]
+            - id: gpt-5.6-luna
               reasoningEfforts: [low, medium, high]
           availabilityEnvironmentVariable: CODEX_CLI_PROFILE_AVAILABLE
           supportedVersionPrefix: codex-cli 0.155.
@@ -119,6 +129,8 @@ data:
             - id: sonnet
               reasoningEfforts: [low, medium, high]
             - id: opus
+              reasoningEfforts: [low, medium, high]
+            - id: fable
               reasoningEfforts: [low, medium, high]
           scope: local
           supportedVersionPrefix: "2.1.267 "

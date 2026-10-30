@@ -31,6 +31,9 @@ export function staleSelection(profile: ModelProfile, selection: ModelSelection)
 
 const titleCase = (text: string) => text[0].toUpperCase() + text.slice(1)
 
+// Provider API keys and subscription CLIs are listed separately.
+const runtimeGroups = [['api', 'API'], ['cli', 'CLI']] as const
+
 export function controllerInput(value: string, selection: ModelSelection) {
   return value === 'scripted' ? { type: 'scripted' as const } : { type: 'model' as const, profileId: value, ...selection }
 }
@@ -43,12 +46,18 @@ export function ControllerSelect({ id, value, onChange, profiles, selection, onS
       <option value="scripted">Scripted · deterministic</option>
       {/* A copied selection whose profile is no longer listed stays visible instead of reading as Scripted. */}
       {value !== 'scripted' && !selected && <option value={value} disabled>Unavailable controller</option>}
-      {profiles.filter(profile => profile.available || profile.id === value).map((profile) => {
-        return (
-        <option key={profile.id} value={profile.id} disabled={!profile.available}>
-          {profile.displayName}{!profile.available ? ' · unavailable' : ''}
-        </option>
-      )})}
+      {runtimeGroups.map(([runtime, label]) => {
+        const listed = profiles.filter(profile => profile.runtime === runtime && (profile.available || profile.id === value))
+        return listed.length > 0 && (
+          <optgroup key={runtime} label={label}>
+            {listed.map(profile => (
+              <option key={profile.id} value={profile.id} disabled={!profile.available}>
+                {profile.displayName}{!profile.available ? ' · unavailable' : ''}
+              </option>
+            ))}
+          </optgroup>
+        )
+      })}
     </select><p id={`${id}-details`} className="field-hint">{controllerDetails(value, selected, inspect)}</p>
     {selected && <ModelFields id={id} profile={selected} selection={selection} onSelect={onSelect} />}</>
   )
