@@ -77,7 +77,7 @@ data:
           availabilityEnvironmentVariable: OPENAI_PROFILE_AVAILABLE
           scope: cluster
           maxOutputTokens: 1200
-          maxSteps: 3
+          maxSteps: 5
           enabled: true
         - id: gemini-api-balanced
           displayName: Gemini API
@@ -90,7 +90,7 @@ data:
           # Gemini reasoning tokens count against this ceiling; 1200 can be
           # exhausted before a required function call is emitted.
           maxOutputTokens: 4096
-          maxSteps: 3
+          maxSteps: 5
           enabled: true
         - id: codex-subscription-local
           displayName: Codex / ChatGPT subscription

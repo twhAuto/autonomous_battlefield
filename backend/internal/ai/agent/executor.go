@@ -34,6 +34,10 @@ import (
 
 const bearerPrefix = "Bearer "
 
+// outcomeReportTimeout bounds each job's final failure or usage report, which runs after
+// shutdown cancels the job, within the agent's shutdown timeout.
+const outcomeReportTimeout = 5 * time.Second
+
 var errTransientClaim = errors.New("transient agent claim failure")
 
 var errNoAcceptedPlan = errors.New("decision has no accepted plan")
@@ -457,7 +461,15 @@ func defaultRunner(profile ai.ModelProfile) (ai.DecisionRunner, error) {
 	return runner.APIRunner{Provider: provider}, nil
 }
 
+// reportContext detaches a job's outcome report from the job's cancellation, so a job
+// that shutdown interrupts still reports, and bounds the report.
+func reportContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), outcomeReportTimeout)
+}
+
 func (e *Executor) reportUsage(ctx context.Context, requestID string, result ai.DecisionResult) error {
+	ctx, cancel := reportContext(ctx)
+	defer cancel()
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
 		err = e.reportUsageOnce(ctx, requestID, result)
@@ -499,6 +511,8 @@ func (e *Executor) reportUsageOnce(ctx context.Context, requestID string, result
 }
 
 func (e *Executor) fail(ctx context.Context, requestID, category string, result ai.DecisionResult) error {
+	ctx, cancel := reportContext(ctx)
+	defer cancel()
 	payload, _ := json.Marshal(map[string]any{"requestId": requestID, "category": category, "usage": result.Usage, "metadata": result.ProviderData})
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, e.serviceURL("/internal/agent/fail"), bytes.NewReader(payload))
 	if err != nil {

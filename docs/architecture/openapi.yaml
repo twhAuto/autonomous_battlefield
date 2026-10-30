@@ -2466,7 +2466,7 @@ components:
       properties:
         name: {type: string}
         rationale: {type: string, maxLength: 600}
-        actionWeights: {type: object, additionalProperties: {type: integer}}
+        actionWeights: {type: object, additionalProperties: {type: integer, minimum: 0, maximum: 10000}, description: Action kind to weight, where 1000 is 1x; an omitted or 0 weight counts as 1000.}
         targetBonuses: {type: object, additionalProperties: {type: integer}}
         reserveGold: {type: integer}
         spendOrder: {type: array, items: {type: string}}

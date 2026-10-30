@@ -265,6 +265,39 @@ func TestRunJobReportsUnavailableAndRunnerFailures(t *testing.T) {
 	}
 }
 
+func TestShutdownStillReportsInterruptedDecisions(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		result ai.DecisionResult
+		err    error
+		path   string
+	}{
+		{name: "interrupted run", err: context.Canceled, path: "/internal/agent/fail"},
+		{name: "accepted plan", result: ai.DecisionResult{Accepted: true, Usage: ai.Usage{Requests: 1}}, path: "/internal/agent/usage"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var reported []string
+			client := &http.Client{Transport: agentRoundTrip(func(request *http.Request) (*http.Response, error) {
+				if err := request.Context().Err(); err != nil {
+					return nil, err
+				}
+				reported = append(reported, request.URL.Path)
+				return agentResponse(http.StatusNoContent, ""), nil
+			})}
+			profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
+			worker := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, DecisionTimeout: time.Second, Client: client, Logger: slog.New(slog.DiscardHandler), RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
+				return fakeRunner{result: test.result, err: test.err}, nil
+			}}
+			shutdown, stop := context.WithCancel(context.Background())
+			stop()
+			worker.runJob(shutdown, job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "profile"})
+			if !reflect.DeepEqual(reported, []string{test.path}) {
+				t.Fatalf("reports after shutdown = %v, want %s", reported, test.path)
+			}
+		})
+	}
+}
+
 func TestRunnerFailureLogRedactsNetworkIdentity(t *testing.T) {
 	var logs bytes.Buffer
 	refused := &net.OpError{Op: "dial", Net: "tcp", Addr: &net.TCPAddr{IP: net.ParseIP("10.0.0.5"), Port: 18084}, Err: errors.New("connect: connection refused")}
@@ -330,6 +363,9 @@ func TestTransientClaimFailureDoesNotCancelSibling(t *testing.T) {
 	retried := make(chan struct{})
 	var claims atomic.Int32
 	client := &http.Client{Transport: agentRoundTrip(func(req *http.Request) (*http.Response, error) {
+		if !strings.HasSuffix(req.URL.Path, "/claim") {
+			return agentResponse(http.StatusNoContent, ""), nil
+		}
 		switch claims.Add(1) {
 		case 1:
 			b, _ := json.Marshal(job{CapabilityToken: "capability", RequestID: "one", ProfileID: "profile"})
