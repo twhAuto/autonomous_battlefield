@@ -120,14 +120,15 @@ set_profile_flags false false false
 
     def test_stable_versions_compare_numerically_and_reject_unknown_banners(self):
         cases = [
-            ('codex', 'codex-cli 0.155.0', True),
+            ('codex', 'codex-cli 0.159.0', True),
             ('codex', 'codex-cli 0.159.2', True),
             ('codex', 'codex-cli 0.1000.0', True),
             ('codex', 'codex-cli 1.0.0', True),
-            ('codex', 'codex-cli 0.154.99', False),
+            ('codex', 'codex-cli 0.158.99', False),
+            ('codex', 'codex-cli 0.155.0', False),
             ('codex', 'codex-cli 0.99.99', False),
             ('codex', 'codex-cli 0.159.2-rc.1', False),
-            ('codex', 'codex-cli 0.155.0-beta', False),
+            ('codex', 'codex-cli 0.159.0-beta', False),
             ('codex', 'codex-cli 0.159', False),
             ('codex', 'codex-cli 0.9999999999999999999.0', False),
             ('codex', 'other-cli 0.159.2', False),

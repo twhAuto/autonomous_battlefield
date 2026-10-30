@@ -1,9 +1,9 @@
 {
   "codex": {
-    "version": "0.155.0",
+    "version": "0.159.2",
     "archives": {
-      "codex": "e415cc3adb94ade16e8d44b4dd58a9201cc34b2ee51a5d6eddf2a3a00aecb6c0",
-      "codex-code-mode-host": "328c1bebe09fc727053794576efea353d3b18381ee8883f5283b37ae4a7854d4"
+      "codex": "26586b0d246d41a799b0ef8ee1add370f0fb0721b3709340f28db612381616ea",
+      "codex-code-mode-host": "fb6b0c4a7b24ed0728d1208ebc0061383da60debc6d61cf63e02c48ac7f7630f"
     }
   }
 }
