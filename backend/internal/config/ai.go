@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -41,10 +42,27 @@ func parseModels(raw fileConfig, production bool) (Models, error) {
 	if err != nil {
 		return Models{}, err
 	}
-	if err := validateAIProfiles(raw.AI.Profiles, production); err != nil {
+	profiles := renameLegacyProfileRoles(raw.AI.Profiles)
+	if err := validateAIProfiles(profiles, production); err != nil {
 		return Models{}, err
 	}
-	return Models{Environment: environment, DecisionTimeout: timeout, Profiles: append([]ai.ModelProfile(nil), raw.AI.Profiles...)}, nil
+	return Models{Environment: environment, DecisionTimeout: timeout, Profiles: profiles}, nil
+}
+
+// renameLegacyProfileRoles copies profiles, reading the legacy tester key in allowedRoles
+// as tester so a config file written for an image before the rename still loads.
+func renameLegacyProfileRoles(profiles []ai.ModelProfile) []ai.ModelProfile {
+	renamed := append([]ai.ModelProfile(nil), profiles...)
+	for i := range renamed {
+		roles := slices.Clone(renamed[i].AllowedRoles)
+		for j, role := range roles {
+			if role == legacyTesterKey {
+				roles[j] = "tester"
+			}
+		}
+		renamed[i].AllowedRoles = roles
+	}
+	return renamed
 }
 
 func parseDecisionTimeout(raw fileConfig) (time.Duration, error) {

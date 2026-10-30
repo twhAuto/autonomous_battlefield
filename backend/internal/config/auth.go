@@ -20,8 +20,9 @@ const disabledDevelopmentMode = "disabled-development"
 
 var accessClientID = regexp.MustCompile(`^[a-f0-9]{32}\.access$`)
 
-// legacyTesterKey is the retired name of the tester role in BATTLEFIELD_ACCESS_ROLES.
-// It stays accepted so a rollback image and the current image can share one configuration.
+// legacyTesterKey is the retired name of the tester role in BATTLEFIELD_ACCESS_ROLES and
+// in profile allowedRoles. It stays accepted so a rollback image and the current image
+// can share one configuration.
 const legacyTesterKey = "developer"
 
 func parseAuthConfig(raw fileConfig, production bool) (authn.Config, error) {
