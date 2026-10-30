@@ -590,9 +590,8 @@ sends the browser to `/cdn-cgi/access/logout`.
 Players, Testers and Admins share gameplay/faction reads. Mutation ownership is
 stored in PostgreSQL and taken from the authenticated request, never client JSON.
 Legacy rows belong to `legacy-admin`. Only Admin can manage another owner's rows.
-Saved decision context requires Tester/Admin. Player projections, decision
-history included, run after shared cache retrieval and omit model diagnostics, raw
-prompts and internal errors. The frontend hides inspection panels and stops their requests for Players.
+Player projections ([API roles](api.md#roles-and-ownership)) run after shared cache
+retrieval and omit model diagnostics, raw prompts and internal errors. The frontend hides inspection panels and stops their requests for Players.
 Cloudflare Access admission and MFA are independent deployment requirements. For
 static roles, user removal requires Access rule removal, session revocation,
 application role removal,
