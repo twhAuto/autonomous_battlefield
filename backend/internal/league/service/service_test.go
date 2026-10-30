@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
@@ -324,6 +325,27 @@ func (r *memoryRepo) Schedule(ctx context.Context, fn func(context.Context, Sche
 	return true, fn(ctx, r)
 }
 
+func (r *memoryRepo) Exclusive(ctx context.Context, fn func(context.Context, SchedulerStore) error) error {
+	return fn(ctx, r)
+}
+
+func (r *memoryRepo) League(_ context.Context, id string) (*league.League, error) {
+	if r.storeErr != nil {
+		return nil, r.storeErr
+	}
+	l, ok := r.leagues[id]
+	if !ok {
+		return nil, ErrLeagueNotFound
+	}
+	return r.withBattles(copyLeague(l)), nil
+}
+
+func (r *memoryRepo) Disqualify(_ context.Context, id string, entrant int, d league.Disqualification) error {
+	d.At = time.Now()
+	r.leagues[id].Entrants[entrant].Disqualified = &d
+	return nil
+}
+
 func (r *memoryRepo) RunningLeagues(context.Context) ([]league.League, error) {
 	if r.storeErr != nil {
 		return nil, r.storeErr
@@ -399,14 +421,15 @@ func (r *memoryRepo) Battle(_ context.Context, id string) (*BattleProvenance, er
 	return &origin, nil
 }
 
+// StrandedBattles lists active battles of cancelled leagues and forfeited fixtures.
 func (r *memoryRepo) StrandedBattles(context.Context) ([]StrandedBattle, error) {
 	stranded := []StrandedBattle{}
 	for _, l := range r.leagues {
-		if l.Status != league.StatusCancelled {
-			continue
-		}
-		for _, id := range r.activeBattles(l) {
-			stranded = append(stranded, StrandedBattle{LeagueID: l.ID, BattleID: id, OwnerID: l.OwnerID})
+		for _, f := range l.Fixtures {
+			status := r.battles[deref(f.BattleID)]
+			if (l.Status == league.StatusCancelled || f.Status == league.FixtureForfeited) && (status == "queued" || status == "running") {
+				stranded = append(stranded, StrandedBattle{LeagueID: l.ID, BattleID: *f.BattleID, OwnerID: l.OwnerID})
+			}
 		}
 	}
 	return stranded, nil

@@ -158,6 +158,7 @@ var routeRules = []routeRule{
 
 	{pattern: "POST /v1/leagues", permission: PermissionAdmin},
 	{pattern: "POST /v1/leagues/{id}/cancel", permission: PermissionAdmin},
+	{pattern: "POST /v1/leagues/{id}/entrants/{entrant}/disqualify", permission: PermissionAdmin},
 
 	{pattern: "GET /v1/admin/model-access", permission: PermissionAdmin},
 	{pattern: "PUT /v1/admin/model-access", permission: PermissionAdmin},

@@ -400,12 +400,14 @@ sequenceDiagram
     E->>DB: claim and play the battles as usual
 ```
 
-A pass first stops any battle still running in a cancelled league, so a failed stop
-is retried. It then settles running fixtures from their battles, retrying or voiding
-failed ones as the [league rules](api.md#leagues) describe. It adds each group's
-next round once that group's fixtures have settled, the knockout once every group is
-placed, each later knockout stage once the previous one has settled, and records the
-champion after the final. Finally it starts pending fixtures, oldest running league first and in fixture
+A pass first stops any battle still running in a cancelled league or a forfeited
+fixture, so a failed stop is retried. It then settles running fixtures from their
+battles, retrying or voiding failed ones as the [league rules](api.md#leagues)
+describe. It adds each group's next round once that group's fixtures have settled,
+the knockout once every group is placed, each later knockout stage once the previous
+one has settled, and records the champion after the final. A match with a
+disqualified side opens already forfeited, so the pass keeps adding what follows
+until a match needs a battle or the league has its champion. Finally it starts pending fixtures, oldest running league first and in fixture
 order, while battles of any owner leave an engine slot free: the scheduler reads the
 slot count from `engine.concurrency`, the same setting the engine uses, so a league
 battle never waits in the queue, where its one-hour timeout already counts. A fixture
@@ -420,6 +422,9 @@ profile spends one fixture attempt per pass. Battle IDs derive from the fixture,
 pass interrupted after creating a battle adopts it on the next pass
 ([idempotency rules](database.md#idempotency-and-versions)). Cancellation takes the
 same lock, cancels unfinished fixtures and then stops the league's running battles.
+Disqualification waits for the lock too. It records the entrant, forfeits its open
+fixtures and adds the matches that follow; after committing, it stops the forfeited
+battles, including one an interrupted pass created for a pending fixture.
 
 Battle creation goes through the same service as `POST /v1/battles`, as the
 league's Admin owner, so model access, faction existence and timing are rechecked

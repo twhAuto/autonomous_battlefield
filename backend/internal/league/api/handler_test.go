@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -193,6 +194,30 @@ func TestLeagueRoutesMapErrors(t *testing.T) {
 			h.do(authn.Admin, http.MethodPost, "/v1/leagues", createBody(nil))
 			h.repo.leagues[testLeagueID].Status = league.StatusCompleted
 		}, 409, ""},
+		{"developer disqualify", authn.Developer, http.MethodPost, disqualifyPath("0"), "{}", created, 403, ""},
+		{"entrant not a number", authn.Admin, http.MethodPost, disqualifyPath("first"), "{}", created, 400, ""},
+		{"malformed disqualify body", authn.Admin, http.MethodPost, disqualifyPath("0"), `{"reason": 1}`, created, 400, ""},
+		{"missing entrant", authn.Admin, http.MethodPost, disqualifyPath("8"), "{}", created, 404, ""},
+		{"cancelled disqualify", authn.Admin, http.MethodPost, disqualifyPath("0"), "{}", func(h *harness) {
+			created(h)
+			h.repo.leagues[testLeagueID].Status = league.StatusCancelled
+		}, 409, ""},
+		{"eliminated entrant", authn.Admin, http.MethodPost, disqualifyPath("6"), "{}", func(h *harness) {
+			created(h)
+			// Group A is 0, 2, 4, 6: void matches go to the earlier entrant, so 6 loses
+			// its opening and the losers' match.
+			stored := h.repo.leagues[testLeagueID]
+			stored.Fixtures[0].Status, stored.Fixtures[1].Status = league.FixtureVoid, league.FixtureVoid
+			next, _ := stored.Advance()
+			stored.Fixtures = append(stored.Fixtures, next...)
+			stored.Fixtures[len(stored.Fixtures)-1].Status = league.FixtureVoid
+		}, 409, ""},
+		{"last contender", authn.Admin, http.MethodPost, disqualifyPath("0"), "{}", func(h *harness) {
+			created(h)
+			for i := 1; i < 8; i++ {
+				h.repo.leagues[testLeagueID].Entrants[i].Disqualified = &league.Disqualification{By: "admin-1"}
+			}
+		}, 409, ""},
 	}
 	for _, test := range cases {
 		h := newHarness()
@@ -207,6 +232,31 @@ func TestLeagueRoutesMapErrors(t *testing.T) {
 		if test.code != "" && !bytes.Contains(response.Body.Bytes(), []byte(test.code)) {
 			t.Errorf("%s: body %s lacks code %s", test.name, response.Body.String(), test.code)
 		}
+	}
+}
+
+func disqualifyPath(entrant string) string {
+	return "/v1/leagues/" + testLeagueID + "/entrants/" + entrant + "/disqualify"
+}
+
+func created(h *harness) { h.do(authn.Admin, http.MethodPost, "/v1/leagues", createBody(nil)) }
+
+func TestDisqualifyEntrantRoute(t *testing.T) {
+	h, _ := createdHarness(t)
+	// Group A's first opening is 0 v 6.
+	response := h.do(authn.Admin, http.MethodPost, disqualifyPath("6"), `{"reason": "Too slow"}`)
+	body := decode(t, response)
+	entrant := body["entrants"].([]any)[6].(map[string]any)
+	disqualification, _ := entrant["disqualification"].(map[string]any)
+	if response.Code != http.StatusOK || disqualification["by"] != "admin-1" || disqualification["reason"] != "Too slow" || entrant["eliminated"] != false {
+		t.Fatalf("disqualify = %d, entrant %v", response.Code, entrant)
+	}
+	opening := body["fixtures"].([]any)[0].(map[string]any)
+	if opening["status"] != "forfeited" || (opening["forfeit"] != "home" && opening["forfeit"] != "away") || opening["winner"] != 0.0 {
+		t.Fatalf("opening = %v", opening)
+	}
+	if other := body["entrants"].([]any)[0].(map[string]any); other["disqualification"] != nil {
+		t.Fatalf("entrant 0 = %v", other)
 	}
 }
 
@@ -272,6 +322,61 @@ func (r *memoryRepo) CancelLeague(_ context.Context, id string) (bool, []string,
 
 func (r *memoryRepo) Schedule(context.Context, func(context.Context, leagueservice.SchedulerStore) error) (bool, error) {
 	return false, nil
+}
+
+func (r *memoryRepo) Exclusive(ctx context.Context, fn func(context.Context, leagueservice.SchedulerStore) error) error {
+	return fn(ctx, memoryStore{r})
+}
+
+// memoryStore serves a disqualification from the stored leagues; the reads only a
+// scheduling pass makes find nothing.
+type memoryStore struct{ *memoryRepo }
+
+func (s memoryStore) League(_ context.Context, id string) (*league.League, error) {
+	l, ok := s.leagues[id]
+	if !ok {
+		return nil, leagueservice.ErrLeagueNotFound
+	}
+	copied := *l
+	copied.Entrants, copied.Fixtures = slices.Clone(l.Entrants), slices.Clone(l.Fixtures)
+	return &copied, nil
+}
+
+func (s memoryStore) Disqualify(_ context.Context, id string, entrant int, d league.Disqualification) error {
+	s.leagues[id].Entrants[entrant].Disqualified = &d
+	return nil
+}
+
+func (s memoryStore) SaveFixture(_ context.Context, f league.Fixture) error {
+	for _, l := range s.leagues {
+		for i := range l.Fixtures {
+			if l.Fixtures[i].ID == f.ID {
+				l.Fixtures[i] = f
+			}
+		}
+	}
+	return nil
+}
+
+func (s memoryStore) AddFixtures(_ context.Context, id string, fixtures []league.Fixture) error {
+	s.leagues[id].Fixtures = append(s.leagues[id].Fixtures, fixtures...)
+	return nil
+}
+
+func (s memoryStore) CompleteLeague(_ context.Context, id string, champion int) error {
+	s.leagues[id].Status, s.leagues[id].Champion = league.StatusCompleted, &champion
+	return nil
+}
+
+func (memoryStore) RunningLeagues(context.Context) ([]league.League, error) { return nil, nil }
+func (memoryStore) Capacity(context.Context) (leagueservice.Capacity, error) {
+	return leagueservice.Capacity{}, nil
+}
+func (memoryStore) Battle(context.Context, string) (*leagueservice.BattleProvenance, error) {
+	return nil, nil
+}
+func (memoryStore) StrandedBattles(context.Context) ([]leagueservice.StrandedBattle, error) {
+	return nil, nil
 }
 
 type fakeBattles struct{ err error }

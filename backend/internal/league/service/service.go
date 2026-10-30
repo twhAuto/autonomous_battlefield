@@ -1,6 +1,6 @@
-// Validates and creates leagues, reports them, and cancels them. Admins create and
-// cancel; developers and admins inspect. The scheduler that plays fixtures is in
-// scheduler.go.
+// Validates and creates leagues, reports them, cancels them and disqualifies entrants.
+// Admins create, cancel and disqualify; developers and admins inspect. The scheduler that
+// plays fixtures is in scheduler.go.
 
 package service
 
@@ -30,10 +30,12 @@ var (
 )
 
 const (
-	maxNameLength  = 80
-	maxScenarios   = 5
-	defaultListMax = 25
-	maxListLimit   = 100
+	maxNameLength = 80
+	// maxReasonLength bounds a disqualification's reason, in characters.
+	maxReasonLength = 200
+	maxScenarios    = 5
+	defaultListMax  = 25
+	maxListLimit    = 100
 	// validationBattleID stands in for the real battle IDs while validating entrants.
 	validationBattleID = "00000000-0000-4000-8000-000000000000"
 )
@@ -265,6 +267,100 @@ func (s *Service) CancelLeague(ctx context.Context, id string) (*league.League, 
 		slog.InfoContext(ctx, "league_cancelled", "league_id", id, "active_battles", len(active))
 	}
 	return s.repo.GetLeague(ctx, id)
+}
+
+// DisqualifyEntrant removes an entrant from a running league, with an optional reason.
+// It forfeits the entrant's open matches and stops their battles, and every later match
+// the entrant reaches opens forfeited. Disqualifying it again returns the league
+// unchanged.
+func (s *Service) DisqualifyEntrant(ctx context.Context, id string, entrant int, reason string) (*league.League, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	reason = strings.TrimSpace(reason)
+	if !uuidPattern.MatchString(id) || len([]rune(reason)) > maxReasonLength {
+		return nil, ErrInvalidLeague
+	}
+	id = strings.ToLower(id)
+	d := league.Disqualification{By: authn.Owner(ctx), Reason: reason}
+	var active []string
+	err := s.repo.Exclusive(ctx, func(ctx context.Context, store SchedulerStore) error {
+		var err error
+		active, err = disqualify(ctx, store, id, entrant, d)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	// A stop that fails here is retried by every scheduling pass.
+	for _, battleID := range active {
+		s.stopBattle(ctx, id, battleID)
+	}
+	return s.repo.GetLeague(ctx, id)
+}
+
+// disqualify records the disqualification and its forfeits, then opens the matches
+// that can follow. It returns the forfeited battles still queued or running.
+func disqualify(ctx context.Context, store SchedulerStore, id string, entrant int, d league.Disqualification) ([]string, error) {
+	l, err := store.League(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if l.Status != league.StatusRunning {
+		return nil, ErrLeagueNotActive
+	}
+	forfeited, err := l.Disqualify(entrant, d)
+	if errors.Is(err, league.ErrAlreadyDisqualified) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := store.Disqualify(ctx, id, entrant, d); err != nil {
+		return nil, err
+	}
+	active, err := saveForfeits(ctx, store, l, forfeited)
+	if err != nil {
+		return nil, err
+	}
+	slog.InfoContext(ctx, "league_entrant_disqualified", "league_id", id, "entrant", entrant, "forfeited_fixtures", len(forfeited), "active_battles", len(active))
+	return active, settle(ctx, store, l)
+}
+
+// saveForfeits stores forfeited fixtures and returns the battles to stop: those still
+// queued or running, and any a pass created for a pending fixture before it rolled back.
+func saveForfeits(ctx context.Context, store SchedulerStore, l *league.League, forfeited []league.Fixture) ([]string, error) {
+	active := []string{}
+	for _, f := range forfeited {
+		f, err := linkInterruptedStart(ctx, store, l, f)
+		if err != nil {
+			return nil, err
+		}
+		if err := store.SaveFixture(ctx, f); err != nil {
+			return nil, err
+		}
+		if f.BattleID != nil && (f.Battle == nil || f.Battle.Status == "queued" || f.Battle.Status == "running") {
+			active = append(active, *f.BattleID)
+		}
+	}
+	return active, nil
+}
+
+// linkInterruptedStart links a pending fixture to the battle a scheduling pass created
+// for its next attempt before rolling back. The scheduler adopts such a battle only for
+// a pending fixture, so a forfeit links it instead and the battle is stopped.
+func linkInterruptedStart(ctx context.Context, store SchedulerStore, l *league.League, f league.Fixture) (league.Fixture, error) {
+	if f.BattleID != nil {
+		return f, nil
+	}
+	battleID := league.FixtureBattleID(l.BattleSalt, f.ID, f.Attempts+1)
+	existing, err := store.Battle(ctx, battleID)
+	if err != nil || existing == nil || !createdFor(l, f, *existing) {
+		return f, err
+	}
+	f.Attempts++
+	f.BattleID = &battleID
+	return f, nil
 }
 
 func (s *Service) stopBattle(ctx context.Context, leagueID, battleID string) {

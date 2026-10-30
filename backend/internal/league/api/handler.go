@@ -32,6 +32,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/leagues", h.ListLeagues)
 	mux.HandleFunc("GET /v1/leagues/{id}", h.GetLeague)
 	mux.HandleFunc("POST /v1/leagues/{id}/cancel", h.CancelLeague)
+	mux.HandleFunc("POST /v1/leagues/{id}/entrants/{entrant}/disqualify", h.DisqualifyEntrant)
 }
 
 type controllerRequest struct {
@@ -123,6 +124,24 @@ func (h *Handler) CancelLeague(w http.ResponseWriter, r *http.Request) {
 	_ = httpapi.WriteJSON(w, http.StatusOK, leagueResponse(cancelled))
 }
 
+// DisqualifyEntrant removes an entrant, given by its index, from a running league. The
+// body may give a reason: {"reason": "..."}.
+func (h *Handler) DisqualifyEntrant(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Reason string `json:"reason"`
+	}
+	entrant, err := strconv.Atoi(r.PathValue("entrant"))
+	if err != nil || httpapi.ReadJSON(w, r, &request) != nil {
+		apierror.Write(w, r, http.StatusBadRequest, "invalid request")
+		return
+	}
+	updated, err := h.leagues.DisqualifyEntrant(r.Context(), r.PathValue("id"), entrant, request.Reason)
+	if writeError(w, r, err, "league_disqualify_failed", "could not disqualify entrant", "league_id", r.PathValue("id"), "entrant", entrant) {
+		return
+	}
+	_ = httpapi.WriteJSON(w, http.StatusOK, leagueResponse(updated))
+}
+
 const invalidLeagueMessage = "invalid league"
 
 type errorCase struct {
@@ -136,10 +155,13 @@ var errorCases = []errorCase{
 	{errs: []error{authn.ErrForbidden}, status: http.StatusForbidden, message: "permission denied"},
 	{errs: []error{leagueservice.ErrInvalidLeague, battleservice.ErrInvalidBattle}, status: http.StatusBadRequest, message: invalidLeagueMessage},
 	{errs: []error{leagueservice.ErrLeagueNotFound}, status: http.StatusNotFound, message: "league not found"},
+	{errs: []error{league.ErrEntrantNotFound}, status: http.StatusNotFound, message: "entrant not found"},
 	{errs: []error{battleservice.ErrBattleFactionMissing, battleservice.ErrScenarioNotFound}, status: http.StatusNotFound, message: "league dependency not found"},
 	{errs: []error{battleservice.ErrIncompatibleFaction, game.ErrInvalidBlueprint, battleservice.ErrModelProfileUnavailable}, status: http.StatusUnprocessableEntity, message: "invalid league configuration or unavailable controller"},
 	{errs: []error{leagueservice.ErrLeagueAlreadyExists}, status: http.StatusConflict, code: apierror.CodeAlreadyExists, message: "league already exists"},
 	{errs: []error{leagueservice.ErrLeagueNotActive}, status: http.StatusConflict, message: "league is not active"},
+	{errs: []error{league.ErrEntrantEliminated}, status: http.StatusConflict, message: "entrant has no match left to play"},
+	{errs: []error{league.ErrLastContender}, status: http.StatusConflict, message: "entrant is the last one who can still win; cancel the league instead"},
 }
 
 // writeError answers a known error with its status, or logs it and writes a generic 500.

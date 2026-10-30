@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { cancelLeague, createLeague, getLeague, LeagueApiError, listLeagues, type CreateLeagueInput } from './leagues'
+import { cancelLeague, createLeague, disqualifyEntrant, getLeague, LeagueApiError, listLeagues, type CreateLeagueInput } from './leagues'
 import { controllerName } from '../../../shared/domain/controllers'
 import { getAnalytics } from '../../analytics/api/analytics'
 
@@ -32,6 +32,21 @@ describe('league requests', () => {
     await expect(listLeagues()).rejects.toBeInstanceOf(LeagueApiError)
     await expect(cancelLeague('a')).rejects.toThrow('already finished')
     await expect(cancelLeague('a')).rejects.toThrow('could not be cancelled')
+  })
+
+  it('disqualifies an entrant with its reason and explains refusals', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(reply(200, { id: 'a' }))
+    expect(await disqualifyEntrant('a', 6, 'Too slow')).toEqual({ id: 'a' })
+    expect(String(vi.mocked(fetch).mock.calls[0][0])).toContain('/v1/leagues/a/entrants/6/disqualify')
+    expect(vi.mocked(fetch).mock.calls[0][1]).toMatchObject({ method: 'POST', body: JSON.stringify({ reason: 'Too slow' }) })
+    for (const [status, body, text] of [
+      [400, {}, '200 characters'], [403, {}, 'Only administrators'], [404, {}, 'no longer exists'],
+      [409, { error: { message: 'entrant has no match left to play' } }, 'cannot be disqualified: entrant has no match left to play.'],
+      [409, {}, 'could not be disqualified'], [500, {}, 'could not be disqualified'],
+    ] as const) {
+      vi.mocked(fetch).mockResolvedValueOnce(reply(status, body))
+      await expect(disqualifyEntrant('a', 6, '')).rejects.toThrow(text)
+    }
   })
 })
 

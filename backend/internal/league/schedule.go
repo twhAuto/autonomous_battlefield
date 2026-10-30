@@ -62,7 +62,8 @@ func (l *League) groupMatch(sequence, group, round, tie int, pair [2]int) Fixtur
 }
 
 // newFixture completes a pending fixture between first and second, the higher seed
-// first, with the coin flip choosing which takes the first spawn side.
+// first, with the coin flip choosing which takes the first spawn side. A match with a
+// disqualified side opens already forfeited, without a battle.
 func (l *League) newFixture(sequence int, f Fixture, first, second int) Fixture {
 	if f.Group != nil {
 		group := *f.Group
@@ -72,6 +73,9 @@ func (l *League) newFixture(sequence int, f Fixture, first, second int) Fixture 
 	f.Home, f.Away = first, second
 	if !homeFirst(l.BattleSalt, f.ID) {
 		f.Home, f.Away = second, first
+	}
+	if l.Disqualified(first) || l.Disqualified(second) {
+		f = l.forfeit(f)
 	}
 	return f
 }

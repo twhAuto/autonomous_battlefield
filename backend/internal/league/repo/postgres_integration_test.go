@@ -1,6 +1,7 @@
 // Exercises league storage against PostgreSQL in a private schema, so the engine-idle
 // check sees only this test's battles: creation and reads, fixture outcomes joined from
-// battles, the scheduler lock, cancellation, and the league shown on a battle read.
+// battles, the scheduler lock, cancellation, disqualification, and the league shown on a
+// battle read.
 
 package repo
 
@@ -314,6 +315,74 @@ func requireStranded(t *testing.T, repo *Postgres, want ...leagueservice.Strande
 		}
 		return nil
 	})
+}
+
+func TestDisqualificationAgainstPostgres(t *testing.T) {
+	db := privateDatabase(t)
+	repo, ctx, l := NewPostgres(db), context.Background(), sampleLeague(t)
+	battleID := uuid(t)
+	insertBattle(t, db, battleID)
+	l.Fixtures[0].Status, l.Fixtures[0].Attempts, l.Fixtures[0].BattleID = league.FixtureRunning, 1, &battleID
+	if err := repo.CreateLeague(ctx, l); err != nil {
+		t.Fatal(err)
+	}
+	entrant := l.Fixtures[0].Home
+	if err := repo.Exclusive(ctx, disqualifyFirstHome(t, repo, l.ID)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.GetLeague(ctx, l.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := got.Entrants[entrant].Disqualified
+	if stored == nil || stored.By != "admin" || stored.Reason != "too slow" || time.Since(stored.At) > time.Minute || got.Entrants[l.Fixtures[0].Away].Disqualified != nil {
+		t.Fatalf("entrants = %+v", got.Entrants)
+	}
+	opening, walkover := got.Fixtures[0], got.Fixtures[5]
+	if opening.Status != league.FixtureForfeited || opening.Forfeit != league.ForfeitHome || *opening.BattleID != battleID || walkover.Status != league.FixtureForfeited ||
+		walkover.Forfeit == "" || walkover.BattleID != nil || got.Fixtures[4].Forfeit != "" {
+		t.Fatalf("fixtures = %+v", got.Fixtures)
+	}
+	if summaries, err := repo.ListLeagues(ctx, 5); err != nil || summaries[0].Settled != 3 {
+		t.Fatalf("summaries = %+v, %v", summaries, err)
+	}
+	requireStranded(t, repo, leagueservice.StrandedBattle{LeagueID: l.ID, BattleID: battleID, OwnerID: "admin"})
+	if _, err := db.Exec(ctx, `UPDATE battle_runs SET status='stopped', completed_at=now() WHERE id=$1`, battleID); err != nil {
+		t.Fatal(err)
+	}
+	requireStranded(t, repo)
+}
+
+// disqualifyFirstHome disqualifies the first fixture's home entrant while no scheduling
+// pass can run; a second write by someone else keeps the first disqualification. Group
+// A's other opening is void, so its losers' match opens as a walkover.
+func disqualifyFirstHome(t *testing.T, repo *Postgres, leagueID string) func(context.Context, leagueservice.SchedulerStore) error {
+	return func(ctx context.Context, store leagueservice.SchedulerStore) error {
+		requireLocked(t, ctx, repo)
+		stored, err := store.League(ctx, leagueID)
+		if err != nil {
+			return err
+		}
+		entrant := stored.Fixtures[0].Home
+		forfeited, err := stored.Disqualify(entrant, league.Disqualification{By: "admin", Reason: "too slow"})
+		if err != nil || len(forfeited) != 1 || forfeited[0].Battle == nil || forfeited[0].Battle.Status != "queued" {
+			t.Fatalf("forfeited %+v, %v", forfeited, err)
+		}
+		stored.Fixtures[1].Status = league.FixtureVoid
+		next, _ := stored.Advance()
+		return errors.Join(
+			store.Disqualify(ctx, leagueID, entrant, league.Disqualification{By: "admin", Reason: "too slow"}),
+			store.Disqualify(ctx, leagueID, entrant, league.Disqualification{By: "someone else", Reason: "again"}),
+			store.SaveFixture(ctx, forfeited[0]), store.SaveFixture(ctx, stored.Fixtures[1]), store.AddFixtures(ctx, leagueID, next))
+	}
+}
+
+// requireLocked checks that a scheduling pass cannot run now.
+func requireLocked(t *testing.T, ctx context.Context, repo *Postgres) {
+	t.Helper()
+	if ran, err := repo.Schedule(ctx, func(context.Context, leagueservice.SchedulerStore) error { return nil }); err != nil || ran {
+		t.Fatalf("a pass ran during a disqualification: %v, %v", ran, err)
+	}
 }
 
 func TestCancelLeagueRejectsMissingAndCompletedLeagues(t *testing.T) {

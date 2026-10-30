@@ -1,6 +1,6 @@
 // Stores leagues, entrants and fixtures in PostgreSQL, joins each fixture's current
-// battle outcome on read, and serializes scheduling and cancellation across API
-// replicas with one transaction advisory lock.
+// battle outcome on read, and serializes scheduling, cancellation and disqualification
+// across API replicas with one transaction advisory lock.
 
 package repo
 
@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -18,7 +19,8 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
-// schedulerLock serializes league scheduling passes and cancellations.
+// schedulerLock serializes league scheduling passes, cancellations and
+// disqualifications.
 const schedulerLock = 741928320
 
 type Postgres struct {
@@ -68,10 +70,10 @@ func (r *Postgres) CreateLeague(ctx context.Context, l league.League) error {
 func insertFixtures(ctx context.Context, db postgres.DBTX, leagueID string, fixtures []league.Fixture) error {
 	for _, f := range fixtures {
 		if _, err := db.Exec(ctx, `
-			INSERT INTO league_fixtures (id, league_id, sequence, stage, group_index, round, tie, home_entrant, away_entrant, scenario_id, status, attempts, battle_id)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			INSERT INTO league_fixtures (id, league_id, sequence, stage, group_index, round, tie, home_entrant, away_entrant, scenario_id, status, attempts, battle_id, forfeit)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULLIF($14, ''))
 			ON CONFLICT (id) DO NOTHING`,
-			f.ID, leagueID, f.Sequence, f.Stage, f.Group, f.Round, f.Tie, f.Home, f.Away, f.ScenarioID, f.Status, f.Attempts, f.BattleID); err != nil {
+			f.ID, leagueID, f.Sequence, f.Stage, f.Group, f.Round, f.Tie, f.Home, f.Away, f.ScenarioID, f.Status, f.Attempts, f.BattleID, f.Forfeit); err != nil {
 			return fmt.Errorf("create league %q fixture %d: %w", leagueID, f.Sequence, err)
 		}
 	}
@@ -107,7 +109,7 @@ func loadLeague(ctx context.Context, db postgres.DBTX, id string) (*league.Leagu
 
 func loadEntrants(ctx context.Context, db postgres.DBTX, id string) ([]league.Entrant, error) {
 	rows, err := db.Query(ctx, `
-		SELECT entrant_index, group_index, faction_id, faction_name, controller
+		SELECT entrant_index, group_index, faction_id, faction_name, controller, disqualified_at, disqualified_by, disqualification_reason
 		FROM league_entrants WHERE league_id = $1 ORDER BY entrant_index`, id)
 	if err != nil {
 		return nil, fmt.Errorf("list league %q entrants: %w", id, err)
@@ -117,8 +119,15 @@ func loadEntrants(ctx context.Context, db postgres.DBTX, id string) ([]league.En
 	for rows.Next() {
 		var entrant league.Entrant
 		var controller []byte
-		if err := rows.Scan(&entrant.Index, &entrant.Group, &entrant.FactionID, &entrant.FactionName, &controller); err != nil {
+		var disqualifiedAt *time.Time
+		var disqualifiedBy *string
+		var reason string
+		if err := rows.Scan(&entrant.Index, &entrant.Group, &entrant.FactionID, &entrant.FactionName, &controller, &disqualifiedAt, &disqualifiedBy, &reason); err != nil {
 			return nil, fmt.Errorf("scan league %q entrant: %w", id, err)
+		}
+		// The disqualification columns are null together until an admin disqualifies.
+		if disqualifiedAt != nil {
+			entrant.Disqualified = &league.Disqualification{At: *disqualifiedAt, By: *disqualifiedBy, Reason: reason}
 		}
 		if err := json.Unmarshal(controller, &entrant.Controller); err != nil {
 			return nil, fmt.Errorf("decode league %q entrant controller: %w", id, err)
@@ -131,7 +140,7 @@ func loadEntrants(ctx context.Context, db postgres.DBTX, id string) ([]league.En
 func loadFixtures(ctx context.Context, db postgres.DBTX, id string) ([]league.Fixture, error) {
 	rows, err := db.Query(ctx, `
 		SELECT f.id, f.sequence, f.stage, f.group_index, f.round, f.tie, f.home_entrant, f.away_entrant, f.scenario_id,
-		       f.status, f.attempts, f.battle_id, b.status, b.current_tick, b.requested_ticks, b.result
+		       f.status, f.attempts, f.battle_id, COALESCE(f.forfeit, ''), b.status, b.current_tick, b.requested_ticks, b.result
 		FROM league_fixtures f
 		LEFT JOIN battle_runs b ON b.id = f.battle_id
 		WHERE f.league_id = $1 ORDER BY f.sequence`, id)
@@ -156,7 +165,7 @@ func scanFixture(rows pgx.Rows) (league.Fixture, error) {
 	var currentTick, requestedTicks *int64
 	var result []byte
 	if err := rows.Scan(&f.ID, &f.Sequence, &f.Stage, &f.Group, &f.Round, &f.Tie, &f.Home, &f.Away, &f.ScenarioID,
-		&f.Status, &f.Attempts, &f.BattleID, &battleStatus, &currentTick, &requestedTicks, &result); err != nil {
+		&f.Status, &f.Attempts, &f.BattleID, &f.Forfeit, &battleStatus, &currentTick, &requestedTicks, &result); err != nil {
 		return f, err
 	}
 	// The battle columns are null together when the fixture has no battle.
@@ -182,7 +191,7 @@ func scanFixture(rows pgx.Rows) (league.Fixture, error) {
 func (r *Postgres) ListLeagues(ctx context.Context, limit int) ([]league.Summary, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT l.id, l.owner_id, l.name, l.status, l.group_count, l.champion_entrant, e.faction_name,
-		       (SELECT count(*) FROM league_fixtures f WHERE f.league_id = l.id AND f.status IN ('completed', 'void', 'cancelled')),
+		       (SELECT count(*) FROM league_fixtures f WHERE f.league_id = l.id AND f.status IN ('completed', 'void', 'cancelled', 'forfeited')),
 		       l.created_at, l.completed_at
 		FROM leagues l
 		LEFT JOIN league_entrants e ON e.league_id = l.id AND e.entrant_index = l.champion_entrant
@@ -267,6 +276,21 @@ func (r *Postgres) Schedule(ctx context.Context, fn func(context.Context, league
 	return true, tx.Commit(ctx)
 }
 
+func (r *Postgres) Exclusive(ctx context.Context, fn func(context.Context, leagueservice.SchedulerStore) error) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer rollback(ctx, tx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, schedulerLock); err != nil {
+		return fmt.Errorf("lock league scheduler: %w", err)
+	}
+	if err := fn(ctx, schedulerStore{tx: tx}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // schedulerStore runs inside a scheduling pass's transaction.
 type schedulerStore struct {
 	tx pgx.Tx
@@ -292,10 +316,24 @@ func (s schedulerStore) RunningLeagues(ctx context.Context) ([]league.League, er
 	return leagues, nil
 }
 
+func (s schedulerStore) League(ctx context.Context, id string) (*league.League, error) {
+	return loadLeague(ctx, s.tx, id)
+}
+
+func (s schedulerStore) Disqualify(ctx context.Context, leagueID string, entrant int, d league.Disqualification) error {
+	_, err := s.tx.Exec(ctx, `
+		UPDATE league_entrants SET disqualified_at = now(), disqualified_by = $3, disqualification_reason = $4
+		WHERE league_id = $1 AND entrant_index = $2 AND disqualified_at IS NULL`, leagueID, entrant, d.By, d.Reason)
+	if err != nil {
+		return fmt.Errorf("disqualify league %q entrant %d: %w", leagueID, entrant, err)
+	}
+	return nil
+}
+
 func (s schedulerStore) SaveFixture(ctx context.Context, f league.Fixture) error {
 	_, err := s.tx.Exec(ctx, `
-		UPDATE league_fixtures SET status = $2, attempts = $3, battle_id = $4, updated_at = now()
-		WHERE id = $1`, f.ID, f.Status, f.Attempts, f.BattleID)
+		UPDATE league_fixtures SET status = $2, attempts = $3, battle_id = $4, forfeit = NULLIF($5, ''), updated_at = now()
+		WHERE id = $1`, f.ID, f.Status, f.Attempts, f.BattleID, f.Forfeit)
 	if err != nil {
 		return fmt.Errorf("save league fixture %q: %w", f.ID, err)
 	}
@@ -363,7 +401,7 @@ func (s schedulerStore) StrandedBattles(ctx context.Context) ([]leagueservice.St
 		FROM leagues l
 		JOIN league_fixtures f ON f.league_id = l.id
 		JOIN battle_runs b ON b.id = f.battle_id
-		WHERE l.status = 'cancelled' AND b.status IN ('queued', 'running')
+		WHERE (l.status = 'cancelled' OR f.status = 'forfeited') AND b.status IN ('queued', 'running')
 		ORDER BY l.id, f.sequence`)
 	if err != nil {
 		return nil, fmt.Errorf("list stranded league battles: %w", err)
