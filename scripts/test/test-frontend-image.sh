@@ -59,18 +59,18 @@ if python3 "${project_dir}/scripts/ci/verify-frontend-image.py" "${broken_image}
 fi
 grep -Fq 'Permission denied' "${test_dir}/broken.log" || { cat "${test_dir}/broken.log" >&2; exit 1; }
 
-# The gate must also reject a Content-Security-Policy that stops restricting scripts.
+# The gate must also reject a Content-Security-Policy that allows scripts from anywhere.
 mkdir "${test_dir}/permissive"
 cat >"${test_dir}/permissive/Dockerfile" <<'PERMISSIVE'
 ARG BASE=scratch
 FROM ${BASE}
 USER root
-RUN sed -i "s/script-src 'self'; //" /etc/nginx/templates/default.conf.template
+RUN sed -i "s/script-src 'self'/script-src */" /etc/nginx/templates/default.conf.template
 USER 101:101
 PERMISSIVE
 docker build --builder default --build-arg "BASE=${image}" --tag "${permissive_image}" "${test_dir}/permissive"
 if python3 "${project_dir}/scripts/ci/verify-frontend-image.py" "${permissive_image}" >"${test_dir}/permissive.log" 2>&1; then
-  echo 'Frontend policy without script-src unexpectedly passed the runtime gate.' >&2
+  echo 'Frontend policy allowing any script source unexpectedly passed the runtime gate.' >&2
   exit 1
 fi
 grep -Fq 'Unexpected Content-Security-Policy' "${test_dir}/permissive.log" || { cat "${test_dir}/permissive.log" >&2; exit 1; }

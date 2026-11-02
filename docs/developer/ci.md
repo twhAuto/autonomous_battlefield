@@ -211,7 +211,7 @@ Both PR and main deployment-script checks run
 `./scripts/test/test-frontend-image.sh`: it copies tracked frontend inputs into a
 private temporary context with files `0600` and directories `0700`, builds the
 actual Dockerfile, verifies startup, and proves that an unreadable template and a
-Content-Security-Policy without `script-src` are rejected.
+Content-Security-Policy allowing scripts from any source are rejected.
 It needs Docker with BuildKit and access to the configured base-image/package
 registries; it uses the default daemon-backed builder and removes its child image
 before the parent and temporary files. It deliberately runs for every PR/main

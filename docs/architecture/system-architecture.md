@@ -110,11 +110,13 @@ of routing those requests to HTML. Every Nginx response carries a
 Content-Security-Policy, `X-Frame-Options: DENY`, `nosniff`, a strict-origin
 referrer policy and HSTS. The policy loads scripts, styles, fonts and images only
 from the frontend's origin (fonts are bundled, small ones inlined as `data:` URIs),
-forbids framing, plugins, `<base>` changes and cross-origin form posts, and lets
-the browser connect only to its own origin plus, when a build sets `VITE_API_URL`,
-that API origin, which Nginx receives as `CSP_API_ORIGIN`. An injected script
-therefore cannot run, and data the UI holds, such as the Admin → Members emails,
-cannot be sent to another site.
+forbids framing and plugins, keeps `<base>` and form posts on that origin, and lets
+scripts fetch only from it plus, when a build sets `VITE_API_URL`, that API origin,
+which Nginx receives as `CSP_API_ORIGIN`. Inline and off-origin scripts are
+blocked, and requests and resource loads to other sites are refused. The policy
+narrows what an injection could do but does not make data exfiltration
+impossible: same-origin scripts still run, and it does not restrict top-level
+navigation.
 
 ### Battle inspection
 
