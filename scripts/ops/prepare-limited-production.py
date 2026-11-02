@@ -42,6 +42,8 @@ def prepare(application, deployment, output):
         audience=app['BATTLEFIELD_ACCESS_AUDIENCE'], tunnel_id=profile['BF_TUNNEL_ID'],
         cloudflared_image=profile['BF_TUNNEL_IMAGE'], admin=roles.get('admin',[]),
         tester=roles.get('tester',[]), player=roles.get('player',[]), output=str(output),
+        guest_hostname=app.get('BATTLEFIELD_GUEST_ORIGIN', '').removeprefix('https://').rstrip('/'),
+        guest_audience=app.get('BATTLEFIELD_ACCESS_GUEST_AUDIENCE', ''),
         credential_checksum=hashlib.sha256(credential.read_bytes()).hexdigest())
     renderer.render(args)
 
