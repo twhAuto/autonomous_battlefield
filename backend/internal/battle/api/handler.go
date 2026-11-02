@@ -406,24 +406,25 @@ func leagueFor(run *battleservice.BattleRun) any {
 	return link
 }
 
+// visibleProfiles lists the profiles the caller's role may use, each with only the
+// models that role may use; Players and Guests see only available profiles.
 func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {
-	if authn.GameplayOnly(r.Context()) {
-		result := []map[string]any{}
-		for _, p := range profiles {
-			if profile.Allowed(r.Context(), p) && p.Available {
-				result = append(result, map[string]any{"id": p.ID, "displayName": p.DisplayName, "modelLabel": p.ModelLabel, "runtime": p.Runtime, "available": true, "modelOptions": p.ModelOptions})
-			}
-		}
-		return result
-	}
 	if _, ok := authn.ActorFromContext(r.Context()); !ok {
 		return profiles
 	}
-	result := []ai.ModelProfile{}
+	gameplayOnly := authn.GameplayOnly(r.Context())
+	selectable := []ai.ModelProfile{}
 	for _, p := range profiles {
-		if profile.Allowed(r.Context(), p) {
-			result = append(result, p)
+		if p, ok := profile.ForRole(r.Context(), p); ok && (p.Available || !gameplayOnly) {
+			selectable = append(selectable, p)
 		}
+	}
+	if !gameplayOnly {
+		return selectable
+	}
+	result := make([]map[string]any, 0, len(selectable))
+	for _, p := range selectable {
+		result = append(result, map[string]any{"id": p.ID, "displayName": p.DisplayName, "modelLabel": p.ModelLabel, "runtime": p.Runtime, "available": true, "modelOptions": p.ModelOptions})
 	}
 	return result
 }

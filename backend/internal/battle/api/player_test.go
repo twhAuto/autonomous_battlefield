@@ -154,3 +154,31 @@ func TestBattleResponsesReportTheUnitCapAndContestedTerritoryOnlyWhenSet(t *test
 		}
 	}
 }
+
+func TestModelProfileListShowsEachRoleOnlyItsModels(t *testing.T) {
+	cli := ai.ModelProfile{
+		ID: "cli", Runtime: "cli", Model: "opus", ModelLabel: "opus", Available: true, AllowedRoles: []string{"admin", "tester", "player"},
+		ModelOptions: []ai.ModelOption{{ID: "haiku"}, {ID: "opus"}, {ID: "fable"}},
+		ModelRoles:   map[string][]string{"opus": {"admin", "tester"}, "fable": {"admin"}},
+	}
+	testerOnly := ai.ModelProfile{ID: "tester-only", Runtime: "cli", Model: "deep", ModelLabel: "deep", Available: true, AllowedRoles: []string{"tester", "player"},
+		ModelOptions: []ai.ModelOption{{ID: "deep"}}, ModelRoles: map[string][]string{"deep": {"tester"}}}
+	list := func(role authn.Role) string {
+		r := httptest.NewRequest("GET", "/v1/model-profiles", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "viewer", Role: role}))
+		raw, err := json.Marshal(visibleProfiles(r, []ai.ModelProfile{cli, testerOnly}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	player, tester := list(authn.Player), list(authn.Tester)
+	if !strings.Contains(player, `"modelLabel":"haiku"`) || !strings.Contains(player, `"modelOptions":[{"id":"haiku"}]`) || strings.Contains(player, "tester-only") {
+		t.Fatalf("player list: %s", player)
+	}
+	if !strings.Contains(tester, `"modelLabel":"opus"`) || !strings.Contains(tester, `"modelOptions":[{"id":"haiku"},{"id":"opus"}]`) || !strings.Contains(tester, "tester-only") {
+		t.Fatalf("tester list: %s", tester)
+	}
+	if admin := list(authn.Admin); !strings.Contains(admin, `{"id":"fable"}`) || strings.Contains(admin, "tester-only") {
+		t.Fatalf("admin list: %s", admin)
+	}
+}

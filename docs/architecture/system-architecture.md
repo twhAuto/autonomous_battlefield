@@ -651,7 +651,7 @@ separation, credential rotation, rollback limitations and live acceptance checks
 ### Model access and role preview
 
 The administrator-only `/admin` control center uses `GET /v1/admin/model-access` and
-`PUT /v1/admin/model-access` to manage provider and individual profile access,
+`PUT /v1/admin/model-access` to manage provider, profile and per-model access,
 including allowed roles, stored in a singleton PostgreSQL policy row. Version checks
 reject conflicting saves with HTTP 409. Each API
 selection reads the durable policy with a bounded timeout, so replicas and restarts

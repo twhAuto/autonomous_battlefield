@@ -60,9 +60,9 @@ allowance, background generation and every mutation, and Guests own nothing they
 can manage.
 
 Selecting a model controller, for a battle or for background generation, requires
-an enabled, verified profile and a role allowed by the
-[model access policy](#model-access-administration). Players need explicit
-approval for each API and CLI profile.
+an enabled, verified profile and a role the
+[model access policy](#model-access-administration) allows for both the profile and
+the model. Players need explicit approval for each API and CLI profile.
 
 ### Display names
 
@@ -437,8 +437,9 @@ sees only their own jobs; with authentication disabled, every client shares the
 Admission allows 10 requests per actor per UTC day, at least 30 seconds apart, and
 one queued or running job. A repeated `idempotencyKey` with the same normalized
 input returns the original job without another charge; the same key with
-different input returns `409`. Validation failures (`400`) and unavailable or
-disabled profiles (`503`) reserve no quota. A limit returns `429` with
+different input returns `409`. Validation failures (`400`) reserve no quota, and
+neither do unavailable or disabled profiles (`503`), which include a profile or
+configured model the caller's role [may not use](#model-access-administration). A limit returns `429` with
 `Retry-After` and the retry and reset times. Options and job reads are `no-store`.
 
 Queued jobs expire after five minutes, and running jobs time out after two; both
@@ -478,6 +479,23 @@ restricts only new battle selections and generation admissions, and cannot enabl
 profile whose credentials or runtime are unavailable. See
 [model access and role preview](system-architecture.md#model-access-and-role-preview).
 
+A profile entry's optional `models` map narrows its
+[model options](#model-and-effort-selection) by role. Each key must be one of the
+profile's option IDs and each `allowedRoles` a subset of the profile's own, or the
+`PUT` returns `400`; an empty list denies everyone. A model without an entry,
+including every model of a profile entry without `models`, allows every role its
+profile allows. `GET` omits entries for models outside the profile's options.
+
+A caller's role must be allowed both the profile and the chosen model.
+`GET /v1/model-profiles` lists only the models the caller's role may use and omits a
+profile whose models it may use none of. When the role may not use the profile's
+configured model, `modelLabel` names the first option it may use, and a model
+controller without `modelIdentifier` selects that option. Battle and league creation
+return `403 permission_denied` for a model the role may not use; league entrants are
+checked with the Admin role that owns league battles. Background generation runs its
+profile's configured model, so it is unavailable to a role that may not use that
+model.
+
 ### Upgrade-level orders
 
 The shared battlefield ruleset uses `arsenal`, `arsenal_2`, `arsenal_3` and equivalent IDs for
@@ -499,12 +517,14 @@ emit `unit_repaired` events and use support-action target markers.
 
 ## Model and effort selection
 
-`GET /v1/model-profiles` includes `modelOptions` for authorized profiles, including
-Player-visible profiles. Each option contains `id`, `reasoningEfforts`, and an
-optional `defaultReasoningEffort`. An absent option list means only the configured
-model is selectable. `POST /v1/battles` accepts optional `modelIdentifier` and
-`reasoningEffort` in each model controller. Unsupported combinations return 422;
-scripted controllers reject these model fields. Profile role checks still apply.
+`GET /v1/model-profiles` includes `modelOptions` for each listed profile, limited to
+the models the caller's role may use. Each option contains `id`, `reasoningEfforts`,
+and an optional `defaultReasoningEffort`. An absent option list means only the
+configured model is selectable. `POST /v1/battles` accepts optional `modelIdentifier`
+and `reasoningEffort` in each model controller. Unsupported combinations return 422;
+scripted controllers reject these model fields. The
+[model access](#model-access-administration) role checks for the profile and the
+model still apply.
 The selection is frozen for execution and retry matching. Provider aliases remain
 aliases, rather than promises of a specific underlying version.
 

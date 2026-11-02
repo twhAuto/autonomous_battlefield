@@ -248,6 +248,10 @@ type ModelProfile struct {
 	Available                       bool          `json:"available" yaml:"-"`
 	ToolCapability                  bool          `json:"toolCapability" yaml:"-"`
 	UnavailableReason               string        `json:"unavailableReason,omitempty" yaml:"-"`
+
+	// ModelRoles holds the model access policy's roles for individual model options. A
+	// model without an entry allows every role the profile allows.
+	ModelRoles map[string][]string `json:"-" yaml:"-"`
 }
 
 // PrefetchesContext reports whether CLI battle sessions receive their frozen context

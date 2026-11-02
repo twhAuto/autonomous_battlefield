@@ -109,6 +109,55 @@ describe('AdminSettingsPage', () => {
     expect(await screen.findByRole('switch', { name: 'openai provider access' })).toBeChecked()
   })
 
+  it('limits each model to the profile roles and saves per-model roles', async () => {
+    const user = userEvent.setup()
+    const claude = { id: 'claude', displayName: 'Claude subscription', modelLabel: 'opus', provider: 'claude-cli', runtime: 'cli', scope: 'local', available: true, modelOptions: [{ id: 'haiku' }, { id: 'opus', reasoningEfforts: ['low'] }] }
+    let persisted = { version: 0, models: [claude], policy: { providers: { 'claude-cli': true }, profiles: { claude: { enabled: true, allowedRoles: ['admin', 'tester'] } } } }
+    const saved: unknown[] = []
+    vi.mocked(fetch).mockImplementation(async (_url, init) => {
+      if (init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body))
+        saved.push(body.policy)
+        persisted = { ...persisted, ...body, version: persisted.version + 1 }
+      }
+      return json(persisted)
+    })
+    const first = renderPage()
+    await screen.findByText('Claude subscription')
+    const card = within(screen.getByText('Claude subscription').closest('article')!)
+    const model = (id: string) => within(card.getByRole('group', { name: id }))
+    const profileRoles = within(card.getByRole('group', { name: 'Allowed roles' }))
+    expect(model('haiku').getByRole('checkbox', { name: 'Tester' })).toBeChecked()
+    expect(model('haiku').getByRole('checkbox', { name: 'Player' })).toBeDisabled()
+    expect(model('haiku').getByRole('checkbox', { name: 'Player' })).not.toBeChecked()
+    await user.click(model('opus').getByRole('checkbox', { name: 'Tester' }))
+    expect(model('opus').getByRole('checkbox', { name: 'Tester' })).not.toBeChecked()
+    await user.click(profileRoles.getByRole('checkbox', { name: 'Player' }))
+    expect(model('haiku').getByRole('checkbox', { name: 'Player' })).toBeChecked()
+    expect(model('opus').getByRole('checkbox', { name: 'Player' })).toBeEnabled()
+    expect(model('opus').getByRole('checkbox', { name: 'Player' })).not.toBeChecked()
+    await user.click(model('opus').getByRole('checkbox', { name: 'Player' }))
+    await user.click(profileRoles.getByRole('checkbox', { name: 'Administrator' }))
+    expect(model('opus').getByRole('checkbox', { name: 'Administrator' })).toBeDisabled()
+    expect(model('opus').getByRole('checkbox', { name: 'Administrator' })).not.toBeChecked()
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    await screen.findByText('Changes saved')
+    expect(saved).toEqual([{ providers: { 'claude-cli': true }, profiles: { claude: { enabled: true, allowedRoles: ['tester', 'player'], models: { opus: { allowedRoles: ['player'] } } } } }])
+    first.unmount(); renderPage()
+    await screen.findByText('Claude subscription')
+    const reloaded = within(within(screen.getByText('Claude subscription').closest('article')!).getByRole('group', { name: 'opus' }))
+    expect(reloaded.getByRole('checkbox', { name: 'Player' })).toBeChecked()
+    expect(reloaded.getByRole('checkbox', { name: 'Tester' })).not.toBeChecked()
+    await user.click(screen.getByRole('switch', { name: 'Claude subscription model access' }))
+    expect(reloaded.getByRole('checkbox', { name: 'Player' })).toBeDisabled()
+  })
+
+  it('shows no per-model roles for a profile without model options', async () => {
+    vi.mocked(fetch).mockResolvedValue(json(settings()))
+    renderPage(); await screen.findByText('Configured GPT · API')
+    expect(screen.queryByRole('group', { name: 'Allowed roles per model' })).not.toBeInTheDocument()
+  })
+
   it('can remove all roles without restoring default access', async () => {
     const user = userEvent.setup()
     vi.mocked(fetch).mockResolvedValue(json(settings()))

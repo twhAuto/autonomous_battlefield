@@ -10,10 +10,7 @@ import (
 // legacy profile defaults; explicit options may select an explicit default effort.
 func ResolveModelSelection(p ModelProfile, model, effort string) (string, string, error) {
 	if model == "" {
-		model = p.ModelLabel
-		if p.Runtime == "cli" {
-			model = p.Model
-		}
+		model = ConfiguredModel(p)
 	}
 	for _, option := range p.ModelOptions {
 		if option.ID != model {
@@ -27,14 +24,18 @@ func ResolveModelSelection(p ModelProfile, model, effort string) (string, string
 		}
 		return "", "", fmt.Errorf("unsupported reasoning effort for model")
 	}
-	fallback := p.ModelLabel
-	if p.Runtime == "cli" {
-		fallback = p.Model
-	}
-	if model == fallback && effort == "" {
+	if model == ConfiguredModel(p) && effort == "" {
 		return model, "", nil
 	}
 	return "", "", fmt.Errorf("model or reasoning effort is not enabled")
+}
+
+// ConfiguredModel is the model a selection without a model identifier runs.
+func ConfiguredModel(p ModelProfile) string {
+	if p.Runtime == "cli" {
+		return p.Model
+	}
+	return p.ModelLabel
 }
 
 func ValidateModelOptions(p ModelProfile) error {
