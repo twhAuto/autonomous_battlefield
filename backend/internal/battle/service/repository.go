@@ -14,6 +14,9 @@ import (
 type Repository interface {
 	ListBattles(context.Context, BattleHistoryQuery) ([]BattleSummary, error)
 	CreateBattle(context.Context, CreateBattleParams) error
+	// BattleAllowance reads an owner's limited allowance: the Tester values when tester
+	// is set, otherwise the Player values.
+	BattleAllowance(ctx context.Context, owner string, tester bool) (Allowance, error)
 	GetBattle(context.Context, string) (*BattleRun, error)
 	StopBattle(context.Context, string) error
 	SetBattlePaused(context.Context, string, bool) error

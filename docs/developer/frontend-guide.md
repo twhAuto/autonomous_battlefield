@@ -16,10 +16,10 @@ The frontend is a React/Vite single-page application.
 | [`features/auth/api/auth.ts`](../../frontend/src/features/auth/api/auth.ts) | Session discovery, login, and logout client |
 | [`shared/api/request.ts`](../../frontend/src/shared/api/request.ts) | API base URL, cancellation-preserving network error mapping, and opt-in unauthorized-session notifications |
 | [`features/factions/api/factions.ts`](../../frontend/src/features/factions/api/factions.ts) | Typed faction and ruleset requests |
-| [`features/battles/api/battles.ts`](../../frontend/src/features/battles/api/battles.ts) | Typed scenario, profile, battle, history, event, view, control, and decision requests |
+| [`features/battles/api/battles.ts`](../../frontend/src/features/battles/api/battles.ts) | Typed scenario, profile, battle, allowance, history, event, view, control, and decision requests |
 | [`features/factions/pages/CreateFactionPage.tsx`](../../frontend/src/features/factions/pages/CreateFactionPage.tsx) | Faction profile editor and background generator |
 | [`features/factions/pages/FactionsPage.tsx`](../../frontend/src/features/factions/pages/FactionsPage.tsx) | Faction registry and authorized edit links; deletion lives in the editor's Danger zone |
-| [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario (default `frontier-siege`), participants, controllers, and tick-limit selection |
+| [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario (default `frontier-siege`), participants, controllers, and tick-limit selection. Shows a Player's or Tester's battle allowance and disables deployment, naming the limit, while one is used up |
 | [`features/battles/components/ControllerSelect.tsx`](../../frontend/src/features/battles/components/ControllerSelect.tsx) | Scripted or model controller with dependent model and effort selectors (default Low effort), shared by battle and league setup |
 | [`features/battles/components/MapPreview.tsx`](../../frontend/src/features/battles/components/MapPreview.tsx) | Static terrain and castle-spawn preview of the selected scenario map |
 | [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status-filtered history table/cards, cursor navigation, refresh, and detail links |

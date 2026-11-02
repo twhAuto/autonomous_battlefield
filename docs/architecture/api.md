@@ -71,6 +71,10 @@ retry that reuses a request's identifier with the same inputs and identity
 returns the work already admitted rather than consuming another allowance. League
 battles are Admin battles and also skip the per-battle model decision budget.
 
+`GET /v1/battles/allowance` reports the caller's battle counts and limits from the
+same counts admission uses, without reserving anything, so a start can still
+return `429` if another battle is admitted first.
+
 Private worker APIs are outside this contract: they use a separate bearer secret
 and server-minted request capabilities, described in the
 [agent control plane](system-architecture.md#agent-control-plane).

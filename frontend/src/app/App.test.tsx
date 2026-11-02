@@ -425,6 +425,9 @@ describe('App', () => {
           { id: 'codex-local', displayName: 'Codex local', provider: 'codex-cli', runtime: 'cli', scope: 'local', modelLabel: '', available: false, toolCapability: true },
         ] }), { status: 200 })
       }
+      if (url === '/v1/battles/allowance') {
+        return new Response(JSON.stringify({ limited: false, startedToday: 0, unfinished: 0, serviceUnfinished: 0, resetAt: '2099-01-01T00:00:00Z' }), { status: 200 })
+      }
       if (url === '/v1/battles' && init?.method === 'POST') {
         return new Response('provider unavailable', { status: 503 })
       }
@@ -437,7 +440,8 @@ describe('App', () => {
     await user.selectOptions(controllers[0], 'gemini-api-balanced')
     expect(screen.queryByRole('option', { name: /Codex local/i })).not.toBeInTheDocument()
     expect(screen.queryByText('AI integration status')).not.toBeInTheDocument()
-    expect(fetch).toHaveBeenCalledTimes(3)
+    // Factions, scenarios, profiles and the battle allowance; choosing a model reads nothing more.
+    expect(fetch).toHaveBeenCalledTimes(4)
     expect(screen.queryByRole('button', { name: 'Check availability' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'DEPLOY COMBATANTS' }))
 

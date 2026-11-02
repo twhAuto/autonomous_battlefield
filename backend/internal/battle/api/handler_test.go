@@ -421,9 +421,14 @@ type fakeBattleService struct {
 	resumeCalled  bool
 	replay        battleservice.BattleReplay
 	replayTick    uint64
+	allowance     battleservice.Allowance
 }
 
 func (s *fakeBattleService) ListScenarios() []battleservice.ScenarioSummary { return s.scenarios }
+
+func (s *fakeBattleService) BattleAllowance(context.Context) (battleservice.Allowance, error) {
+	return s.allowance, s.err
+}
 
 // The base fake has no saved views or decision contexts; tests that need them embed
 // it and override these methods.
@@ -482,4 +487,38 @@ func (s *fakeBattleService) GetBattleReplay(_ context.Context, _ string, tick ui
 func (s *fakeBattleService) ListBattles(_ context.Context, input battleservice.BattleHistoryInput) (battleservice.BattleHistoryPage, error) {
 	s.historyInput = input
 	return s.historyPage, s.err
+}
+
+func TestGetAllowanceReturnsTheCallersAllowance(t *testing.T) {
+	battles := &fakeBattleService{allowance: battleservice.Allowance{
+		Limited: true, StartedToday: 2, DailyLimit: 5, Unfinished: 1, UnfinishedLimit: 1,
+		ServiceUnfinished: 3, ServiceUnfinishedLimit: 4, ResetAt: time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC),
+	}}
+	response := httptest.NewRecorder()
+	httpapi.NewRouter(NewHandler(battles)).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/battles/allowance", nil))
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("status = %d, Cache-Control = %q", response.Code, response.Header().Get("Cache-Control"))
+	}
+	want := `{"limited":true,"startedToday":2,"dailyLimit":5,"unfinished":1,"unfinishedLimit":1,"serviceUnfinished":3,"serviceUnfinishedLimit":4,"resetAt":"2026-11-03T00:00:00Z"}`
+	if got := strings.TrimSpace(response.Body.String()); got != want {
+		t.Fatalf("body = %s; want %s", got, want)
+	}
+
+	// An Admin's allowance omits the limits it is not subject to.
+	battles.allowance = battleservice.Allowance{StartedToday: 7, ResetAt: battles.allowance.ResetAt}
+	response = httptest.NewRecorder()
+	httpapi.NewRouter(NewHandler(battles)).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/battles/allowance", nil))
+	want = `{"limited":false,"startedToday":7,"unfinished":0,"serviceUnfinished":0,"resetAt":"2026-11-03T00:00:00Z"}`
+	if got := strings.TrimSpace(response.Body.String()); got != want {
+		t.Fatalf("admin body = %s; want %s", got, want)
+	}
+}
+
+func TestGetAllowanceHidesStorageErrors(t *testing.T) {
+	battles := &fakeBattleService{err: errors.New("connection refused")}
+	response := httptest.NewRecorder()
+	httpapi.NewRouter(NewHandler(battles)).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/battles/allowance", nil))
+	if response.Code != http.StatusInternalServerError || strings.Contains(response.Body.String(), "connection refused") {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
 }

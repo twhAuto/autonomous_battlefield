@@ -42,6 +42,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/model-profiles", h.ListModelProfiles)
 	mux.HandleFunc("POST /v1/battles", h.CreateBattle)
 	mux.HandleFunc("GET /v1/battles", h.ListBattles)
+	mux.HandleFunc("GET /v1/battles/allowance", h.GetAllowance)
 	mux.HandleFunc("GET /v1/battles/{id}", h.GetBattle)
 	mux.HandleFunc("POST /v1/battles/{id}/stop", h.StopBattle)
 	mux.HandleFunc("POST /v1/battles/{id}/pause", h.PauseBattle)
@@ -141,6 +142,16 @@ func (h *Handler) GetFactionView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = httpapi.WriteJSON(w, http.StatusOK, view)
+}
+
+// GetAllowance reports the caller's battle allowance before a battle is started.
+func (h *Handler) GetAllowance(w http.ResponseWriter, r *http.Request) {
+	allowance, err := h.battles.BattleAllowance(r.Context())
+	if writeError(w, r, err, nil, failure{event: "battle_allowance_failed", message: "could not load battle allowance"}) {
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	_ = httpapi.WriteJSON(w, http.StatusOK, allowance)
 }
 
 func (h *Handler) ListScenarios(w http.ResponseWriter, _ *http.Request) {
