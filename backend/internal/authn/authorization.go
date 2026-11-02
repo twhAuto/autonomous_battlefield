@@ -159,6 +159,7 @@ var routeRules = []routeRule{
 	{pattern: "GET /v1/auth/session", public: true, ci: true},
 	{pattern: "POST /v1/auth/login", public: true},
 	{pattern: "POST /v1/auth/logout"},
+	{pattern: "PUT /v1/profile", permission: PermissionPlay},
 
 	{pattern: "GET /v1/factions", permission: PermissionView},
 	{pattern: "GET /v1/faction-rulesets", permission: PermissionView},

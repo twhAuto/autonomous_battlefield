@@ -52,6 +52,8 @@ security:
 tags:
   - name: Authentication
     description: Session discovery, and sign-in for the local administrator account.
+  - name: Profile
+    description: The caller's display name, shown on the battles and factions they own.
   - name: Factions
     description: Faction profiles that battles snapshot when they are queued.
   - name: Battles
@@ -90,7 +92,7 @@ paths:
                 enabled: true
                 authenticated: true
                 mode: cloudflare
-                actor: {id: 3f2a…, email: friend@example.com, role: player}
+                actor: {id: 3f2a…, email: friend@example.com, role: player, displayName: Iron Duke}
                 capabilities: {inspect: false, admin: false, members: false}
         '401':
           description: Not authenticated. The body is a session, not an error.
@@ -100,6 +102,7 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/Session'}
               example: {enabled: true, authenticated: false, mode: local-password}
+        '503': {$ref: '#/components/responses/Unavailable'}
 
   /v1/auth/login:
     post:
@@ -152,6 +155,49 @@ paths:
         '204':
           description: Local mode. The session cookie is cleared.
         '405': {$ref: '#/components/responses/MethodNotAllowed'}
+
+  /v1/profile:
+    put:
+      tags: [Profile]
+      operationId: setDisplayName
+      summary: Choose or change the caller's display name
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: |
+        Players, Testers and Admins only; Guests receive `403 permission_denied`.
+        The name is trimmed and then checked against `DisplayName`. A name that
+        matches another person's ignoring case returns `409 conflict`; saving the
+        caller's own name again, in any case, succeeds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [displayName]
+              properties:
+                displayName:
+                  description: Trimmed before it is checked.
+                  type: string
+            example: {displayName: Iron Duke}
+      responses:
+        '200':
+          description: Saved. The body holds the stored, trimmed name.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [displayName]
+                properties:
+                  displayName: {$ref: '#/components/schemas/DisplayName'}
+              example: {displayName: Iron Duke}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '503': {$ref: '#/components/responses/Unavailable'}
 
   /v1/factions:
     get:
@@ -1353,12 +1399,33 @@ components:
             id: {type: string}
             email: {type: string}
             role: {$ref: '#/components/schemas/SessionRole'}
+            displayName:
+              description: |
+                The caller's display name. Omitted when none is set, and always for
+                Guests and service identities.
+              $ref: '#/components/schemas/DisplayName'
         capabilities:
           type: object
           properties:
             inspect: {type: boolean}
             admin: {type: boolean}
             members: {type: boolean}
+
+    DisplayName:
+      description: |
+        3 to 24 letters, digits, spaces, hyphens or underscores, with no leading or
+        trailing space, unique ignoring case.
+      type: string
+      minLength: 3
+      maxLength: 24
+      pattern: '^[A-Za-z0-9_-][A-Za-z0-9 _-]{1,22}[A-Za-z0-9_-]$'
+
+    OwnerName:
+      description: |
+        Who owns the item, for display: `Admin` for anything an Admin owns, league
+        battles included; otherwise the owner's display name, or `Unnamed commander`
+        before they choose one. Never an email. Omitted when names cannot be read.
+      type: string
 
     LoginRequest:
       type: object
@@ -1384,6 +1451,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         ownerId: {type: string}
+        ownerName: {$ref: '#/components/schemas/OwnerName'}
         emblem: {$ref: '#/components/schemas/FactionEmblem'}
         name: {type: string}
         doctrine: {type: string}
@@ -1893,6 +1961,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         ownerId: {type: string}
+        ownerName: {$ref: '#/components/schemas/OwnerName'}
         scenarioId: {type: string}
         scenarioDigest: {type: string}
         requestedTicks: {type: integer}
@@ -2339,6 +2408,7 @@ components:
       required: [id, scenarioId, participants, status, paused, requestedTicks, currentTick, createdAt, startedAt, completedAt, outcome]
       properties:
         id: {type: string, format: uuid}
+        ownerName: {$ref: '#/components/schemas/OwnerName'}
         scenarioId: {type: string}
         participants:
           type: array

@@ -18,7 +18,8 @@ const listBattlesSQL = `
    COALESCE((SELECT jsonb_agg(jsonb_build_object('id', f->'id', 'name', f->'name', 'controller', f->'controller') ORDER BY ordinal)
      FROM jsonb_array_elements(scenario_snapshot->'factions') WITH ORDINALITY AS factions(f, ordinal)), '[]'::jsonb),
    status, paused, requested_ticks, current_tick, created_at, started_at, completed_at,
-   CASE WHEN result IS NOT NULL AND result <> 'null'::jsonb THEN jsonb_build_object('winnerFactionId', result->'winnerFactionId', 'reason', result->'reason') END
+   CASE WHEN result IS NOT NULL AND result <> 'null'::jsonb THEN jsonb_build_object('winnerFactionId', result->'winnerFactionId', 'reason', result->'reason') END,
+   owner_id
   FROM battle_runs
   WHERE ($1 = '' OR
     ($1 = 'paused' AND paused AND status IN ('queued', 'running')) OR
@@ -47,7 +48,7 @@ func (r *Postgres) ListBattles(ctx context.Context, query battleservice.BattleHi
 	for rows.Next() {
 		var battle battleservice.BattleSummary
 		var participants, outcome []byte
-		if err := rows.Scan(&battle.ID, &battle.ScenarioID, &participants, &battle.Status, &battle.Paused, &battle.RequestedTicks, &battle.CurrentTick, &battle.CreatedAt, &battle.StartedAt, &battle.CompletedAt, &outcome); err != nil {
+		if err := rows.Scan(&battle.ID, &battle.ScenarioID, &participants, &battle.Status, &battle.Paused, &battle.RequestedTicks, &battle.CurrentTick, &battle.CreatedAt, &battle.StartedAt, &battle.CompletedAt, &outcome, &battle.OwnerID); err != nil {
 			return nil, fmt.Errorf("scan battle summary: %w", err)
 		}
 		if err := json.Unmarshal(participants, &battle.Participants); err != nil {

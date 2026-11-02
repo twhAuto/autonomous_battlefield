@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -27,6 +28,12 @@ const (
 
 type Handler struct {
 	battles battleservice.Service
+	owners  OwnerNames
+}
+
+// OwnerNames labels the people who own battles. Without one, responses omit ownerName.
+type OwnerNames interface {
+	Labels(ctx context.Context, ownerIDs []string) (map[string]string, error)
 }
 
 const permissionDeniedMessage = "permission denied"
@@ -35,6 +42,32 @@ const battleAllowanceMessage = "battle allowance exhausted"
 
 func NewHandler(battles battleservice.Service) *Handler {
 	return &Handler{battles: battles}
+}
+
+// WithOwnerNames labels each battle's owner in battle and history responses.
+func (h *Handler) WithOwnerNames(owners OwnerNames) *Handler {
+	h.owners = owners
+	return h
+}
+
+// ownerNames labels the owners in one lookup. Labels are resolved per response, never
+// stored with a run, because runs can come from the shared result cache. A failed
+// lookup leaves the names out rather than failing the read.
+func (h *Handler) ownerNames(r *http.Request, ownerIDs []string) map[string]string {
+	if h.owners == nil || len(ownerIDs) == 0 {
+		return nil
+	}
+	labels, err := h.owners.Labels(r.Context(), ownerIDs)
+	if err != nil {
+		slog.WarnContext(r.Context(), "owner_names_failed", "request_id", httpapi.RequestID(r.Context()), "error", err)
+		return nil
+	}
+	return labels
+}
+
+// battleBody is the battle response for the caller, labelled with its owner.
+func (h *Handler) battleBody(r *http.Request, run *battleservice.BattleRun) any {
+	return battleResponseFor(r, run, h.ownerNames(r, []string{run.OwnerID})[run.OwnerID])
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
@@ -79,7 +112,7 @@ func (h *Handler) setBattlePaused(w http.ResponseWriter, r *http.Request, paused
 		event = "battle_paused"
 	}
 	slog.InfoContext(r.Context(), event, "request_id", httpapi.RequestID(r.Context()), "battle_id", run.ID, "attempt", run.Attempt, "current_tick", run.CurrentTick)
-	_ = httpapi.WriteJSON(w, http.StatusOK, battleResponseFor(r, run))
+	_ = httpapi.WriteJSON(w, http.StatusOK, h.battleBody(r, run))
 }
 
 func (h *Handler) StopBattle(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +122,7 @@ func (h *Handler) StopBattle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "battle_stopped", "request_id", httpapi.RequestID(r.Context()), "battle_id", run.ID, "attempt", run.Attempt, "current_tick", run.CurrentTick)
-	_ = httpapi.WriteJSON(w, http.StatusOK, battleResponseFor(r, run))
+	_ = httpapi.WriteJSON(w, http.StatusOK, h.battleBody(r, run))
 }
 
 func (h *Handler) ListDecisions(w http.ResponseWriter, r *http.Request) {
@@ -214,7 +247,7 @@ func (h *Handler) GetBattle(w http.ResponseWriter, r *http.Request) {
 		failure{"battle_status_read_failed", "could not get battle", []any{"battle_id", r.PathValue("id")}}) {
 		return
 	}
-	_ = httpapi.WriteJSON(w, http.StatusOK, battleResponseFor(r, run))
+	_ = httpapi.WriteJSON(w, http.StatusOK, h.battleBody(r, run))
 }
 
 func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
@@ -325,13 +358,14 @@ func parseEventQuery(w http.ResponseWriter, r *http.Request) (eventQuery, bool) 
 	return eventQuery{limit: limit, after: after, attempt: attempt, latest: latest}, true
 }
 
-func battleResponse(run *battleservice.BattleRun) any {
+func battleResponse(run *battleservice.BattleRun, ownerName string) any {
 	participants := make([]map[string]any, 0, len(run.ScenarioSnapshot.Factions))
 	for _, faction := range run.ScenarioSnapshot.Factions {
 		participants = append(participants, map[string]any{"id": faction.ID, "name": faction.Name, "controller": faction.Controller, "background": faction.Background, "doctrine": faction.Doctrine})
 	}
 	return struct {
 		OwnerID        string  `json:"ownerId"`
+		OwnerName      string  `json:"ownerName,omitempty"`
 		ID             string  `json:"id"`
 		ScenarioID     string  `json:"scenarioId"`
 		ScenarioDigest string  `json:"scenarioDigest"`
@@ -351,7 +385,7 @@ func battleResponse(run *battleservice.BattleRun) any {
 		ErrorMessage   *string `json:"errorMessage,omitempty"`
 		League         any     `json:"league,omitempty"`
 	}{
-		OwnerID: run.OwnerID, ID: run.ID, ScenarioID: run.ScenarioID, ScenarioDigest: run.ScenarioDigest,
+		OwnerID: run.OwnerID, OwnerName: ownerName, ID: run.ID, ScenarioID: run.ScenarioID, ScenarioDigest: run.ScenarioDigest,
 		RequestedTicks: run.RequestedTicks, CurrentTick: run.CurrentTick, Status: run.Status, Paused: run.Paused,
 		MaximumUnits: run.ScenarioSnapshot.Ruleset.MaximumUnitCount, Contested: run.ScenarioSnapshot.Ruleset.Buildings.ContestedTerritory, Production: productionFor(run),
 		Attempt: run.Attempt, Participants: participants, Result: run.Result,
@@ -407,15 +441,18 @@ func productionFor(run *battleservice.BattleRun) *game.ProductionSchedule {
 	return &schedule
 }
 
-func battleResponseFor(r *http.Request, run *battleservice.BattleRun) any {
+func battleResponseFor(r *http.Request, run *battleservice.BattleRun, ownerName string) any {
 	if !authn.GameplayOnly(r.Context()) {
-		return battleResponse(run)
+		return battleResponse(run, ownerName)
 	}
 	participants := []map[string]any{}
 	for _, f := range run.ScenarioSnapshot.Factions {
 		participants = append(participants, map[string]any{"id": f.ID, "name": f.Name, "background": f.Background, "doctrine": f.Doctrine, "controller": f.Controller})
 	}
 	response := map[string]any{"id": run.ID, "ownerId": run.OwnerID, "scenarioId": run.ScenarioID, "requestedTicks": run.RequestedTicks, "currentTick": run.CurrentTick, "production": productionFor(run), "status": run.Status, "paused": run.Paused, "attempt": run.Attempt, "participants": participants, "result": run.Result, "map": run.ScenarioSnapshot.Map, "state": run.CurrentState}
+	if ownerName != "" {
+		response["ownerName"] = ownerName
+	}
 	if limit := run.ScenarioSnapshot.Ruleset.MaximumUnitCount; limit > 0 {
 		response["maximumUnits"] = limit
 	}

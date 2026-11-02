@@ -13,7 +13,7 @@ import (
 
 func historyRow(participants, outcome []byte) battleRow {
 	return func(destinations ...any) error {
-		return assignBattleValues(destinations, []any{"00000000-0000-0000-0000-000000000001", "scenario", participants, "completed", false, uint64(25), uint64(10), time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC), (*time.Time)(nil), (*time.Time)(nil), outcome})
+		return assignBattleValues(destinations, []any{"00000000-0000-0000-0000-000000000001", "scenario", participants, "completed", false, uint64(25), uint64(10), time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC), (*time.Time)(nil), (*time.Time)(nil), outcome, "owner"})
 	}
 }
 
@@ -35,7 +35,7 @@ func TestListBattleSummaries(t *testing.T) {
 			if test.db.queryArgs[1] != before.CreatedAt || test.db.queryArgs[2] != before.ID {
 				t.Fatal(test.db.queryArgs)
 			}
-			if test.name == "summary" && (result[0].Participants[0].Name != "Original" || *result[0].Outcome.WinnerFactionID != "f1") {
+			if test.name == "summary" && (result[0].Participants[0].Name != "Original" || *result[0].Outcome.WinnerFactionID != "f1" || result[0].OwnerID != "owner") {
 				t.Fatal(result)
 			}
 		})
