@@ -21,7 +21,7 @@ import (
 // Cloudflare verifies Access application JWTs against a fixed issuer's public keys.
 // Keys expire after an hour; refresh attempts (including unknown kids) are bounded.
 type Cloudflare struct {
-	ResolvePlayer      func(context.Context, string) bool
+	ResolveMember      func(context.Context, string) Role
 	Issuer, Audience   string
 	GuestAudience      string
 	CIClientID         string
@@ -168,6 +168,15 @@ func (c *Cloudflare) guestToken(claims accessClaims) bool {
 	return c.GuestAudience != "" && slices.Contains(claims.Aud, c.GuestAudience)
 }
 
+// managedRole admits only the roles a managed member can hold, so stored membership
+// can never grant Admin.
+func managedRole(role Role) Role {
+	if role == Player || role == Tester {
+		return role
+	}
+	return ""
+}
+
 // Service identities are explicitly enrolled and never inherit a human role. Guest
 // tokens map to Guest whatever the email, so a configured or managed identity
 // signing in through the guest application never gains more.
@@ -187,11 +196,8 @@ func (c *Cloudflare) actorWithContext(ctx context.Context, claims accessClaims) 
 	}
 	email := strings.ToLower(strings.TrimSpace(claims.Email))
 	role := c.Roles[email]
-	if claims.Sub != "" && email != "" && c.ResolvePlayer != nil && role != Admin && role != Tester {
-		role = ""
-		if c.ResolvePlayer(ctx, email) {
-			role = Player
-		}
+	if claims.Sub != "" && email != "" && c.ResolveMember != nil && role != Admin && role != Tester {
+		role = managedRole(c.ResolveMember(ctx, email))
 	}
 	if claims.Sub == "" || email == "" || (role != Player && role != Tester && role != Admin) {
 		return Actor{}, false

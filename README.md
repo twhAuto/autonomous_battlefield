@@ -34,7 +34,7 @@ production), Jenkins and SonarQube.
 - Inspect live battles, saved results, events and AI decision history, and replay finished battles tick by tick.
 - Run AI leagues (Admins start them; Testers follow them), with group and knockout stages played in the background.
 - Compare models, factions, units, upgrades and maps across completed battles on the Statistics page (Testers and Admins).
-- Manage invited players and model access through Player, Tester and Admin roles.
+- Invite Players and Testers from the Members page, and manage model access by role.
 
 | League groups and live fixtures | Statistics across completed battles |
 | --- | --- |

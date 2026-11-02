@@ -1,9 +1,10 @@
 # Production access
 
 Production serves **play.ordinalfrontier.com** behind Cloudflare Access (team
-**ordinalfrontier-lab**) through a named Cloudflare Tunnel. Admin and Tester
-roles are private operator configuration; optional managed Player invitations live
-in PostgreSQL. No email list is committed to Git.
+**ordinalfrontier-lab**) through a named Cloudflare Tunnel. Admin roles, and any
+Tester roles assigned in configuration, are private operator configuration;
+optional managed Player and Tester invitations live in PostgreSQL. No email list is
+committed to Git.
 
 This runbook owns the access requirements and checks, the production tunnel,
 roles and removal, AI limits and the stop switch, the CI service identity, and
@@ -11,7 +12,7 @@ access recovery. Related guides own the rest:
 
 - [Cloudflare platform](cloudflare-platform.md): capturing, adopting or creating
   the tunnel, DNS record, Access application and policies.
-- [Player invitations](player-invitations.md): managed Player membership.
+- [Player invitations](player-invitations.md): managed Player and Tester membership.
 - [CLI worker verification](cli-worker-verification.md#isolation-gate): the isolation gate that
   must pass before any CLI profile is advertised.
 
@@ -29,11 +30,12 @@ these properties:
   application session. Policies inherit that duration. The privileged MFA challenge
   lasts one hour, separately.
 - Google is the identity provider. Allow policies list exact emails or the managed
-  Player group. Never add a domain-wide allow, Bypass, Everyone, or a policy that
+  member group. Never add a domain-wide allow, Bypass, Everyone, or a policy that
   allows all service tokens.
-- Admin and Tester identities require MFA from an IdP and Access policy that
-  actually enforce it. Test the challenge: a normal Google login alone is not
-  evidence of MFA.
+- Admin identities require MFA from an IdP and Access policy that actually enforce
+  it. Test the challenge: a normal Google login alone is not evidence of MFA.
+  Testers need no MFA: managed Testers sign in with the managed group's one-time
+  code, and a Tester assigned in configuration uses its own exact-email policy.
 - Only the tunnel's outbound connection exposes the application. Remove public
   gateway or ingress routes and router port forwards to the origin, and block
   inbound direct access on **both IPv4 and IPv6**, including forwarded container
@@ -138,9 +140,10 @@ shared domain, identity provider or other shared infrastructure.
 
 The persistent identity is the verified `issuer|subject`. Each request maps the
 verified, normalized email to exactly one role. With managed Players enabled,
-Admin and Tester roles stay in configuration and Player eligibility comes from
-the database on every request; new grants require confirmed Cloudflare
-synchronization. Without managed Players, every role comes from configuration.
+Admin and configured Tester roles come from configuration, and every other
+identity's eligibility and role, Player or Tester, come from the database on every
+request; new grants require confirmed Cloudflare synchronization, and role changes
+apply at once. Without managed Players, every role comes from configuration.
 
 - All roles share gameplay and faction reads.
 - Editing or deleting factions and stopping, pausing or resuming battles require
@@ -235,7 +238,7 @@ nobody and grants nothing to non-admin callers.
 
 ### Remove an identity
 
-- **Managed Player:** use **Admin → Members** as described in
+- **Managed Player or Tester:** use **Admin → Members** as described in
   [Player invitations](player-invitations.md); new API requests are blocked
   immediately.
 - **Configured role:** remove the Access Allow rule (a

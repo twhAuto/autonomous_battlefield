@@ -34,7 +34,7 @@ The frontend is a React/Vite single-page application.
 | [`features/leagues/pages/LeaguePage.tsx`](../../frontend/src/features/leagues/pages/LeaguePage.tsx) | Running battles with tick progress, each group's placements, win and loss records and five matches, the knockout bracket, and fixtures with battle links and tiebreak winners (`components/LeagueStandings.tsx`), each entrant named with its controller, and [disqualifications](../architecture/api.md#leagues), refreshed while the league runs; for Admins, cancellation, disqualification of an entrant picked from the page header (`components/DisqualifyEntrant.tsx`), and **START AGAIN** into a pre-filled setup |
 | [`features/analytics/pages/AnalyticsPage.tsx`](../../frontend/src/features/analytics/pages/AnalyticsPage.tsx) | Statistics report with URL-backed league, rules-version and fallback filters: model, head-to-head, unit, army-mix, upgrade, faction and map tables |
 | [`features/analytics/components/WinRateChart.tsx`](../../frontend/src/features/analytics/components/WinRateChart.tsx) | Model leaderboard: win rate per controller with its 95% interval |
-| [`features/admin/pages/MembersPage.tsx`](../../frontend/src/features/admin/pages/MembersPage.tsx) | Managed Player invitations, removal, sync retry, and game link (Admins only, when enabled) |
+| [`features/admin/pages/MembersPage.tsx`](../../frontend/src/features/admin/pages/MembersPage.tsx) | Managed Player and Tester invitations, role changes, removal, sync retry, and game link (Admins only, when enabled) |
 | [`shared/components/Emblem.tsx`](../../frontend/src/shared/components/Emblem.tsx) | Saved faction symbol with name-derived colors |
 
 ## Routes and session
