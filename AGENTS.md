@@ -130,8 +130,9 @@ comment format and limits.
   the reason. Authentication, permissions, deployment behavior and substantive logic
   always need review, whatever the diff size. If the user asks to skip review for a
   PR, skip it and say so.
-- Verify findings before fixing them, test the fixes, and leave unresolved findings
-  visible. Review is advisory: it does not replace CI or authorize merging or
+- Verify findings before fixing them. Fix or dispute blocking findings; decline a
+  non-blocking one in a line when its fix is not worth the added complexity. Test
+  the fixes and leave unresolved findings visible. Review is advisory: it does not replace CI or authorize merging or
   deployment. Reviewers must not edit the change or invoke another reviewer.
 
 At completed task boundaries, report branch/PR/head, goal, checks, unresolved
