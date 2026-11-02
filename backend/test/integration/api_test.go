@@ -180,11 +180,16 @@ func checkAuthentication(t *testing.T, api *integrationAPI, issuer *accessIssuer
 }
 
 func checkFactions(t *testing.T, api *integrationAPI, alice, bob *integrationClient, blue, red string) {
-	for _, id := range []string{blue, red} {
-		body := factionBody(id, "Faction "+id[:8])
-		api.expect(t, alice.post("/v1/factions", body), http.StatusCreated)
-		api.expect(t, alice.post("/v1/factions", body), http.StatusCreated) // Identical retry.
+	// A Player owns one faction at a time, so each Player creates one.
+	for _, create := range []struct {
+		owner *integrationClient
+		id    string
+	}{{alice, blue}, {bob, red}} {
+		body := factionBody(create.id, "Faction "+create.id[:8])
+		api.expect(t, create.owner.post("/v1/factions", body), http.StatusCreated)
+		api.expect(t, create.owner.post("/v1/factions", body), http.StatusCreated) // Identical retry.
 	}
+	api.expectError(t, alice.post("/v1/factions", factionBody(randomID(t), "Second")), http.StatusConflict, apierror.CodeConflict)
 	api.expectError(t, bob.post("/v1/factions", factionBody(blue, "Taken")), http.StatusConflict, apierror.CodeAlreadyExists)
 	var listed struct {
 		Factions []struct{ ID, OwnerID string }

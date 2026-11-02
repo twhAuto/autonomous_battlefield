@@ -108,16 +108,18 @@ func TestFactionNameRouteIsGone(t *testing.T) {
 
 func TestCreateFactionErrors(t *testing.T) {
 	tests := []struct {
-		name       string
-		body       string
-		serviceErr error
-		wantStatus int
-		wantCode   apierror.ErrorCode
+		name        string
+		body        string
+		serviceErr  error
+		wantStatus  int
+		wantCode    apierror.ErrorCode
+		wantMessage string
 	}{
 		{name: "malformed body", body: `{`, wantStatus: http.StatusBadRequest, wantCode: apierror.CodeInvalidRequest},
 		{name: "trailing JSON", body: `{}` + `{}`, wantStatus: http.StatusBadRequest, wantCode: apierror.CodeInvalidRequest},
 		{name: "invalid faction", body: `{}`, serviceErr: factionservice.ErrInvalidFaction, wantStatus: http.StatusBadRequest, wantCode: apierror.CodeInvalidRequest},
 		{name: "duplicate faction", body: `{}`, serviceErr: factionservice.ErrFactionAlreadyExists, wantStatus: http.StatusConflict, wantCode: apierror.CodeAlreadyExists},
+		{name: "faction limit", body: `{}`, serviceErr: factionservice.ErrFactionLimitReached, wantStatus: http.StatusConflict, wantCode: apierror.CodeConflict, wantMessage: "players can own only one faction at a time"},
 		{name: "repository failure", body: `{}`, serviceErr: errors.New("database unavailable"), wantStatus: http.StatusInternalServerError, wantCode: apierror.CodeInternal},
 	}
 
@@ -141,6 +143,9 @@ func TestCreateFactionErrors(t *testing.T) {
 			}
 			if envelope.Error.Code != tt.wantCode {
 				t.Fatalf("code = %q, want %q", envelope.Error.Code, tt.wantCode)
+			}
+			if tt.wantMessage != "" && envelope.Error.Message != tt.wantMessage {
+				t.Fatalf("message = %q, want %q", envelope.Error.Message, tt.wantMessage)
 			}
 		})
 	}
