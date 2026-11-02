@@ -202,8 +202,11 @@ func (s *Store) Change(ctx context.Context, actor, email, id string, grant bool,
 		return err
 	}
 	change, err := s.prepareChange(ctx, tx, email, id, grant, role)
-	if err != nil || change.action == "" {
-		return commitUnless(ctx, tx, err)
+	if err != nil {
+		return err
+	}
+	if change.action == "" {
+		return tx.Commit(ctx)
 	}
 	if _, err = tx.Exec(ctx, "INSERT INTO player_membership_audit(member_id,actor_id,action,role) VALUES($1,$2,$3,NULLIF($4,''))", change.id, actor, change.action, change.role); err != nil {
 		return err
@@ -219,13 +222,6 @@ func (s *Store) Change(ctx context.Context, actor, email, id string, grant bool,
 // assignable reports whether a grant may set role; empty keeps the stored role.
 func assignable(role authn.Role) bool {
 	return role == "" || role == authn.Player || role == authn.Tester
-}
-
-func commitUnless(ctx context.Context, tx pgx.Tx, err error) error {
-	if err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
 }
 
 // Audit actions a change records. A role change alone leaves Cloudflare untouched.
