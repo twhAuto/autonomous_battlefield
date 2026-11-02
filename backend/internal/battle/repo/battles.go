@@ -28,9 +28,9 @@ func (r *Postgres) CreateBattle(ctx context.Context, params battleservice.Create
 		return fmt.Errorf("marshal battle initial state: %w", err)
 	}
 	_, err = r.db.Exec(ctx, `
-		INSERT INTO battle_runs (id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks, initial_state, current_state, traceparent, tracestate, owner_id, admission_exempt, decision_budget_exempt)
-		VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $10, $11)
-	`, params.ID, params.ScenarioID, params.ScenarioDigest, snapshot, params.RequestedTicks, initialState, params.Traceparent, params.Tracestate, authn.Owner(ctx), params.AdmissionExempt, params.DecisionBudgetExempt)
+		INSERT INTO battle_runs (id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks, initial_state, current_state, traceparent, tracestate, owner_id, admission_exempt, tester_allowance, decision_budget_exempt)
+		VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $10, $11, $12)
+	`, params.ID, params.ScenarioID, params.ScenarioDigest, snapshot, params.RequestedTicks, initialState, params.Traceparent, params.Tracestate, authn.Owner(ctx), params.AdmissionExempt, params.TesterAllowance, params.DecisionBudgetExempt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "P0429" {

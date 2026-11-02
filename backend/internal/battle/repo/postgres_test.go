@@ -24,7 +24,7 @@ var errDatabase = errors.New("database unavailable")
 func TestCreateBattlePersistsSnapshotAndMapsErrors(t *testing.T) {
 	params := battleservice.CreateBattleParams{
 		ID: "battle-1", ScenarioID: "scenario-1", ScenarioDigest: "digest",
-		ScenarioSnapshot: battle.Scenario{ID: "scenario-1"}, RequestedTicks: 25, AdmissionExempt: true,
+		ScenarioSnapshot: battle.Scenario{ID: "scenario-1"}, RequestedTicks: 25, AdmissionExempt: true, DecisionBudgetExempt: true,
 	}
 
 	t.Run("success", func(t *testing.T) {
@@ -32,7 +32,7 @@ func TestCreateBattlePersistsSnapshotAndMapsErrors(t *testing.T) {
 		if err := NewPostgres(db).CreateBattle(context.Background(), params); err != nil {
 			t.Fatalf("CreateBattle() returned an error: %v", err)
 		}
-		if len(db.execArgs) != 11 || db.execArgs[0] != params.ID || db.execArgs[4] != params.RequestedTicks || db.execArgs[9] != true || db.execArgs[10] != false {
+		if len(db.execArgs) != 12 || db.execArgs[0] != params.ID || db.execArgs[4] != params.RequestedTicks || db.execArgs[9] != true || db.execArgs[10] != false || db.execArgs[11] != true {
 			t.Fatalf("Exec arguments = %#v", db.execArgs)
 		}
 		var stored battle.Scenario

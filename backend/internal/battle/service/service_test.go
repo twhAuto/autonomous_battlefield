@@ -54,11 +54,12 @@ func TestCreateBattleResolvesFactionsAndPersistsSnapshot(t *testing.T) {
 	}
 }
 
-func TestCreateBattleExemptsOnlyAdminFromAllowances(t *testing.T) {
+func TestCreateBattleSelectsAllowancesByRole(t *testing.T) {
 	for _, tc := range []struct {
-		role authn.Role
-		want bool
-	}{{authn.Admin, true}, {authn.Tester, false}, {authn.Player, false}, {authn.CI, false}} {
+		role   authn.Role
+		exempt bool
+		tester bool
+	}{{authn.Admin, true, false}, {authn.Tester, false, true}, {authn.Player, false, false}, {authn.CI, false, false}} {
 		battleRepo := &fakeBattleRepo{}
 		factions := &battleFactionRepo{factions: map[string]*faction.Faction{
 			"4db8d152-1e04-4d10-8824-859c6ed72878": {ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Northwind"},
@@ -73,8 +74,8 @@ func TestCreateBattleExemptsOnlyAdminFromAllowances(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("%s: CreateBattle() returned an error: %v", tc.role, err)
 		}
-		if battleRepo.created.AdmissionExempt != tc.want {
-			t.Fatalf("%s: AdmissionExempt = %v; want %v", tc.role, battleRepo.created.AdmissionExempt, tc.want)
+		if got := battleRepo.created; got.AdmissionExempt != tc.exempt || got.TesterAllowance != tc.tester {
+			t.Fatalf("%s: AdmissionExempt = %v, TesterAllowance = %v; want %v, %v", tc.role, got.AdmissionExempt, got.TesterAllowance, tc.exempt, tc.tester)
 		}
 	}
 }
