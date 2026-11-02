@@ -16,7 +16,7 @@ type managedPlayerFixture struct {
 	t       *testing.T
 	key     *rsa.PrivateKey
 	now     time.Time
-	allowed bool
+	member  Role
 	calls   int
 	cfg     Config
 	manager *Manager
@@ -28,13 +28,16 @@ func newManagedPlayerFixture(t *testing.T) *managedPlayerFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &managedPlayerFixture{t: t, key: key, now: time.Now(), allowed: true}
+	f := &managedPlayerFixture{t: t, key: key, now: time.Now(), member: Player}
 	f.cfg = Config{
 		Mode: ModeCloudflare, Issuer: "https://team.cloudflareaccess.com", Audience: "game",
 		Roles: map[string]Role{"owner@example.com": Admin, "tester@example.com": Tester, "old@example.com": Player},
-		ResolvePlayer: func(ctx context.Context, email string) bool {
+		ResolveMember: func(ctx context.Context, email string) Role {
 			f.calls++
-			return ctx.Err() == nil && email == "friend@example.com" && f.allowed
+			if ctx.Err() != nil || email != "friend@example.com" {
+				return ""
+			}
+			return f.member
 		},
 	}
 	f.manager = NewManager(f.cfg)
@@ -63,12 +66,26 @@ func TestManagedPlayersRequireCurrentMembership(t *testing.T) {
 	if !ok || actor.Role != Player || actor.ID != f.cfg.Issuer+"|stable-subject" {
 		t.Fatal(actor, ok)
 	}
-	f.allowed = false
+	f.member = ""
 	if _, ok = f.authenticate(jwt); ok {
 		t.Fatal("cached membership allowed removed player")
 	}
 	if _, ok = f.authenticate(f.token("old@example.com", "game", "old")); ok {
 		t.Fatal("static Player fallback")
+	}
+}
+
+func TestManagedMembersUseTheirStoredRole(t *testing.T) {
+	f := newManagedPlayerFixture(t)
+	jwt := f.token("friend@example.com", "game", "stable-subject")
+	f.member = Tester
+	if actor, ok := f.authenticate(jwt); !ok || actor.Role != Tester {
+		t.Fatal("managed Tester", actor, ok)
+	}
+	// Stored membership never grants Admin, whatever the lookup returns.
+	f.member = Admin
+	if actor, ok := f.authenticate(jwt); ok {
+		t.Fatal("managed membership granted", actor.Role)
 	}
 }
 
@@ -108,7 +125,7 @@ func TestManagedPlayersPreservePrivilegedAndCIAuthentication(t *testing.T) {
 func TestManagedPlayerSessionCapability(t *testing.T) {
 	f := newManagedPlayerFixture(t)
 	f.assertMembersCapability(true)
-	f.manager.config.ResolvePlayer = nil
+	f.manager.config.ResolveMember = nil
 	f.assertMembersCapability(false)
 }
 

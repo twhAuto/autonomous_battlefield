@@ -159,8 +159,9 @@ rather than controlling these engine paths.
 
 Production requires Cloudflare Access on the whole application hostname through a
 named Tunnel. The API independently verifies the Access JWT and maps issuer/subject
-identity and verified email to a role on every request. Privileged roles remain
-configured; optionally managed Player membership is read from PostgreSQL. No legacy
+identity and verified email to a role on every request. Admin roles remain
+configured; optionally managed Player and Tester membership is read from
+PostgreSQL. No legacy
 password/cookie fallback is accepted. Explicit local-password and
 disabled-development modes remain development-only. Exact-origin mutation checks and
 a deny-by-default route permission registry wrap every application API. The browser
@@ -596,7 +597,7 @@ Cloudflare Access admission and MFA are independent deployment requirements. For
 static roles, user removal requires Access rule removal, session revocation,
 application role removal,
 and deployment to every replica; offline JWT verification alone cannot see revocation.
-Managed Player removal instead denies each new API request from PostgreSQL immediately
+Managed member removal instead denies each new API request from PostgreSQL immediately
 and asynchronously removes the email from a dedicated Access group. It does not
 revoke sessions in unrelated Cloudflare applications.
 
@@ -604,19 +605,22 @@ The local password login retains signed HttpOnly/SameSite cookies for developmen
 Missing auth mode and enable flags fail startup; explicit legacy enable flags remain
 supported only in development. Local cookie logout does not revoke copied tokens.
 
-### Managed Player invitations
+### Managed member invitations
 
-Optional Admin → Members routes persist Player grants, removals and audit events in
-PostgreSQL (`player_members`, `player_membership_sync` and
-`player_membership_audit`). The singleton imports configured Players once, retaining
-removed-member tombstones across restarts. Every initialization also durably
-revokes and audits prior Player invitations for configured privileged identities,
-so subsequent privileged-role removal cannot resurrect Player access.
-Admin/Tester roles and CI identities continue through their existing
-authentication paths; membership cannot elevate roles.
-After signature/issuer/audience/time validation, Player authentication reads current
-desired access and confirmed membership version with a two-second deadline and no
-positive cache. Lookup failure denies access; `issuer|subject` ownership is unchanged.
+Optional Admin → Members routes persist grants, removals, role changes and audit
+events for Players and Testers in PostgreSQL (`player_members`,
+`player_membership_sync` and `player_membership_audit`). The singleton imports
+configured Players once, retaining removed-member tombstones across restarts. Every
+initialization also durably revokes and audits prior invitations for identities
+configured as Admin or Tester, so removing that configured role later cannot
+resurrect an invitation. Configured roles and CI identities keep their own
+authentication paths. Membership grants only Player or Tester, never Admin.
+After signature/issuer/audience/time validation, member authentication reads current
+desired access, confirmed membership version and stored role with a two-second
+deadline and no positive cache. A role change keeps the confirmed version, because
+every active member belongs to the same Access group, so it applies to the next
+request without a Cloudflare update. Lookup failure denies access; `issuer|subject`
+ownership is unchanged.
 
 The API process starts a cancellable reconciler when `BATTLEFIELD_MANAGED_PLAYERS`
 is enabled. A transaction advisory lock serializes remote writes across replicas;

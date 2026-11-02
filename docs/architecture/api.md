@@ -411,15 +411,19 @@ The session advertises `capabilities.members` only to Admins when managed Player
 are configured; otherwise the member routes return `503`. All routes require Admin
 outside role preview and return `no-store`.
 
-A `202` confirms persisted intent, not Cloudflare admission. A Player is active
-only while `desiredAccess` is true and `version` equals `syncedVersion`; removing
-access denies further API requests immediately. Repeating an unchanged grant or
-removal is idempotent. Emails are trimmed and lowercased, and must use a dotted DNS
-domain, a local part of at most 64 bytes and a total of at most 254 bytes. A
-configured Admin or Tester email returns `409`. `syncError` is a sanitized
-group-level failure, and automatic retries continue with bounded backoff. No route
-accepts a role or returns Cloudflare credentials. See
-[Player invitations](../operations/player-invitations.md) for the lifecycle.
+A `202` confirms persisted intent, not Cloudflare admission. A member is active
+only while `desiredAccess` is true and `version` equals `syncedVersion`, and acts
+with its stored `role`, `player` or `tester`; removing access denies further API
+requests immediately. A grant may name the role: a new member without one is a
+Player, and an existing member keeps its role unless the grant names another.
+Changing only the role of an active member leaves `version` unchanged, so it
+applies to the member's next request. Admin cannot be assigned here, and any other
+role returns `400`. Repeating an unchanged grant or removal is idempotent. Emails
+are trimmed and lowercased, and must use a dotted DNS domain, a local part of at
+most 64 bytes and a total of at most 254 bytes. A configured Admin or Tester email
+returns `409`. `syncError` is a sanitized group-level failure, and automatic
+retries continue with bounded backoff. No route returns Cloudflare credentials.
+See [Player invitations](../operations/player-invitations.md) for the lifecycle.
 
 ## Model access administration
 
