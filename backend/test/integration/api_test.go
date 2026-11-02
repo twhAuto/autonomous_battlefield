@@ -343,9 +343,7 @@ type integrationUsers struct{ alice, bob, tester, admin *integrationClient }
 
 func checkAuthorization(t *testing.T, api *integrationAPI, users integrationUsers, completed, blue, red string) {
 	alice, bob, tester, admin := users.alice, users.bob, users.tester, users.admin
-	decisions := "/v1/battles/" + completed + "/decisions?attempt=1"
-	api.expectError(t, bob.get(decisions), http.StatusForbidden, apierror.CodePermissionDenied)
-	api.expect(t, tester.get(decisions), http.StatusOK)
+	checkDecisionHistoryRoles(t, api, bob, tester, completed)
 	api.expectError(t, tester.get("/v1/admin/model-access"), http.StatusForbidden, apierror.CodePermissionDenied)
 	api.expect(t, admin.get("/v1/admin/model-access"), http.StatusOK)
 	api.expectError(t, bob.get("/v1/no-such-route"), http.StatusForbidden, apierror.CodePermissionDenied)
@@ -364,6 +362,33 @@ func checkAuthorization(t *testing.T, api *integrationAPI, users integrationUser
 	}
 	api.expectError(t, alice.post("/v1/battles/"+active+"/resume", ""), http.StatusConflict, apierror.CodeConflict)
 	api.expect(t, admin.send(http.MethodDelete, "/v1/factions/"+red, "", nil), http.StatusNoContent)
+}
+
+// checkDecisionHistoryRoles reads the completed attempt's decisions as a Player and
+// a Tester. Both see each decision's status and applied plan, only the Tester sees
+// usage diagnostics, and the Player still cannot fetch saved decision context.
+func checkDecisionHistoryRoles(t *testing.T, api *integrationAPI, player, tester *integrationClient, battleID string) {
+	t.Helper()
+	type decisionRow struct {
+		RequestID    string
+		Status       string
+		ResolvedPlan map[string]any
+		Usage        map[string]any
+	}
+	path := "/v1/battles/" + battleID + "/decisions?attempt=1"
+	var played, inspected struct{ Decisions []decisionRow }
+	api.decode(t, player.get(path), http.StatusOK, &played)
+	api.decode(t, tester.get(path), http.StatusOK, &inspected)
+	if len(played.Decisions) == 0 || len(inspected.Decisions) != len(played.Decisions) {
+		t.Fatalf("player decisions = %+v, tester decisions = %+v", played.Decisions, inspected.Decisions)
+	}
+	for index, decision := range played.Decisions {
+		if decision.Status == "" || decision.ResolvedPlan == nil || decision.Usage != nil || inspected.Decisions[index].Usage == nil {
+			t.Fatalf("decision %d: player %+v, tester %+v", index, decision, inspected.Decisions[index])
+		}
+	}
+	contextPath := "/v1/battles/" + battleID + "/decisions/" + played.Decisions[0].RequestID + "/context"
+	api.expectError(t, player.get(contextPath), http.StatusForbidden, apierror.CodePermissionDenied)
 }
 
 func factionBody(id, name string) string {
