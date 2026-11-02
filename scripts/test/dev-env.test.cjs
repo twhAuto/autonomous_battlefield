@@ -77,12 +77,12 @@ test('shared schema enforces production authentication and separates deployment 
   values.set('BATTLEFIELD_ACCESS_CI_CLIENT_ID', 'owner@example.com');
   assert.throws(()=>validate(values,'production'),/CI client ID/);
   values.delete('BATTLEFIELD_ACCESS_CI_CLIENT_ID');
-  for (const role of ['tester','developer']) {
+  values.set('BATTLEFIELD_ACCESS_ROLES','{"admin":["owner@example.com"],"tester":["qa@example.com"]}');
+  validate(values,'production');
+  for (const role of ['root','developer']) {
     values.set('BATTLEFIELD_ACCESS_ROLES',JSON.stringify({admin:['owner@example.com'],[role]:['qa@example.com']}));
-    validate(values,'production');
+    assert.throws(()=>validate(values,'production'),/role assignment/);
   }
-  values.set('BATTLEFIELD_ACCESS_ROLES','{"admin":["owner@example.com"],"root":["qa@example.com"]}');
-  assert.throws(()=>validate(values,'production'),/role assignment/);
   values.set('BATTLEFIELD_ACCESS_ROLES','{"admin":["owner@example.com"]}');
   values.set('BATTLEFIELD_AUTH_MODE','disabled-development');
   assert.throws(()=>validate(values,'production'),/Cloudflare/);

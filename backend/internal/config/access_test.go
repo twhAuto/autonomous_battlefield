@@ -27,7 +27,7 @@ func TestProductionAccessConfiguration(t *testing.T) {
 		{"BATTLEFIELD_ACCESS_AUDIENCE", ""}, {"BATTLEFIELD_PUBLIC_ORIGIN", "http://battle.example.com"},
 		{"BATTLEFIELD_ACCESS_CI_CLIENT_ID", "admin@example.com"},
 		{"BATTLEFIELD_ACCESS_ROLES", `{}`}, {"BATTLEFIELD_ACCESS_ROLES", `{"admin":["A@example.com"],"player":["a@example.com"]}`},
-		{"BATTLEFIELD_ACCESS_ROLES", `{"root":["a@example.com"]}`},
+		{"BATTLEFIELD_ACCESS_ROLES", `{"root":["a@example.com"]}`}, {"BATTLEFIELD_ACCESS_ROLES", `{"developer":["a@example.com"]}`},
 	} {
 		t.Run(tt.key+tt.value, func(t *testing.T) {
 			t.Setenv(tt.key, tt.value)
@@ -37,16 +37,10 @@ func TestProductionAccessConfiguration(t *testing.T) {
 		})
 	}
 }
-func TestTesterRoleAcceptsItsLegacyKey(t *testing.T) {
-	for _, assignments := range []string{`{"tester":["qa@example.com"]}`, `{"developer":["qa@example.com"]}`} {
-		t.Setenv("BATTLEFIELD_ACCESS_ROLES", assignments)
-		if roles, err := cloudflareRoles(); err != nil || roles["qa@example.com"] != authn.Tester {
-			t.Fatalf("%s: %v %v", assignments, roles, err)
-		}
-	}
-	t.Setenv("BATTLEFIELD_ACCESS_ROLES", `{"tester":["qa@example.com"],"developer":["qa@example.com"]}`)
-	if _, err := cloudflareRoles(); err == nil {
-		t.Fatal("one identity assigned under both tester keys")
+func TestTesterRoleAssignment(t *testing.T) {
+	t.Setenv("BATTLEFIELD_ACCESS_ROLES", `{"tester":["qa@example.com"]}`)
+	if roles, err := cloudflareRoles(); err != nil || roles["qa@example.com"] != authn.Tester {
+		t.Fatalf("%v %v", roles, err)
 	}
 }
 func TestExplicitDevelopmentMode(t *testing.T) {
@@ -81,7 +75,7 @@ func TestCLIProductionGateAndProfileRoles(t *testing.T) {
 	if e := validateAIProfile(p, true); e != nil {
 		t.Fatal("explicit player and tester CLI access rejected", e)
 	}
-	for _, roles := range [][]string{{"root"}, {"admin", "admin"}} {
+	for _, roles := range [][]string{{"root"}, {"developer"}, {"admin", "admin"}} {
 		p.AllowedRoles = roles
 		if e := validateAIProfile(p, true); e == nil {
 			t.Fatal(roles)
