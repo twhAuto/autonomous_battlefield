@@ -1,6 +1,6 @@
 // Validates and creates leagues, reports them, cancels them and disqualifies entrants.
-// Admins create, cancel and disqualify; testers and admins inspect. The scheduler that
-// plays fixtures is in scheduler.go.
+// Admins create, cancel and disqualify; every signed-in person reads them. The
+// scheduler that plays fixtures is in scheduler.go.
 
 package service
 

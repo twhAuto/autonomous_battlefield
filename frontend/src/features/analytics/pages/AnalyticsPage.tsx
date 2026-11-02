@@ -1,6 +1,6 @@
-// Statistics across completed battles for Testers and Admins: the model leaderboard,
-// head-to-head records, units, upgrades, factions, and map and side balance. One filter
-// row scopes every section; filters live in the URL.
+// Statistics across completed battles: the model leaderboard, head-to-head records,
+// units, upgrades, factions, and map and side balance. One filter row scopes every
+// section; filters live in the URL.
 
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'

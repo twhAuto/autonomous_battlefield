@@ -45,7 +45,7 @@ export async function getAnalytics(query: AnalyticsQuery, signal?: AbortSignal):
   const suffix = params.size ? `?${params}` : ''
   const response = await analyticsFetch(`/v1/analytics${suffix}`, { signal })
   if (response.ok) return (await response.json()) as AnalyticsReport
-  if (response.status === 403) throw new AnalyticsApiError('Statistics are available to testers and administrators.', 403)
+  if (response.status === 403) throw new AnalyticsApiError('This account cannot view statistics.', 403)
   throw new AnalyticsApiError('Statistics could not be loaded.', response.status)
 }
 

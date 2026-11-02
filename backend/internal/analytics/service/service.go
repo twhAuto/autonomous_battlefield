@@ -1,4 +1,4 @@
-// Builds analytics reports for Testers and Admins from completed battles, applying
+// Builds analytics reports from completed battles for every signed-in person, applying
 // the league, rules-version, date and fallback filters.
 
 package service
