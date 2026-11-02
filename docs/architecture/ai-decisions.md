@@ -506,10 +506,12 @@ markers remain subject to normal faction visibility.
 
 Battle creation accepts `modelIdentifier` and `reasoningEffort` per model-controlled
 faction. A profile's `modelOptions` allowlists models and their supported
-`reasoningEfforts`; omitted choices retain the profile model and model-default
-effort (or the option's explicit `defaultReasoningEffort`). The backend validates
-both fields, freezes them in the scenario and decision row, and includes effort in
-retry-reuse matching. Workers validate against their own allowlist before execution;
+`reasoningEfforts`. An omitted model selects the profile model, or the first option
+the caller's role may use when [model access](api.md#model-access-administration)
+denies the role that model; an omitted effort keeps the model default (or the
+option's explicit `defaultReasoningEffort`). The backend validates both fields,
+freezes them in the scenario and decision row, and includes effort in retry-reuse
+matching. Workers validate against their own allowlist before execution;
 a removed option fails as `model_selection_unavailable`, rather than substituting
 another model. API profiles and Antigravity expose no effort controls.
 The setup page never leaves effort implicit: when the chosen model lists efforts
