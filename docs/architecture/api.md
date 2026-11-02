@@ -40,10 +40,10 @@ to.
 
 Faction and battle responses carry a server-assigned `ownerId`. Updating or
 deleting a faction, and stopping, pausing or resuming a battle, require ownership
-or the Admin role. Players can read shared factions, battles, events, replays and
-history, but receive gameplay-only responses: events and replay events without
-payloads, battles without
-inspection fields, and a reduced model-profile list. Decision history, saved
+or the Admin role. Players can read shared factions, battles, events, replays,
+history and decision history, but receive gameplay-only responses: events and
+replay events without payloads, battles without inspection fields, decisions with
+only their status and applied plan, and a reduced model-profile list. Saved
 decision context, [leagues](#leagues) and [analytics](#analytics) require Tester
 or Admin; only Admins create or cancel a league or disqualify its entrants.
 

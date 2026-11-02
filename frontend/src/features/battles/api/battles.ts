@@ -189,6 +189,7 @@ export interface BattleReplay {
   frames: ReplayFrame[]
 }
 
+// Players receive only the request, faction, tick, status, controller type, plan and times.
 export interface DecisionHistory {
   contextDelivery?: 'tool' | 'prefetch'
   cliProcessStartMs?: number; reasoningEffort?: string; claimedAt?: string; contextServedAt?: string; runnerCompletedAt?: string

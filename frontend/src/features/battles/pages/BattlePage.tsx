@@ -46,7 +46,7 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
     eventMessage,
     loadEventPage,
   } = useBattleEventStream(id, battle?.attempt, battle?.status)
-  const { decisions, decisionMessage } = useDecisionHistory(id, battle, permissions.inspect)
+  const { decisions, decisionMessage } = useDecisionHistory(id, battle)
   const [controlState, setControlState] = useState<BattleControlState>('idle')
   const [controlMessage, setControlMessage] = useState('')
   const [inspectorSize, setInspectorSize] = useState<InspectorSize>('normal')

@@ -161,12 +161,11 @@ describe('faction summaries', () => {
   expect(summary).toHaveAttribute('title', 'Plan · fallback: Hold')
  })
 
- it('does not show decision details to players', () => {
+ it('shows players the decision status and applied plan with its rationale', () => {
   render(<SessionContext.Provider value={{ enabled: true, authenticated: true, actor: { id: 'player', role: 'player' } }}>
-    <FactionSummaries {...props} decisions={[{ ...decision, status: 'accepted', resolvedPlan: { name: 'Private plan', rationale: 'Private rationale' } }]} />
+    <FactionSummaries {...props} decisions={[{ ...decision, status: 'accepted', resolvedPlan: { name: 'Hold the bridge', rationale: 'Protect the economy.' } }]} />
   </SessionContext.Provider>)
-  expect(screen.queryByText('Plan')).not.toBeInTheDocument()
-  expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
-  expect(screen.queryByText('Private plan')).not.toBeInTheDocument()
-  expect(screen.getByText('Plan ready')).toBeVisible()
+  const summary = within(screen.getByRole('article', { name: 'Amber' })).getByText('Hold the bridge').closest('summary')
+  expect(summary).toHaveTextContent('Plan ready · Hold the bridge')
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toContain('Protect the economy.')
  })

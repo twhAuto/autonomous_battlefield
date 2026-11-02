@@ -146,8 +146,8 @@ synchronization. Without managed Players, every role comes from configuration.
   `legacy-admin`, which only Admin can manage. Owners never come from client JSON.
 - Testers can inspect diagnostics and use enabled CLI profiles; the role grants
   no host or deployment access.
-- Players receive gameplay responses only and cannot fetch decision history or
-  saved context.
+- Players receive gameplay-only responses; the
+  [API roles](../architecture/api.md#roles-and-ownership) list what they can read.
 
 In Cloudflare mode the application issues no auth cookie and ignores old ones.
 Logout sends the browser to `/cdn-cgi/access/logout`, and expired API sessions

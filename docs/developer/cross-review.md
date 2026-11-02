@@ -118,17 +118,21 @@ estimate, not a bill.
 
 1. Batch implementation and tests; commit/push the ready change and run one full
    review using the opposite reviewer with `--pr NUMBER`.
-2. Verify the findings. Post a concise, self-contained author response with the
-   head SHA, all unresolved IDs, fixes and evidence-backed disagreements. Omit
-   already resolved discussion; the latest summary must contain anything the
-   follow-up needs to know.
-3. Fix valid defects, test, commit/push, then run one focused follow-up using the
-   same command and a new output directory. The runner selects the new diff and
-   latest exchange automatically. This also supports a same-head disagreement.
-   To bring in target-branch changes before the follow-up, merge the target into
-   the PR branch; a rebase rewrites the reviewed head, and the runner then stops
-   for user input instead of reviewing.
-4. If no supported findings remain, acknowledge agreement on the PR. Otherwise,
+2. Verify the findings. Fix a blocking finding or dispute it with evidence. Fix a
+   non-blocking finding only when the fix is small and leaves the change simpler
+   or clearer; otherwise decline it in one line with the reason. Post a concise,
+   self-contained author response with the head SHA, all unresolved IDs, fixes,
+   declines and evidence-backed disagreements. Omit already resolved discussion;
+   the latest summary must contain anything the follow-up needs to know.
+3. After an AGREED review, the step 2 response closes the discussion; no follow-up
+   is needed. Otherwise test, commit and push the fixes, then run one focused
+   follow-up using the same command and a new output directory. The runner selects the new diff and latest exchange automatically.
+   This also supports a same-head disagreement. To bring in target-branch changes
+   before the follow-up, merge the target into the PR branch; a rebase rewrites
+   the reviewed head, and the runner then stops for user input instead of
+   reviewing.
+4. If no blocking findings remain after the follow-up, acknowledge agreement on
+   the PR. Otherwise,
    stop after the second round and ask the user before another model call. Never
    force consensus, weaken tests or bypass the limit by omitting `--pr`.
 
@@ -140,7 +144,18 @@ not counted by this comment-based guard, so agents must stop on failed calls
 rather than retrying inference automatically. `--publish-only` retries an already
 completed report without using a model or consuming another review round.
 
-The verdict is AGREED, CHANGES_REQUESTED or NEEDS_USER_DECISION; these are advisory
+Each finding is marked blocking or non-blocking. Blocking findings are confirmed
+defects with a plausible trigger, security or data-loss risks, and misleading
+documentation; unlikely edge cases, extra hardening, simplifications and style are
+non-blocking. The reviewer is asked to keep findings proportionate to how the
+repository is used: a plausible trigger, the smallest correct fix, no new settings
+or handling for inputs the code never receives, and a flag on complexity the
+change does not need, including complexity a fix adds. A follow-up raises new
+findings on fix code only when they are blocking, and a declined non-blocking
+finding stays closed unless new evidence shows it is blocking.
+
+The verdict is AGREED, CHANGES_REQUESTED or NEEDS_USER_DECISION. AGREED means no
+blocking findings remain, though non-blocking notes may. These are advisory
 model judgments, not machine-enforced approvals. Report remaining findings and
 leave unresolved work draft when the limit, a stalled discussion, or unavailable
 tools prevents agreement. An active author session drives the workflow; this is
@@ -154,8 +169,9 @@ Use a protected local response file with this shape (replace the example values)
 Current head: <full commit SHA>
 
 - F1 — Fixed in <commit>: explanation and test evidence.
-- F2 — Disagree: reproduction, relevant contract and supporting file/line.
-- Please reassess F2 against this head and explain whether it remains a defect.
+- F2 — Declined (non-blocking): one-line reason.
+- F3 — Disagree: reproduction, relevant contract and supporting file/line.
+- Please reassess F3 against this head and explain whether it remains a defect.
 ```
 
 For Claude-authored work use `battlefield-author-response:claude`. Post one response
