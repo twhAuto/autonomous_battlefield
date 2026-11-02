@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
@@ -17,6 +18,9 @@ const (
 	Tester      Role = "tester"
 	Admin       Role = "admin"
 	LegacyOwner      = "legacy-admin"
+	// Guest is anyone signed in through the guest Access application: read-only and
+	// never mapped from an email.
+	Guest Role = "guest"
 )
 
 const permissionDeniedMessage = "permission denied"
@@ -40,7 +44,7 @@ func WithActorObserver(ctx context.Context, observe func(Actor)) context.Context
 }
 func (a Actor) CanInspect() bool { return a.Role == Admin || a.Role == Tester }
 func (a Actor) CanManage(owner string) bool {
-	return a.Role != CI && a.ID != "" && (a.Role == Admin || a.ID == owner)
+	return a.Role != CI && a.Role != Guest && a.ID != "" && (a.Role == Admin || a.ID == owner)
 }
 func Owner(ctx context.Context) string {
 	a, ok := ActorFromContext(ctx)
@@ -49,9 +53,11 @@ func Owner(ctx context.Context) string {
 	}
 	return a.ID
 }
-func IsPlayer(ctx context.Context) bool {
+
+// GameplayOnly reports a Player or Guest, who receive redacted gameplay responses.
+func GameplayOnly(ctx context.Context) bool {
 	a, ok := ActorFromContext(ctx)
-	return ok && a.Role == Player
+	return ok && (a.Role == Player || a.Role == Guest)
 }
 func AuthorizeOwner(ctx context.Context, owner string) error {
 	a, ok := ActorFromContext(ctx)
@@ -61,11 +67,15 @@ func AuthorizeOwner(ctx context.Context, owner string) error {
 	return nil
 }
 
-// BrowserProtection uses a configured origin, never a client-controlled Host header.
-func BrowserProtection(origin string, next http.Handler) http.Handler {
+// BrowserProtection uses configured origins, never a client-controlled Host header. Each
+// configured origin, such as the guest hostname, is accepted; requests from it still
+// carry only that hostname's Access identity. No origin disables the check.
+func BrowserProtection(origins []string, next http.Handler) http.Handler {
+	// An unset origin must never match a request that sends no Origin header.
+	origins = slices.DeleteFunc(slices.Clone(origins), func(origin string) bool { return origin == "" })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if origin != "" && strings.HasPrefix(r.URL.Path, "/v1/") && r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
-			if r.Header.Get("Origin") != origin {
+		if len(origins) > 0 && strings.HasPrefix(r.URL.Path, "/v1/") && r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
+			if !slices.Contains(origins, r.Header.Get("Origin")) {
 				apierror.Write(w, r, http.StatusForbidden, "origin not permitted")
 				return
 			}
@@ -82,6 +92,8 @@ func BrowserProtection(origin string, next http.Handler) http.Handler {
 type Permission string
 
 const (
+	// PermissionView admits guests and anyone who can play.
+	PermissionView Permission = "view"
 	// PermissionPlay admits players and anyone who can inspect.
 	PermissionPlay Permission = "play"
 	// PermissionInspect admits testers and administrators.
@@ -89,6 +101,22 @@ const (
 	// PermissionAdmin admits administrators only.
 	PermissionAdmin Permission = "admin"
 )
+
+// permits reports whether a holds permission. Each level admits every role above it.
+func permits(permission Permission, a Actor) bool {
+	switch permission {
+	case PermissionView:
+		return a.Role == Guest || a.Role == Player || a.CanInspect()
+	case PermissionPlay:
+		return a.Role == Player || a.CanInspect()
+	case PermissionInspect:
+		return a.CanInspect()
+	case PermissionAdmin:
+		return a.Role == Admin
+	default:
+		return false
+	}
+}
 
 // Permit checks a registered route. An unassigned permission always denies access.
 func Permit(permission Permission, next http.HandlerFunc) http.HandlerFunc {
@@ -98,8 +126,7 @@ func Permit(permission Permission, next http.HandlerFunc) http.HandlerFunc {
 			apierror.Write(w, r, 401, "authentication required")
 			return
 		}
-		allowed := (permission == PermissionPlay && (a.Role == Player || a.CanInspect())) || (permission == PermissionInspect && a.CanInspect()) || (permission == PermissionAdmin && a.Role == Admin)
-		if !allowed {
+		if !permits(permission, a) {
 			apierror.Write(w, r, 403, permissionDeniedMessage)
 			return
 		}
@@ -130,23 +157,24 @@ var routeRules = []routeRule{
 	{pattern: "POST /v1/auth/login", public: true},
 	{pattern: "POST /v1/auth/logout"},
 
-	{pattern: "GET /v1/factions", permission: PermissionPlay},
-	{pattern: "GET /v1/faction-rulesets", permission: PermissionPlay},
+	{pattern: "GET /v1/factions", permission: PermissionView},
+	{pattern: "GET /v1/faction-rulesets", permission: PermissionView},
 	{pattern: "POST /v1/factions", permission: PermissionPlay},
 	{pattern: "PUT /v1/factions/{id}", permission: PermissionPlay},
 	{pattern: "DELETE /v1/factions/{id}", permission: PermissionPlay},
-	{pattern: "GET /v1/scenarios", permission: PermissionPlay, ci: true},
+	{pattern: "GET /v1/scenarios", permission: PermissionView, ci: true},
 	{pattern: "GET /v1/model-profiles", permission: PermissionPlay},
 	{pattern: "POST /v1/battles", permission: PermissionPlay},
-	{pattern: "GET /v1/battles", permission: PermissionPlay},
-	{pattern: "GET /v1/battles/{id}", permission: PermissionPlay},
+	{pattern: "GET /v1/battles/allowance", permission: PermissionPlay},
+	{pattern: "GET /v1/battles", permission: PermissionView},
+	{pattern: "GET /v1/battles/{id}", permission: PermissionView},
 	{pattern: "POST /v1/battles/{id}/stop", permission: PermissionPlay},
 	{pattern: "POST /v1/battles/{id}/pause", permission: PermissionPlay},
 	{pattern: "POST /v1/battles/{id}/resume", permission: PermissionPlay},
-	{pattern: "GET /v1/battles/{id}/factions/{factionId}/view", permission: PermissionPlay},
-	{pattern: "GET /v1/battles/{id}/events", permission: PermissionPlay},
-	{pattern: "GET /v1/battles/{id}/replay", permission: PermissionPlay},
-	{pattern: "GET /v1/battles/{id}/decisions", permission: PermissionPlay},
+	{pattern: "GET /v1/battles/{id}/factions/{factionId}/view", permission: PermissionView},
+	{pattern: "GET /v1/battles/{id}/events", permission: PermissionView},
+	{pattern: "GET /v1/battles/{id}/replay", permission: PermissionView},
+	{pattern: "GET /v1/battles/{id}/decisions", permission: PermissionView},
 	{pattern: "GET /v1/faction-background-generations/options", permission: PermissionPlay},
 	{pattern: "POST /v1/faction-background-generations", permission: PermissionPlay},
 	{pattern: "GET /v1/faction-background-generations/{id}", permission: PermissionPlay},

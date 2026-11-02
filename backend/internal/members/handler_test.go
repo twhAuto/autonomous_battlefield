@@ -19,15 +19,16 @@ type fakeRepository struct {
 	err              error
 	actor, email, id string
 	grant            bool
+	role             authn.Role
 	calls            int
 }
 
 func (f *fakeRepository) List(context.Context) ([]Member, string, error) {
 	return []Member{}, "", f.err
 }
-func (f *fakeRepository) Change(_ context.Context, actor, email, id string, grant bool) error {
+func (f *fakeRepository) Change(_ context.Context, actor, email, id string, grant bool, role authn.Role) error {
 	f.calls++
-	f.actor, f.email, f.id, f.grant = actor, email, id, grant
+	f.actor, f.email, f.id, f.grant, f.role = actor, email, id, grant, role
 	return f.err
 }
 func (f *fakeRepository) Retry(_ context.Context, actor string) error {
@@ -46,7 +47,7 @@ func request(h *Handler, method, path, body string, role authn.Role, origin, pre
 		r = r.WithContext(authn.WithActor(r.Context(), authn.Actor{ID: "verified-admin", Role: role}))
 	}
 	w := httptest.NewRecorder()
-	authn.BrowserProtection("https://game.example", authn.RolePreview(authn.RoutePolicy(mux))).ServeHTTP(w, r)
+	authn.BrowserProtection([]string{"https://game.example"}, authn.RolePreview(authn.RoutePolicy(mux))).ServeHTTP(w, r)
 	return w
 }
 
@@ -118,6 +119,21 @@ func TestMemberGrantRejectsInvalidBodies(t *testing.T) {
 	for _, body := range []string{`{"email":"x","role":"admin"}`, `{"email":"x"}{}`, strings.Repeat("x", 4097)} {
 		if request(h, "POST", "/v1/admin/members", body, authn.Admin, "https://game.example", "").Code != 400 {
 			t.Fatal("body accepted", body)
+		}
+	}
+}
+
+func TestMemberGrantPassesTheRole(t *testing.T) {
+	f := &fakeRepository{}
+	h := NewHandler(f, "https://game.example")
+	for body, want := range map[string]authn.Role{`{"email":"friend@example.com","role":"tester"}`: authn.Tester, `{"email":"friend@example.com"}`: ""} {
+		if w := request(h, "POST", "/v1/admin/members", body, authn.Admin, "https://game.example", ""); w.Code != 202 || f.role != want {
+			t.Fatal(body, w.Code, f.role)
+		}
+	}
+	for _, role := range []string{"admin", "ci", "Tester"} {
+		if w := request(h, "POST", "/v1/admin/members", `{"email":"friend@example.com","role":"`+role+`"}`, authn.Admin, "https://game.example", ""); w.Code != 400 || !strings.Contains(w.Body.String(), ErrInvalidRole.Error()) {
+			t.Fatal(role, w.Code, w.Body.String())
 		}
 	}
 }

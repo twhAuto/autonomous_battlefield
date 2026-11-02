@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { listBattles, type BattleHistoryPage as HistoryPage, type BattleSummary } from '../api/battles'
+import { usePermissions } from '../../auth/SessionContext'
 
 const filters = ['', 'queued', 'running', 'paused', 'completed', 'failed', 'stopped']
 function outcomeLabel(battle: BattleSummary) {
@@ -14,7 +15,10 @@ function outcomeLabel(battle: BattleSummary) {
     : 'Draw'
 }
 
+const emptyHint = (play: boolean) => play ? 'Stage your first battle to begin the archive.' : 'No battles have been staged yet.'
+
 export function BattleHistoryPage() {
+  const { play } = usePermissions()
   const [params, setParams] = useSearchParams()
   const status = params.get('status') ?? ''
   const cursor = params.get('cursor') ?? ''
@@ -70,7 +74,7 @@ export function BattleHistoryPage() {
         <div className="hero__eyebrow"><span>04</span> ENGAGEMENT ARCHIVE</div>
         <div className="directory-title">
           <div><h1>Battle history</h1><p>Review past engagements and return to active battles.</p></div>
-          <Link className="compact-action" to="/battles/new">+ STAGE BATTLE</Link>
+          {play && <Link className="compact-action" to="/battles/new">+ STAGE BATTLE</Link>}
         </div>
       </section>
       <section className="directory" aria-label="Battle history" aria-busy={loading}>
@@ -86,8 +90,8 @@ export function BattleHistoryPage() {
         {!loading && page && <>
           {page.battles.length === 0 ? <div className="directory-state">
             <h2>{status || cursor ? 'No matching battles' : 'No battles yet'}</h2>
-            <p>{status || cursor ? 'Change the status filter or refresh to see the latest battles.' : 'Stage your first battle to begin the archive.'}</p>
-            {!status && !cursor && <Link className="compact-action" to="/battles/new">STAGE BATTLE →</Link>}
+            <p>{status || cursor ? 'Change the status filter or refresh to see the latest battles.' : emptyHint(play)}</p>
+            {!status && !cursor && play && <Link className="compact-action" to="/battles/new">STAGE BATTLE →</Link>}
           </div> : <table className="history-table">
             <caption className="visually-hidden">Battles, newest first</caption>
             <thead><tr><th>Battle</th><th>Created</th><th>Status</th><th>Progress</th><th>Outcome</th><th><span className="visually-hidden">Details</span></th></tr></thead>

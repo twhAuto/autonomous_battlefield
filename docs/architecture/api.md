@@ -47,6 +47,14 @@ only their status and applied plan, and a reduced model-profile list. Saved
 decision context, [leagues](#leagues) and [analytics](#analytics) require Tester
 or Admin; only Admins create or cancel a league or disqualify its entrants.
 
+Guests only view. Every token from the guest Access application is a Guest,
+whatever its email, and guests are off unless that application is configured.
+Guests read the scenario catalog, factions, faction rulesets, battle history,
+battles, faction views, events, replays and decision history, with the Player
+projection. Every other route returns `403`, including model profiles, the battle
+allowance, background generation and every mutation, and Guests own nothing they
+can manage.
+
 Selecting a model controller, for a battle or for background generation, requires
 an enabled, verified profile and a role allowed by the
 [model access policy](#model-access-administration). Players need explicit
@@ -70,6 +78,10 @@ people's battles are admitted. Paused battles are unfinished. A
 retry that reuses a request's identifier with the same inputs and identity
 returns the work already admitted rather than consuming another allowance. League
 battles are Admin battles and also skip the per-battle model decision budget.
+
+`GET /v1/battles/allowance` reports the caller's battle counts and limits from the
+same counts admission uses, without reserving anything, so a start can still
+return `429` if another battle is admitted first.
 
 Private worker APIs are outside this contract: they use a separate bearer secret
 and server-minted request capabilities, described in the
@@ -407,15 +419,19 @@ The session advertises `capabilities.members` only to Admins when managed Player
 are configured; otherwise the member routes return `503`. All routes require Admin
 outside role preview and return `no-store`.
 
-A `202` confirms persisted intent, not Cloudflare admission. A Player is active
-only while `desiredAccess` is true and `version` equals `syncedVersion`; removing
-access denies further API requests immediately. Repeating an unchanged grant or
-removal is idempotent. Emails are trimmed and lowercased, and must use a dotted DNS
-domain, a local part of at most 64 bytes and a total of at most 254 bytes. A
-configured Admin or Tester email returns `409`. `syncError` is a sanitized
-group-level failure, and automatic retries continue with bounded backoff. No route
-accepts a role or returns Cloudflare credentials. See
-[Player invitations](../operations/player-invitations.md) for the lifecycle.
+A `202` confirms persisted intent, not Cloudflare admission. A member is active
+only while `desiredAccess` is true and `version` equals `syncedVersion`, and acts
+with its stored `role`, `player` or `tester`; removing access denies further API
+requests immediately. A grant may name the role: a new member without one is a
+Player, and an existing member keeps its role unless the grant names another.
+Changing only the role of an active member leaves `version` unchanged, so it
+applies to the member's next request. Admin cannot be assigned here, and any other
+role returns `400`. Repeating an unchanged grant or removal is idempotent. Emails
+are trimmed and lowercased, and must use a dotted DNS domain, a local part of at
+most 64 bytes and a total of at most 254 bytes. A configured Admin or Tester email
+returns `409`. `syncError` is a sanitized group-level failure, and automatic
+retries continue with bounded backoff. No route returns Cloudflare credentials.
+See [Player invitations](../operations/player-invitations.md) for the lifecycle.
 
 ## Model access administration
 

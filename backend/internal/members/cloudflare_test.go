@@ -104,7 +104,7 @@ func TestNewStoreValidatesConfiguredPlayers(t *testing.T) {
 func TestRemovingAMalformedIDIsNotFound(t *testing.T) {
 	store := &Store{} // No database: the ID is rejected before a transaction opens.
 	for _, id := range []string{"", "member", "7f22e693-bacd-46bb-b942-64fa613cd38"} {
-		if err := store.Change(context.Background(), "admin", "", id, false); !errors.Is(err, ErrNotFound) {
+		if err := store.Change(context.Background(), "admin", "", id, false, ""); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("Change(%q) error = %v, want ErrNotFound", id, err)
 		}
 	}

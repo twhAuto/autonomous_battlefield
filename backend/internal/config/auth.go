@@ -36,9 +36,12 @@ func parseCloudflareConfig() (authn.Config, error) {
 	audience := strings.TrimSpace(os.Getenv("BATTLEFIELD_ACCESS_AUDIENCE"))
 	origin := strings.TrimRight(os.Getenv("BATTLEFIELD_PUBLIC_ORIGIN"), "/")
 	u, e := url.Parse(issuer)
-	o, oe := url.Parse(origin)
-	if e != nil || u.Scheme != "https" || !strings.HasSuffix(u.Hostname(), ".cloudflareaccess.com") || u.Port() != "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil || audience == "" || oe != nil || o.Scheme != "https" || o.Host == "" || o.Path != "" || o.RawQuery != "" || o.Fragment != "" || o.User != nil {
+	if e != nil || u.Scheme != "https" || !strings.HasSuffix(u.Hostname(), ".cloudflareaccess.com") || u.Port() != "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil || audience == "" || !httpsOrigin(origin) {
 		return authn.Config{}, fmt.Errorf("invalid Cloudflare issuer, audience or public origin")
+	}
+	guestAudience, guestOrigin, err := guestAccess(audience, origin)
+	if err != nil {
+		return authn.Config{}, err
 	}
 	roles, err := cloudflareRoles()
 	if err != nil {
@@ -51,7 +54,27 @@ func parseCloudflareConfig() (authn.Config, error) {
 	if ciClientID != "" && !accessClientID.MatchString(ciClientID) {
 		return authn.Config{}, fmt.Errorf("invalid Access CI client ID")
 	}
-	return authn.Config{Mode: authn.ModeCloudflare, Enabled: true, Issuer: issuer, Audience: audience, Origin: origin, Roles: roles, CIClientID: ciClientID}, nil
+	return authn.Config{Mode: authn.ModeCloudflare, Enabled: true, Issuer: issuer, Audience: audience, Origin: origin, GuestAudience: guestAudience, GuestOrigin: guestOrigin, Roles: roles, CIClientID: ciClientID}, nil
+}
+
+// httpsOrigin reports an HTTPS scheme and host with nothing else.
+func httpsOrigin(origin string) bool {
+	o, err := url.Parse(origin)
+	return err == nil && o.Scheme == "https" && o.Host != "" && o.Path == "" && o.RawQuery == "" && o.Fragment == "" && o.User == nil
+}
+
+// guestAccess reads the optional guest Access application. Its audience and origin are
+// set together or not at all, and neither may repeat the game's.
+func guestAccess(audience, origin string) (string, string, error) {
+	guestAudience := strings.TrimSpace(os.Getenv("BATTLEFIELD_ACCESS_GUEST_AUDIENCE"))
+	guestOrigin := strings.TrimRight(os.Getenv("BATTLEFIELD_GUEST_ORIGIN"), "/")
+	if guestAudience == "" && guestOrigin == "" {
+		return "", "", nil
+	}
+	if guestAudience == "" || guestAudience == audience || guestOrigin == origin || !httpsOrigin(guestOrigin) {
+		return "", "", fmt.Errorf("invalid guest Access audience or origin")
+	}
+	return guestAudience, guestOrigin, nil
 }
 
 func cloudflareRoles() (map[string]authn.Role, error) {

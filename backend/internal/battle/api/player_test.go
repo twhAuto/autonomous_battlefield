@@ -23,6 +23,11 @@ func TestPlayerProjectionAfterSharedCachedRead(t *testing.T) {
 	if e != nil || strings.Contains(string(raw), secret) {
 		t.Fatal(string(raw), e)
 	}
+	guest := player.WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "guest", Role: authn.Guest}))
+	raw, e = json.Marshal(battleResponseFor(guest, run))
+	if e != nil || strings.Contains(string(raw), secret) {
+		t.Fatal("guest response exposes diagnostics", string(raw), e)
+	}
 	tester := player.WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "tester", Role: authn.Tester}))
 	raw, e = json.Marshal(battleResponseFor(tester, run))
 	if e != nil || !strings.Contains(string(raw), secret) {
@@ -55,19 +60,27 @@ func TestPlayerDecisionHistoryKeepsPlansAndDropsDiagnostics(t *testing.T) {
 		}
 		return response.Body.String()
 	}
-	player := read(authn.Player)
-	for _, want := range []string{`"requestId":"request"`, `"factionId":"faction"`, `"targetTick":10`, `"status":"fallback"`, `"controllerType":"model"`, "Hold the bridge", "Protect the economy."} {
-		if !strings.Contains(player, want) {
-			t.Fatalf("player response lacks %s: %s", want, player)
-		}
-	}
-	for _, hidden := range []string{secret, "4242", "usage", "claimedAt", "cliProcessStartMs"} {
-		if strings.Contains(player, hidden) {
-			t.Fatalf("player response exposes %s: %s", hidden, player)
-		}
+	for _, role := range []authn.Role{authn.Player, authn.Guest} {
+		checkGameplayDecisions(t, role, read(role), secret)
 	}
 	if tester := read(authn.Tester); !strings.Contains(tester, secret) || !strings.Contains(tester, "4242") {
 		t.Fatalf("tester response lost diagnostics: %s", tester)
+	}
+}
+
+// checkGameplayDecisions requires a Player's or Guest's decision history to keep the
+// plan and drop every diagnostic.
+func checkGameplayDecisions(t *testing.T, role authn.Role, body, secret string) {
+	t.Helper()
+	for _, want := range []string{`"requestId":"request"`, `"factionId":"faction"`, `"targetTick":10`, `"status":"fallback"`, `"controllerType":"model"`, "Hold the bridge", "Protect the economy."} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("%s response lacks %s: %s", role, want, body)
+		}
+	}
+	for _, hidden := range []string{secret, "4242", "usage", "claimedAt", "cliProcessStartMs"} {
+		if strings.Contains(body, hidden) {
+			t.Fatalf("%s response exposes %s: %s", role, hidden, body)
+		}
 	}
 }
 

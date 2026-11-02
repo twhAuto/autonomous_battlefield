@@ -1,9 +1,10 @@
 # Production access
 
 Production serves **play.ordinalfrontier.com** behind Cloudflare Access (team
-**ordinalfrontier-lab**) through a named Cloudflare Tunnel. Admin and Tester
-roles are private operator configuration; optional managed Player invitations live
-in PostgreSQL. No email list is committed to Git.
+**ordinalfrontier-lab**) through a named Cloudflare Tunnel. Admin roles, and any
+Tester roles assigned in configuration, are private operator configuration;
+optional managed Player and Tester invitations live in PostgreSQL. No email list is
+committed to Git.
 
 This runbook owns the access requirements and checks, the production tunnel,
 roles and removal, AI limits and the stop switch, the CI service identity, and
@@ -11,7 +12,7 @@ access recovery. Related guides own the rest:
 
 - [Cloudflare platform](cloudflare-platform.md): capturing, adopting or creating
   the tunnel, DNS record, Access application and policies.
-- [Player invitations](player-invitations.md): managed Player membership.
+- [Player invitations](player-invitations.md): managed Player and Tester membership.
 - [CLI worker verification](cli-worker-verification.md#isolation-gate): the isolation gate that
   must pass before any CLI profile is advertised.
 
@@ -29,18 +30,21 @@ these properties:
   application session. Policies inherit that duration. The privileged MFA challenge
   lasts one hour, separately.
 - Google is the identity provider. Allow policies list exact emails or the managed
-  Player group. Never add a domain-wide allow, Bypass, Everyone, or a policy that
+  member group. Never add a domain-wide allow, Bypass, Everyone, or a policy that
   allows all service tokens.
-- Admin and Tester identities require MFA from an IdP and Access policy that
-  actually enforce it. Test the challenge: a normal Google login alone is not
-  evidence of MFA.
+- Admin identities require MFA from an IdP and Access policy that actually enforce
+  it. Test the challenge: a normal Google login alone is not evidence of MFA.
+  Testers need no MFA: managed Testers sign in with the managed group's one-time
+  code, and a Tester assigned in configuration uses its own exact-email policy.
 - Only the tunnel's outbound connection exposes the application. Remove public
   gateway or ingress routes and router port forwards to the origin, and block
   inbound direct access on **both IPv4 and IPv6**, including forwarded container
   ports. SSH stays restricted to the operator's private management network. The AI
   gateway, databases, Kubernetes, Jenkins, SonarQube and monitoring stay private.
 
-Both tunnel ingress rules require Access token validation. The API independently
+Every tunnel ingress rule requires Access token validation for its hostname's
+application: the game's two rules, and the two for the optional
+[guest hostname](#guest-access). The API independently
 validates the JWT signature, RS256 algorithm, issuer, application audience,
 expiry, issue time and subject or email claims. Missing keys or unknown roles deny
 access; there is no password, cookie or unsigned-header fallback.
@@ -136,9 +140,10 @@ shared domain, identity provider or other shared infrastructure.
 
 The persistent identity is the verified `issuer|subject`. Each request maps the
 verified, normalized email to exactly one role. With managed Players enabled,
-Admin and Tester roles stay in configuration and Player eligibility comes from
-the database on every request; new grants require confirmed Cloudflare
-synchronization. Without managed Players, every role comes from configuration.
+Admin and configured Tester roles come from configuration, and every other
+identity's eligibility and role, Player or Tester, come from the database on every
+request; new grants require confirmed Cloudflare synchronization, and role changes
+apply at once. Without managed Players, every role comes from configuration.
 
 - All roles share gameplay and faction reads.
 - Editing or deleting factions and stopping, pausing or resuming battles require
@@ -148,11 +153,57 @@ synchronization. Without managed Players, every role comes from configuration.
   no host or deployment access.
 - Players receive gameplay-only responses; the
   [API roles](../architecture/api.md#roles-and-ownership) list what they can read.
+- [Guests](#guest-access), when a guest Access application is configured, receive
+  the same responses and can change nothing.
 
 In Cloudflare mode the application issues no auth cookie and ignores old ones.
 Logout sends the browser to `/cdn-cgi/access/logout`, and expired API sessions
 prompt reauthentication. Mutations must carry the configured HTTPS `Origin` and an
 `application/json` body. Private worker routes use their own bearer authentication.
+
+### Guest access
+
+Guests sign in at a separate hostname, such as `guest.ordinalfrontier.com`, through
+their own Access application that admits anyone with a one-time PIN. The game's
+application keeps its exact-email and managed-group policies, and the API maps
+every token from the guest application to the view-only Guest role, whatever its
+email. The guest application and its DNS record are manual Cloudflare changes,
+outside the [Cloudflare workflow](cloudflare-platform.md), which owns only the
+game's application and hostname.
+
+Each guest takes a Zero Trust seat on their first Access sign-in, from the same
+pool as Players and configured identities (the Free plan has 50). A seat is released
+only when the user is removed, so in Zero Trust **Settings → Admin controls →
+Remove inactive users from seats**, choose an inactivity period (one month to one
+year); a daily check then frees the seats of guests who stopped visiting. See
+[seat management](https://developers.cloudflare.com/cloudflare-one/team-and-resources/users/seat-management/).
+
+To enable guests:
+
+1. In Zero Trust, enable the **One-time PIN** identity provider if it is not
+   already on, then add a self-hosted Access application for the entire guest
+   hostname with only that provider. Give it one **Allow** policy: **Include →
+   Everyone**, **Require → Login Methods → One-time PIN**. Add no other policy.
+2. Add a proxied DNS `CNAME` for the guest hostname pointing to
+   `<BF_TUNNEL_ID>.cfargotunnel.com`, the same tunnel as the game.
+3. Put the guest application's AUD tag and origin in the production `.env`:
+
+   ```dotenv
+   BATTLEFIELD_ACCESS_GUEST_AUDIENCE=<64-character AUD tag>
+   BATTLEFIELD_GUEST_ORIGIN=https://guest.ordinalfrontier.com
+   ```
+
+   Both are set together and must differ from the game's audience and origin.
+4. Run `./scripts/ops/prepare-limited-production.sh`, the normal `main` delivery
+   with **APPLY_CONFIGURATION=true**, then `./scripts/cd/deploy-tunnel.sh`, which
+   renders the guest hostname's routes with the guest audience.
+5. Verify from a private window: any email can sign in at the guest hostname with a
+   code and sees the **Guest access · View only** banner; a request that changes
+   anything, such as `POST /v1/battles`, returns `403`; signing in at the game's
+   hostname is unchanged.
+
+To turn guests off, remove both settings and repeat step 4, then delete the guest
+Access application and its DNS record.
 
 ### Model access and role preview
 
@@ -179,15 +230,15 @@ is a deployment configuration task.
 To halt AI execution, use the [stop switch](#limits-and-the-stop-switch), not these
 toggles.
 
-**View as Player** or **View as Tester** opens a read-only preview with that
-role's actual API visibility and inspection permissions. Save or discard edits
-first. The banner stays visible while you navigate, and **Exit preview** restores
-the administrator view. Preview uses your own identity and ownership, impersonates
+**View as Player**, **View as Tester** or **View as Guest** opens a read-only
+preview with that role's actual API visibility and inspection permissions. Save or
+discard edits first. The banner stays visible while you navigate, and **Exit
+preview** restores the administrator view. Preview uses your own identity and ownership, impersonates
 nobody and grants nothing to non-admin callers.
 
 ### Remove an identity
 
-- **Managed Player:** use **Admin → Members** as described in
+- **Managed Player or Tester:** use **Admin → Members** as described in
   [Player invitations](player-invitations.md); new API requests are blocked
   immediately.
 - **Configured role:** remove the Access Allow rule (a

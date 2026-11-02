@@ -110,7 +110,7 @@ func startServer(shutdownSignal context.Context, configuration config.APIConfig)
 	}
 	defer stopMembers()
 	if memberStore != nil {
-		configuration.Auth.ResolvePlayer = memberStore.Allowed
+		configuration.Auth.ResolveMember = memberStore.ActiveRole
 	}
 	application := app.New(db, catalog, configuration.API.MaxTicks, app.Options{Auth: configuration.Auth, Cache: cache, Generation: &configuration.Generation, Profiles: profiles, Members: membersRepository(memberStore), EngineConcurrency: configuration.API.EngineConcurrency})
 	lifecycle.Activate(application.HTTPHandler(), db, nil)

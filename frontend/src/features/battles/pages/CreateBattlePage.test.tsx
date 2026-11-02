@@ -1,19 +1,20 @@
 // Checks battle staging: setup loading and failure recovery, incomplete prerequisites,
-// faction/scenario/controller validation, tick limits, timing overrides, controller availability, and submission.
+// faction/scenario/controller validation, tick limits, timing overrides, controller availability,
+// the battle allowance, and submission.
 
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { CreateBattlePage } from './CreateBattlePage'
-import { BattleApiError, createBattle, listModelProfiles, listScenarios, type ScenarioSummary } from '../api/battles'
+import { BattleApiError, createBattle, getBattleAllowance, listModelProfiles, listScenarios, type BattleAllowance, type ScenarioSummary } from '../api/battles'
 import { FactionApiError, listFactions, type Faction } from '../../factions/api/factions'
 import { SessionContext } from '../../auth/SessionContext'
 import type { ModelProfile } from '../../../shared/domain/model-profile'
 
 vi.mock('../api/battles', async (original) => ({
   ...await original<typeof import('../api/battles')>(),
-  createBattle: vi.fn(), listScenarios: vi.fn(), listModelProfiles: vi.fn(),
+  createBattle: vi.fn(), getBattleAllowance: vi.fn(), listScenarios: vi.fn(), listModelProfiles: vi.fn(),
 }))
 vi.mock('../../factions/api/factions', async (original) => ({
   ...await original<typeof import('../../factions/api/factions')>(),
@@ -29,6 +30,8 @@ const scenario: ScenarioSummary = {
   id: 'castle-siege-v1', rulesVersion: '1', rulesetId: 'castle-siege-v1',
   tickDuration: '1s', decisionIntervalTicks: 10, maximumTicks: 500, mapWidth: 15, mapHeight: 11,
 }
+const unlimited: BattleAllowance = { limited: false, startedToday: 3, unfinished: 1, serviceUnfinished: 2, resetAt: '2099-01-01T00:00:00Z' }
+const playerAllowance: BattleAllowance = { limited: true, startedToday: 2, dailyLimit: 5, unfinished: 0, unfinishedLimit: 1, serviceUnfinished: 1, serviceUnfinishedLimit: 4, resetAt: '2099-01-01T00:00:00Z' }
 const availableProfile: ModelProfile = { id: 'fast', displayName: 'Fast AI', available: true, runtime: 'api', modelLabel: 'fast-1' }
 const offlineProfile: ModelProfile = { id: 'offline', displayName: 'Offline AI', available: false, runtime: 'api', modelLabel: '', unavailableReason: 'Disabled by operator' }
 
@@ -59,6 +62,7 @@ beforeEach(() => {
   vi.mocked(listScenarios).mockReset().mockResolvedValue([scenario])
   vi.mocked(listModelProfiles).mockReset().mockResolvedValue([availableProfile, offlineProfile])
   vi.mocked(createBattle).mockReset().mockResolvedValue({ id: battleID, status: 'queued' })
+  vi.mocked(getBattleAllowance).mockReset().mockResolvedValue(unlimited)
 })
 
 it('shows the loading state, then prefills two distinct factions and the scenario', async () => {
@@ -336,4 +340,59 @@ it('clears model settings when switching controller and disables unsupported eff
   expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toBeDisabled()
   await user.selectOptions(await controllerSelect('first-controller'), 'scripted')
   expect(screen.queryByRole('combobox', { name: 'Model' })).not.toBeInTheDocument()
+})
+
+it('shows no battle allowance to an Admin', async () => {
+  renderPage()
+  expect(await screen.findByRole('button', { name: /DEPLOY COMBATANTS/ })).toBeEnabled()
+  expect(screen.queryByText(/Battles today/)).not.toBeInTheDocument()
+})
+
+it('shows a Player how many battles remain before starting one', async () => {
+  vi.mocked(getBattleAllowance).mockResolvedValue(playerAllowance)
+  renderPage('player')
+  expect(await screen.findByText(/Battles today: 2 of 5 started · resets .* \(00:00 UTC\)/)).toBeInTheDocument()
+  expect(screen.getByText('Unfinished battles: 0 of 1 allowed at once')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /DEPLOY COMBATANTS/ })).toBeEnabled()
+  expect(screen.queryByRole('button', { name: 'CHECK AGAIN' })).not.toBeInTheDocument()
+})
+
+it.each([
+  ['daily', { startedToday: 5 }, /You have started all 5 battles allowed today/],
+  ['unfinished', { unfinished: 1 }, /You can have 1 battle unfinished at a time, and paused battles count/],
+  ['service', { serviceUnfinished: 4 }, /The battlefield is at its limit of 4 battles unfinished/],
+])('names the used-up %s allowance, disables deployment and checks again', async (_, used, message) => {
+  const user = userEvent.setup()
+  vi.mocked(getBattleAllowance).mockResolvedValueOnce({ ...playerAllowance, ...used }).mockResolvedValueOnce(playerAllowance)
+  renderPage('player')
+  expect(await screen.findByRole('alert')).toHaveTextContent(message)
+  expect(screen.getByRole('button', { name: /DEPLOY COMBATANTS/ })).toBeDisabled()
+  await user.click(screen.getByRole('button', { name: 'CHECK AGAIN' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: /DEPLOY COMBATANTS/ })).toBeEnabled())
+  expect(getBattleAllowance).toHaveBeenCalledTimes(2)
+  expect(createBattle).not.toHaveBeenCalled()
+})
+
+it('links a Player with too many unfinished battles to Battle history', async () => {
+  vi.mocked(getBattleAllowance).mockResolvedValue({ ...playerAllowance, unfinished: 1 })
+  renderPage('player')
+  expect(await screen.findByRole('link', { name: 'Battle history' })).toHaveAttribute('href', '/battles')
+})
+
+it('reloads the allowance after a rejected start', async () => {
+  const user = userEvent.setup()
+  vi.mocked(getBattleAllowance).mockResolvedValueOnce(playerAllowance).mockResolvedValueOnce({ ...playerAllowance, unfinished: 1 })
+  vi.mocked(createBattle).mockRejectedValueOnce(new BattleApiError('Battle allowance reached.', 429))
+  renderPage('player')
+  await user.click(await screen.findByRole('button', { name: /DEPLOY COMBATANTS/ }))
+  expect(await screen.findByText(/You can have 1 battle unfinished at a time/)).toBeInTheDocument()
+  expect(getBattleAllowance).toHaveBeenCalledTimes(2)
+  expect(screen.getByRole('button', { name: /DEPLOY COMBATANTS/ })).toBeDisabled()
+})
+
+it('keeps deployment available when the allowance cannot be read', async () => {
+  vi.mocked(getBattleAllowance).mockRejectedValue(new BattleApiError('Battle allowance could not be loaded.', 500))
+  renderPage('player')
+  expect(await screen.findByRole('button', { name: /DEPLOY COMBATANTS/ })).toBeEnabled()
+  expect(screen.queryByText(/Battles today/)).not.toBeInTheDocument()
 })

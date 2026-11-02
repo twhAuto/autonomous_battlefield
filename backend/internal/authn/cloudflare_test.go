@@ -146,13 +146,21 @@ func TestRouteRolesAndOrigins(t *testing.T) {
 		{Admin, "/v1/factions", "POST", "", "application/json", 403},
 		{Player, "/v1/factions", "POST", "https://battle.example", "text/plain", 415},
 		{Player, "/v1/factions", "POST", "https://battle.example", "application/json", 204},
+		{Guest, "/v1/battles", "GET", "", "", 204},
+		{Guest, "/v1/battles/b/decisions", "GET", "", "", 204},
+		{Guest, "/v1/model-profiles", "GET", "", "", 403},
+		{Guest, "/v1/battles/allowance", "GET", "", "", 403},
+		{Guest, "/v1/battles/b/decisions/r/context", "GET", "", "", 403},
+		{Guest, "/v1/factions", "POST", "https://guest.example", "application/json", 403},
+		{Guest, "/v1/battles/b/stop", "POST", "https://guest.example", "application/json", 403},
+		{Guest, "/v1/auth/logout", "POST", "https://guest.example", "application/json", 204},
 	} {
 		r := httptest.NewRequest(test.method, test.path, strings.NewReader("{}"))
 		r = r.WithContext(WithActor(context.Background(), Actor{ID: "friend", Role: test.role}))
 		r.Header.Set("Origin", test.origin)
 		r.Header.Set("Content-Type", test.content)
 		w := httptest.NewRecorder()
-		BrowserProtection("https://battle.example", RoutePolicy(next)).ServeHTTP(w, r)
+		BrowserProtection([]string{"https://battle.example", "https://guest.example"}, RoutePolicy(next)).ServeHTTP(w, r)
 		if w.Code != test.want {
 			t.Fatalf("%+v got %d", test, w.Code)
 		}

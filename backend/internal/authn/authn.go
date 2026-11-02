@@ -25,11 +25,15 @@ const ModeCloudflare = "cloudflare"
 const sessionCookieName = "battlefield_session"
 
 type Config struct {
-	ResolvePlayer func(context.Context, string) bool
+	ResolveMember func(context.Context, string) Role
 	Mode          string
 	Origin        string
 	Issuer        string
 	Audience      string
+	// GuestAudience and GuestOrigin identify the guest Access application. Both are
+	// empty unless guests are enabled; every token for that audience is a Guest.
+	GuestAudience string
+	GuestOrigin   string
 	CIClientID    string
 	Roles         map[string]Role
 	Enabled       bool
@@ -67,7 +71,7 @@ func NewManager(config Config) *Manager {
 	if config.Mode == ModeCloudflare {
 		config.Enabled = true
 	}
-	return &Manager{config: config, now: time.Now, cloudflare: &Cloudflare{Issuer: config.Issuer, Audience: config.Audience, Roles: config.Roles, CIClientID: config.CIClientID, ResolvePlayer: config.ResolvePlayer}}
+	return &Manager{config: config, now: time.Now, cloudflare: &Cloudflare{Issuer: config.Issuer, Audience: config.Audience, GuestAudience: config.GuestAudience, Roles: config.Roles, CIClientID: config.CIClientID, ResolveMember: config.ResolveMember}}
 }
 
 func (m *Manager) Enabled() bool {
@@ -228,7 +232,7 @@ func (r *Routes) session(response http.ResponseWriter, request *http.Request) {
 	}
 	_ = json.NewEncoder(response).Encode(map[string]any{
 		"enabled": r.manager.Enabled(), "authenticated": true, "actor": actor, "mode": r.manager.config.Mode,
-		"capabilities": map[string]bool{"inspect": actor.CanInspect(), "admin": actor.Role == Admin, "members": actor.Role == Admin && r.manager.config.Mode == ModeCloudflare && r.manager.config.ResolvePlayer != nil},
+		"capabilities": map[string]bool{"inspect": actor.CanInspect(), "admin": actor.Role == Admin, "members": actor.Role == Admin && r.manager.config.Mode == ModeCloudflare && r.manager.config.ResolveMember != nil},
 	})
 }
 

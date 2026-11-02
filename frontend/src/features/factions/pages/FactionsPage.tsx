@@ -42,7 +42,7 @@ export function FactionsPage() {
             <h1>Factions</h1>
             <p>Every banner registered in OrdinalFrontier.</p>
           </div>
-          <Link className="compact-action" to="/factions/new">+ CREATE FACTION</Link>
+          {permissions.play && <Link className="compact-action" to="/factions/new">+ CREATE FACTION</Link>}
         </div>
       </section>
 
@@ -74,8 +74,8 @@ export function FactionsPage() {
           <div className="directory-state">
             <span className="directory-state__code">NO RECORDS FOUND</span>
             <h2>The frontier is unclaimed</h2>
-            <p>Create the first faction and establish a presence.</p>
-            <Link className="compact-action" to="/factions/new">CREATE FIRST FACTION →</Link>
+            <p>{permissions.play ? 'Create the first faction and establish a presence.' : 'No factions have been registered yet.'}</p>
+            {permissions.play && <Link className="compact-action" to="/factions/new">CREATE FIRST FACTION →</Link>}
           </div>
         )}
 

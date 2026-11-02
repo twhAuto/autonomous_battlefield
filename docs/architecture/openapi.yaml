@@ -399,6 +399,36 @@ paths:
         '429': {$ref: '#/components/responses/RateLimited'}
         '500': {$ref: '#/components/responses/Internal'}
 
+  /v1/battles/allowance:
+    get:
+      tags: [Battles]
+      operationId: getBattleAllowance
+      summary: Get the caller's battle allowance
+      description: |
+        Reports the counts and limits `POST /v1/battles` admits against, for the
+        caller's role. The values can change before the next battle is created, so a
+        start can still return `429`.
+      responses:
+        '200':
+          description: The allowance when it was read.
+          headers:
+            Cache-Control: {$ref: '#/components/headers/NoStore'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BattleAllowance'}
+              example:
+                limited: true
+                startedToday: 2
+                dailyLimit: 5
+                unfinished: 0
+                unfinishedLimit: 1
+                serviceUnfinished: 3
+                serviceUnfinishedLimit: 4
+                resetAt: '2026-11-03T00:00:00Z'
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '500': {$ref: '#/components/responses/Internal'}
+
   /v1/battles/{id}:
     parameters:
       - {$ref: '#/components/parameters/BattleId'}
@@ -1016,7 +1046,7 @@ paths:
     get:
       tags: [Administration]
       operationId: listMembers
-      summary: List managed Players
+      summary: List managed Players and Testers
       description: Admin only. Returns `503` when managed Players are not configured.
       responses:
         '200':
@@ -1042,13 +1072,16 @@ paths:
     post:
       tags: [Administration]
       operationId: grantMember
-      summary: Grant or reinvite a Player
+      summary: Grant, reinvite or change the role of a member
       parameters:
         - {$ref: '#/components/parameters/Origin'}
       description: |
-        `202` confirms persisted intent, not Cloudflare admission. Granting an
-        unchanged intent is idempotent. A configured Admin or Tester email
-        returns `409`.
+        `202` confirms persisted intent, not Cloudflare admission. A new member
+        without `role` is a Player; an existing member keeps its stored role unless
+        `role` names another one. Changing only the role of an active member needs no
+        Cloudflare update and applies to the member's next request. Granting an
+        unchanged intent is idempotent. A configured Admin or Tester email returns
+        `409`; any other `role` value returns `400`.
       requestBody:
         required: true
         content:
@@ -1059,7 +1092,8 @@ paths:
               required: [email]
               properties:
                 email: {type: string, format: email, maxLength: 254}
-            example: {email: friend@example.com}
+                role: {$ref: '#/components/schemas/MemberRole'}
+            example: {email: friend@example.com, role: tester}
       responses:
         '202':
           description: Intent persisted; synchronization queued.
@@ -1079,7 +1113,7 @@ paths:
     delete:
       tags: [Administration]
       operationId: removeMember
-      summary: Remove a Player's access
+      summary: Remove a member's access
       parameters:
         - {$ref: '#/components/parameters/Origin'}
       description: Removes desired access immediately and queues synchronization.
@@ -1281,6 +1315,13 @@ components:
       type: string
       enum: [admin, tester, player]
 
+    SessionRole:
+      description: |
+        A `guest` signed in through the guest Access application, which is off unless
+        configured, and can only view.
+      type: string
+      enum: [admin, tester, player, guest]
+
     Session:
       type: object
       required: [enabled, authenticated, mode]
@@ -1299,7 +1340,7 @@ components:
           properties:
             id: {type: string}
             email: {type: string}
-            role: {$ref: '#/components/schemas/Role'}
+            role: {$ref: '#/components/schemas/SessionRole'}
         capabilities:
           type: object
           properties:
@@ -2313,6 +2354,34 @@ components:
                 reason: {type: string}
             - {type: 'null'}
 
+    BattleAllowance:
+      description: |
+        `limited` is false for an Admin, whose battles skip the allowances; the limit
+        fields are then omitted. Unfinished battles are queued, running or paused.
+      type: object
+      required: [limited, startedToday, unfinished, serviceUnfinished, resetAt]
+      properties:
+        limited: {type: boolean}
+        startedToday:
+          description: Battles the caller started since 00:00 UTC.
+          type: integer
+          minimum: 0
+        dailyLimit: {type: integer, minimum: 1}
+        unfinished:
+          description: The caller's unfinished battles.
+          type: integer
+          minimum: 0
+        unfinishedLimit: {type: integer, minimum: 1}
+        serviceUnfinished:
+          description: Unfinished battles of every owner, including Admin battles.
+          type: integer
+          minimum: 0
+        serviceUnfinishedLimit: {type: integer, minimum: 1}
+        resetAt:
+          description: The next 00:00 UTC, when `startedToday` restarts.
+          type: string
+          format: date-time
+
     BattleHistoryPage:
       type: object
       required: [battles, nextCursor]
@@ -2658,11 +2727,17 @@ components:
     Member:
       description: Active only when `desiredAccess` is true and `version` equals `syncedVersion`.
       type: object
-      required: [id, email, desiredAccess, version, syncedVersion, updatedAt]
+      required: [id, email, role, desiredAccess, version, syncedVersion, updatedAt]
       properties:
         id: {type: string}
         email: {type: string}
+        role: {$ref: '#/components/schemas/MemberRole'}
         desiredAccess: {type: boolean}
         version: {type: integer}
         syncedVersion: {type: integer}
         updatedAt: {type: string, format: date-time}
+
+    MemberRole:
+      description: The role a managed member holds. Admin is never managed here.
+      type: string
+      enum: [player, tester]

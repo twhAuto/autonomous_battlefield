@@ -7,8 +7,29 @@ from pathlib import Path
 import re
 
 
+def valid_hostname(hostname):
+    return bool(re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', hostname or '')) and '.' in hostname
+
+
+def hostname_routes(hostname, team, audience):
+    """Route one Access-protected hostname to the API and the frontend."""
+    access = {'access': {'required': True, 'teamName': team, 'audTag': [audience]}}
+    return [{'hostname': hostname, 'path': '^/v1/.*', 'service': 'http://battlefield-api:8080', 'originRequest': access},
+            {'hostname': hostname, 'service': 'http://battlefield-frontend:8080', 'originRequest': access}]
+
+
+def guest_routes(args):
+    """Route the optional guest hostname, validated by the guest Access application's audience."""
+    hostname, audience = getattr(args, 'guest_hostname', '') or '', getattr(args, 'guest_audience', '') or ''
+    if not hostname and not audience:
+        return []
+    if not valid_hostname(hostname) or hostname == args.hostname or not re.fullmatch(r'[a-fA-F0-9]{64}', audience) or audience == args.audience:
+        raise ValueError('guest hostname and audience must be set together and differ from the application')
+    return hostname_routes(hostname, args.team, audience)
+
+
 def render(args):
-    if not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', args.hostname) or '.' not in args.hostname:
+    if not valid_hostname(args.hostname):
         raise ValueError('invalid application hostname')
     if not re.fullmatch(r'[a-z0-9][a-z0-9-]*', args.team):
         raise ValueError('invalid Access team name')
@@ -22,13 +43,9 @@ def render(args):
     emails = [e for values in roles.values() for e in values]
     if not roles['admin'] or len(emails) != len(set(emails)) or any(not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', e) for e in emails):
         raise ValueError('assign at least one Admin and each valid email exactly once')
-    access = {'access': {'required': True, 'teamName': args.team, 'audTag': [args.audience]}}
+    ingress = hostname_routes(args.hostname, args.team, args.audience) + guest_routes(args) + [{'service': 'http_status:404'}]
     config = {'tunnel': args.tunnel_id, 'credentials-file': '/etc/tunnel/credentials.json',
-              'metrics': '0.0.0.0:2000', 'no-autoupdate': True,
-              'ingress': [
-                  {'hostname': args.hostname, 'path': '^/v1/.*', 'service': 'http://battlefield-api:8080', 'originRequest': access},
-                  {'hostname': args.hostname, 'service': 'http://battlefield-frontend:8080', 'originRequest': access},
-                  {'service': 'http_status:404'}]}
+              'metrics': '0.0.0.0:2000', 'no-autoupdate': True, 'ingress': ingress}
     cm = {'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': {'name': 'battlefield-tunnel'}, 'data': {'config.yml': json.dumps(config)}}
     deployment = {'apiVersion': 'apps/v1', 'kind': 'Deployment', 'metadata': {'name': 'battlefield-tunnel'}, 'spec': {
         'replicas': 2, 'selector': {'matchLabels': {'app': 'battlefield-tunnel'}},
@@ -82,7 +99,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True)
     parser.add_argument('--policies-only', action='store_true')
-    for name in ('hostname', 'team', 'audience', 'tunnel-id', 'cloudflared-image'):
+    for name in ('hostname', 'team', 'audience', 'tunnel-id', 'cloudflared-image', 'guest-hostname', 'guest-audience'):
         parser.add_argument('--' + name)
     for role in ('admin', 'tester', 'player'):
         parser.add_argument('--' + role, action='append', default=[])

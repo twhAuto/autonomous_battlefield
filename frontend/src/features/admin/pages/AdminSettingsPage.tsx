@@ -1,7 +1,7 @@
 import { useContext, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { SessionContext } from '../../auth/SessionContext'
-import { RolePreviewContext, type PreviewRole } from '../../auth/RolePreviewContext'
+import { RolePreviewContext, previewRoleNames, type PreviewRole } from '../../auth/RolePreviewContext'
 import { getModelSettings, saveModelSettings, type AccessPolicy, type AccessRole, type ModelAccess, type ModelSettings } from '../api/settings'
 
 type ModelProfile = ModelSettings['models'][number]
@@ -86,7 +86,7 @@ export function AdminSettingsPage() {
   }
   function enterPreview(role: PreviewRole) {
     preview.setRole(role)
-    navigate('/battles/new')
+    navigate(role === 'guest' ? '/battles' : '/battles/new')
   }
 
   return <div className="admin-page">
@@ -122,7 +122,7 @@ export function AdminSettingsPage() {
     <section className="admin-account" aria-labelledby="admin-preview-title">
       <span className="admin-kicker">ROLE PREVIEW</span><h2 id="admin-preview-title">View as another role</h2>
       <p>Explore the app with that role’s model visibility and inspection permissions, using your own account. Preview is read-only.</p>
-      <div className="admin-preview-actions">{(['tester', 'player'] as const).map(role => <button type="button" key={role} disabled={dirty || saving || loading} onClick={() => enterPreview(role)}>View as {roleNames[role]}</button>)}</div>
+      <div className="admin-preview-actions">{(['tester', 'player', 'guest'] as const).map(role => <button type="button" key={role} disabled={dirty || saving || loading} onClick={() => enterPreview(role)}>View as {previewRoleNames[role]}</button>)}</div>
       {dirty && <p>Save or discard your changes before entering preview or refreshing.</p>}
     </section>
     <section className="admin-account" aria-labelledby="admin-account-title">

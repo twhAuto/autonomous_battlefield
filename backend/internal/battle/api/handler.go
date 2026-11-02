@@ -42,6 +42,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/model-profiles", h.ListModelProfiles)
 	mux.HandleFunc("POST /v1/battles", h.CreateBattle)
 	mux.HandleFunc("GET /v1/battles", h.ListBattles)
+	mux.HandleFunc("GET /v1/battles/allowance", h.GetAllowance)
 	mux.HandleFunc("GET /v1/battles/{id}", h.GetBattle)
 	mux.HandleFunc("POST /v1/battles/{id}/stop", h.StopBattle)
 	mux.HandleFunc("POST /v1/battles/{id}/pause", h.PauseBattle)
@@ -102,7 +103,7 @@ func (h *Handler) ListDecisions(w http.ResponseWriter, r *http.Request) {
 		failure{message: "could not list decisions"}) {
 		return
 	}
-	if authn.IsPlayer(r.Context()) {
+	if authn.GameplayOnly(r.Context()) {
 		_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"decisions": playerDecisions(decisions)})
 		return
 	}
@@ -141,6 +142,16 @@ func (h *Handler) GetFactionView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = httpapi.WriteJSON(w, http.StatusOK, view)
+}
+
+// GetAllowance reports the caller's battle allowance before a battle is started.
+func (h *Handler) GetAllowance(w http.ResponseWriter, r *http.Request) {
+	allowance, err := h.battles.BattleAllowance(r.Context())
+	if writeError(w, r, err, nil, failure{event: "battle_allowance_failed", message: "could not load battle allowance"}) {
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	_ = httpapi.WriteJSON(w, http.StatusOK, allowance)
 }
 
 func (h *Handler) ListScenarios(w http.ResponseWriter, _ *http.Request) {
@@ -216,7 +227,7 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 		failure{"battle_events_read_failed", "could not list battle events", []any{"battle_id", r.PathValue("id")}}) {
 		return
 	}
-	if authn.IsPlayer(r.Context()) {
+	if authn.GameplayOnly(r.Context()) {
 		for i := range page.Events {
 			page.Events[i].Data = map[string]any{}
 		}
@@ -241,7 +252,7 @@ func (h *Handler) GetBattleReplay(w http.ResponseWriter, r *http.Request) {
 		failure{"battle_replay_failed", "could not get battle replay", []any{"battle_id", r.PathValue("id"), "tick", tick}}) {
 		return
 	}
-	if authn.IsPlayer(r.Context()) {
+	if authn.GameplayOnly(r.Context()) {
 		replay = withoutEventPayloads(replay)
 	}
 	_ = httpapi.WriteJSON(w, http.StatusOK, replay)
@@ -362,7 +373,7 @@ func leagueFor(run *battleservice.BattleRun) any {
 }
 
 func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {
-	if authn.IsPlayer(r.Context()) {
+	if authn.GameplayOnly(r.Context()) {
 		result := []map[string]any{}
 		for _, p := range profiles {
 			if profile.Allowed(r.Context(), p) && p.Available {
@@ -397,7 +408,7 @@ func productionFor(run *battleservice.BattleRun) *game.ProductionSchedule {
 }
 
 func battleResponseFor(r *http.Request, run *battleservice.BattleRun) any {
-	if !authn.IsPlayer(r.Context()) {
+	if !authn.GameplayOnly(r.Context()) {
 		return battleResponse(run)
 	}
 	participants := []map[string]any{}

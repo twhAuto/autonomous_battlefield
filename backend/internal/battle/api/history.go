@@ -31,7 +31,7 @@ func (h *Handler) ListBattles(w http.ResponseWriter, r *http.Request) {
 		failure{event: "battle_history_read_failed", message: "could not list battles"}) {
 		return
 	}
-	if authn.IsPlayer(r.Context()) {
+	if authn.GameplayOnly(r.Context()) {
 		for i := range page.Battles {
 			for j := range page.Battles[i].Participants {
 				p := &page.Battles[i].Participants[j]
