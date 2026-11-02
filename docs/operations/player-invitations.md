@@ -128,8 +128,9 @@ static roles.
 Managed configuration, including imported Player email syntax/length, is validated
 before opening the API database pool; invalid configuration fails startup with a
 setting-level error and does not log an address. Domains must use dotted DNS names,
-not address literals. Restarting recovers pending work and never repeats the initial import or deletes
-removed-member records. A request timeout may have updated Cloudflare remotely;
+not address literals. Restarting recovers pending work and never repeats the initial import; removed-member
+records stay until they [expire](../architecture/database.md#expiry), and a restart
+deletes only those already expired. A request timeout may have updated Cloudflare remotely;
 the next attempt repairs the complete list before activating pending members.
 
 Rotate the token in private `.env`, run configuration validation and the normal
