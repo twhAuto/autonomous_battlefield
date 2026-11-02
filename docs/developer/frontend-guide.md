@@ -292,7 +292,10 @@ recruitment and construction orders.
 ## Shared HTTP transport
 
 `shared/api/request.ts` accepts API paths and applies the configured base URL
-(`VITE_API_URL` in builds). The Vite development proxy defaults to
+(`VITE_API_URL` in builds). `vite.config.ts` rejects a `VITE_API_URL` that is not
+an HTTP(S) origin, because the image's
+[Content-Security-Policy](../architecture/system-architecture.md#browser-delivery)
+allows connections only to that origin. The Vite development proxy defaults to
 `http://localhost:8080`; set the server-only `DEV_API_PROXY_TARGET` in the frontend
 env files or shell to point it elsewhere. `createApiClient` preserves abort errors and wraps network failures in the feature's error type. Authentication disables global unauthorized notifications so login/session failures are handled locally. Feature clients, including faction ruleset discovery, use this common error handling and retain HTTP status messages; battle stop/pause/resume share one response mapper.
 
@@ -316,7 +319,10 @@ battle-only payloads remain in the battle client and UI state in `battles/types.
 It loads shared foundations, then shell and feature styles, and finally shared
 accessibility defaults to preserve their cross-feature cascade:
 
-- `shared/styles/base.css`: tokens, resets, common page/status elements.
+- `shared/styles/base.css`: tokens, resets, common page/status elements, and the
+  DM Mono and Manrope fonts from the `@fontsource` packages. The image's
+  Content-Security-Policy allows only same-origin scripts, styles, fonts and images,
+  so bundle any new asset instead of loading it from another site.
 - `shared/styles/forms.css`: shared forms and preview panels.
 - `shared/styles/accessibility.css`: cross-feature typography, focus, target sizes, and mobile form/page defaults, loaded last.
 - `shared/components/Emblem.css` and `ResponsivePreview.css`: reusable visuals.
@@ -334,6 +340,19 @@ and mobile Chromium. `frontend/e2e/fixtures.ts` intercepts the complete API
 boundary; unexpected requests fail the test. Use these fixtures to verify user
 journeys, role visibility, keyboard access and responsive layouts without a live
 backend or production mutations.
+
+A Content-Security-Policy violation reported by the browser also fails the test.
+The Vite server sends no policy, so to check a policy or asset change, serve the
+built image on the suite's port and run the suite from `frontend/`. Outside CI,
+Playwright reuses that server instead of starting Vite:
+
+```bash
+docker build -t battlefield-frontend-csp frontend
+docker run --rm -d --name battlefield-frontend-csp -p 127.0.0.1:4173:8080 \
+  -e API_UPSTREAM=127.0.0.1:9 battlefield-frontend-csp
+(cd frontend && npx playwright test)
+docker rm -f battlefield-frontend-csp
+```
 
 See [frontend commands](../../frontend/README.md#commands) for browser setup,
 coverage and reports, and [coverage gate details](ci.md#coverage-gate-details) for

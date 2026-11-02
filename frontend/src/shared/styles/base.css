@@ -1,5 +1,11 @@
-/* Global tokens, resets, common page elements, and loading states. */
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap');
+/* Global tokens, resets, common page elements, and loading states. Fonts are bundled
+   so the Content-Security-Policy can restrict fonts and styles to the app's origin. */
+@import '@fontsource/dm-mono/400.css';
+@import '@fontsource/dm-mono/500.css';
+@import '@fontsource/manrope/400.css';
+@import '@fontsource/manrope/500.css';
+@import '@fontsource/manrope/600.css';
+@import '@fontsource/manrope/700.css';
 
 :root {
   font-family: 'Manrope', sans-serif;

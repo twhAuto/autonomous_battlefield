@@ -6,15 +6,25 @@ import react from '@vitejs/plugin-react'
 
 const coverageMinimum = 80
 
+// requireOrigin parses value as an HTTP(S) origin, rejecting credentials, a path, a
+// query and a fragment, and names the setting in the error.
+function requireOrigin(name: string, value: string) {
+  const url = new URL(value)
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error(`${name} must be an HTTP(S) origin without credentials, a path, query, or fragment.`)
+  }
+  return url
+}
+
 export default defineConfig(({ mode }) => {
   // Read the proxy setting in the Vite process; it is not exposed to browser code.
-  const env = loadEnv(mode, '.', 'DEV_API_PROXY_TARGET')
-  const target = env.DEV_API_PROXY_TARGET?.trim() || 'http://localhost:8080'
-  const url = new URL(target)
+  const env = loadEnv(mode, '.', ['DEV_API_PROXY_TARGET', 'VITE_API_URL'])
   // Require an origin so the proxy preserves the /v1 request path without a URL prefix.
-  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
-    throw new Error('DEV_API_PROXY_TARGET must be an HTTP(S) origin without credentials, a path, query, or fragment.')
-  }
+  const url = requireOrigin('DEV_API_PROXY_TARGET', env.DEV_API_PROXY_TARGET?.trim() || 'http://localhost:8080')
+  // The frontend image's Content-Security-Policy allows connections to this origin, so a
+  // separate API must be named by its origin alone.
+  const api = env.VITE_API_URL?.trim()
+  if (api) requireOrigin('VITE_API_URL', api)
   return {
     plugins: [react()],
     server: {

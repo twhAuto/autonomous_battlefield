@@ -106,11 +106,15 @@ and the [codebase guide](../developer/codebase-guide.md#executable-entry-points)
 
 The frontend is a static build served by Nginx. Nginx requires revalidation of the
 SPA entry document after rollouts and returns 404 for missing hashed assets instead
-of routing those requests to HTML. Every Nginx response carries
-`frame-ancestors 'none'` CSP, `X-Frame-Options: DENY`, `nosniff`, a strict-origin
-referrer policy and HSTS, so the admin and gameplay UI cannot be framed for
-clickjacking. The CSP deliberately leaves script and connect sources open because
-`VITE_API_URL` may name a separate API origin.
+of routing those requests to HTML. Every Nginx response carries a
+Content-Security-Policy, `X-Frame-Options: DENY`, `nosniff`, a strict-origin
+referrer policy and HSTS. The policy loads scripts, styles, fonts and images only
+from the frontend's origin (fonts are bundled, small ones inlined as `data:` URIs),
+forbids framing, plugins, `<base>` changes and cross-origin form posts, and lets
+the browser connect only to its own origin plus, when a build sets `VITE_API_URL`,
+that API origin, which Nginx receives as `CSP_API_ORIGIN`. An injected script
+therefore cannot run, and data the UI holds, such as the Admin → Members emails,
+cannot be sent to another site.
 
 ### Battle inspection
 
