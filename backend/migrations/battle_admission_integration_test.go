@@ -1,6 +1,6 @@
-// Checks the battle admission triggers (migrations 00011 and 00016): per-player and
-// global caps across connections, paused battles still counting, the operator's daily
-// allowance, and admin-exempt battles that skip allowances but count globally.
+// Checks the battle admission triggers (migrations 00011, 00016 and 00027): per-person
+// and global caps across connections, paused battles still counting, separate Player
+// and Tester allowances, and admin-exempt battles that skip allowances but count globally.
 
 package migrations_test
 
@@ -13,15 +13,28 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
 func insertBattle(db *pgxpool.Pool, n int, owner string) error {
-	_, err := db.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state) VALUES($1,'s','d','{}',10,$2,'{}','{}')`, fmt.Sprintf("00000000-0000-4000-8000-%012d", n), owner)
-	return err
+	return insertBattleWith(db, n, owner, "")
+}
+
+func insertTesterBattle(db *pgxpool.Pool, n int, owner string) error {
+	return insertBattleWith(db, n, owner, "tester_allowance")
 }
 
 func insertExemptBattle(db *pgxpool.Pool, n int, owner string) error {
-	_, err := db.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state,admission_exempt) VALUES($1,'s','d','{}',10,$2,'{}','{}',true)`, fmt.Sprintf("00000000-0000-4000-8000-%012d", n), owner)
+	return insertBattleWith(db, n, owner, "admission_exempt")
+}
+
+// insertBattleWith inserts a queued battle, setting flag to true when one is named.
+func insertBattleWith(db *pgxpool.Pool, n int, owner, flag string) error {
+	columns, values := "", ""
+	if flag != "" {
+		columns, values = ","+flag, ",true"
+	}
+	_, err := db.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state`+columns+`) VALUES($1,'s','d','{}',10,$2,'{}','{}'`+values+`)`, fmt.Sprintf("00000000-0000-4000-8000-%012d", n), owner)
 	return err
 }
 
@@ -35,7 +48,7 @@ func TestBattleAdmissionAcrossConnections(t *testing.T) {
 	results := make(chan error, 12)
 	for i := range 12 {
 		wg.Add(1)
-		go func(n int) { defer wg.Done(); results <- insertBattle(db, n, "owner") }(i)
+		go func(n int) { defer wg.Done(); results <- insertTesterBattle(db, n, "owner") }(i)
 	}
 	wg.Wait()
 	close(results)
@@ -51,40 +64,79 @@ func TestBattleAdmissionAcrossConnections(t *testing.T) {
 		t.Fatalf("accepted %d; want 2", accepted)
 	}
 	mustExec(t, db, "UPDATE battle_runs SET paused=true")
-	if e := insertBattle(db, 20, "owner"); !limited(e) {
+	if e := insertTesterBattle(db, 20, "owner"); !limited(e) {
 		t.Fatalf("paused evaded limit: %v", e)
 	}
-	if e := insertBattle(db, 21, "other"); e != nil {
-		t.Fatal(e)
-	}
-	if e := insertBattle(db, 22, "other"); e != nil {
-		t.Fatal(e)
-	}
-	if e := insertBattle(db, 23, "third"); !limited(e) {
-		t.Fatalf("global limit: %v", e)
-	}
 	mustExec(t, db, "UPDATE battle_runs SET status='completed'")
-	if e := insertBattle(db, 24, "owner"); e != nil {
-		t.Fatal(e)
-	}
-	// A lower operator allowance is durable and applies to every non-exempt identity.
-	mustExec(t, db, "UPDATE runtime_policy SET daily_battles=3")
-	if e := insertBattle(db, 25, "owner"); !limited(e) {
-		t.Fatalf("daily limit: %v", e)
-	}
-	mustExec(t, db, "UPDATE battle_runs SET created_at=date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'-interval '1 second'")
-	if e := insertBattle(db, 26, "owner"); e != nil {
+	if e := insertTesterBattle(db, 21, "owner"); e != nil {
 		t.Fatal(e)
 	}
 	// Existing ID reaches uniqueness instead of charging a quota twice.
-	if e := insertBattle(db, 26, "owner"); e == nil || limited(e) {
+	if e := insertTesterBattle(db, 21, "owner"); e == nil || limited(e) {
 		t.Fatalf("idempotent insert: %v", e)
 	}
 }
 
+// admitted and rejected check one battle start against the admission triggers.
+func admitted(t *testing.T, err error, start string) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("%s: %v", start, err)
+	}
+}
+
+func rejected(t *testing.T, err error, start string) {
+	t.Helper()
+	if !limited(err) {
+		t.Fatalf("%s was not limited: %v", start, err)
+	}
+}
+
+func TestPlayerAndTesterUnfinishedAllowances(t *testing.T) {
+	db := migratedSchema(t)
+	// One unfinished battle per Player, two per Tester, four across the service.
+	admitted(t, insertBattle(db, 1, "player"), "first Player battle")
+	rejected(t, insertBattle(db, 2, "player"), "second unfinished Player battle")
+	admitted(t, insertTesterBattle(db, 3, "tester"), "first Tester battle")
+	admitted(t, insertTesterBattle(db, 4, "tester"), "second Tester battle")
+	rejected(t, insertTesterBattle(db, 5, "tester"), "third unfinished Tester battle")
+	admitted(t, insertBattle(db, 6, "other"), "fourth battle in the service")
+	rejected(t, insertTesterBattle(db, 7, "other-tester"), "fifth unfinished battle in the service")
+}
+
+func TestPlayerAndTesterDailyAllowances(t *testing.T) {
+	db := migratedSchema(t)
+	n := 0
+	// start finishes earlier battles so that only the daily allowance applies.
+	start := func(owner string, tester bool) error {
+		n++
+		mustExec(t, db, "UPDATE battle_runs SET status='completed'")
+		if tester {
+			return insertTesterBattle(db, n, owner)
+		}
+		return insertBattle(db, n, owner)
+	}
+	// Five battles per Player and ten per Tester each UTC day.
+	for range 5 {
+		admitted(t, start("player", false), "Player battle within the daily allowance")
+	}
+	rejected(t, start("player", false), "sixth Player battle today")
+	for range 10 {
+		admitted(t, start("tester", true), "Tester battle within the daily allowance")
+	}
+	rejected(t, start("tester", true), "eleventh Tester battle today")
+	// The flag on the new battle, not the owner's history, picks the allowance.
+	admitted(t, start("player", true), "Tester allowance for a former Player")
+	// Operators can change each allowance, and a new UTC day resets the counts.
+	mustExec(t, db, "UPDATE runtime_policy SET tester_daily_battles=11")
+	admitted(t, start("tester", true), "battle within a raised Tester allowance")
+	mustExec(t, db, "UPDATE battle_runs SET created_at=date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'-interval '1 second'")
+	admitted(t, start("player", false), "Player battle on a new day")
+}
+
 func TestAdminBattlesSkipAllowancesButCountGlobally(t *testing.T) {
 	db := migratedSchema(t)
-	mustExec(t, db, "UPDATE runtime_policy SET daily_battles=1")
+	mustExec(t, db, "UPDATE runtime_policy SET player_daily_battles=1")
 	// Exempt rows pass the daily, per-person and global limits.
 	for n := range 5 {
 		if e := insertExemptBattle(db, n, "admin"); e != nil {
@@ -102,5 +154,36 @@ func TestAdminBattlesSkipAllowancesButCountGlobally(t *testing.T) {
 	// The flag, not the owner name, grants the exemption.
 	if e := insertBattle(db, 12, "admin"); !limited(e) {
 		t.Fatalf("non-exempt row evaded the daily limit: %v", e)
+	}
+}
+
+func TestRoleBattleAllowancesMigration(t *testing.T) {
+	ctx := context.Background()
+	db, _ := privateSchema(t)
+	provider, err := postgres.NewMigrationProvider(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = provider.UpTo(ctx, 26); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = provider.UpTo(ctx, 27); err != nil {
+		t.Fatal(err)
+	}
+	var player, playerUnfinished, tester, testerUnfinished int
+	if err = db.QueryRowContext(ctx, `SELECT player_daily_battles,player_unfinished,tester_daily_battles,tester_unfinished FROM runtime_policy WHERE id`).Scan(&player, &playerUnfinished, &tester, &testerUnfinished); err != nil {
+		t.Fatal(err)
+	}
+	if player != 5 || playerUnfinished != 1 || tester != 10 || testerUnfinished != 2 {
+		t.Fatalf("allowances = %d/%d Player, %d/%d Tester", player, playerUnfinished, tester, testerUnfinished)
+	}
+	if _, err = provider.DownTo(ctx, 26); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRowContext(ctx, `SELECT daily_battles,user_unfinished FROM runtime_policy WHERE id`).Scan(&player, &playerUnfinished); err != nil {
+		t.Fatal(err)
+	}
+	if player != 20 || playerUnfinished != 2 {
+		t.Fatalf("rolled-back allowances = %d/%d", player, playerUnfinished)
 	}
 }

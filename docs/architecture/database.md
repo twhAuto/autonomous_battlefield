@@ -52,7 +52,7 @@ must supply the restricted login
 | Table or view | Purpose | Key rules |
 | --- | --- | --- |
 | `factions` | Reusable faction identity: name, doctrine, background, emblem, owner | `emblem` is one of 12 identifiers (check constraint, default `star`) and is not part of battle snapshots. `ruleset_id` and `blueprint` are legacy-only. Battles snapshot faction data, so deleting a faction never changes a battle |
-| `battle_runs` | One battle: scenario snapshot, initial and current state, status, lease, attempt and graceful-requeue count, pause flag, result, owner, model-execution count, admission and decision-budget exemptions, trace context | Status `queued`, `running`, `completed`, `failed` or `stopped`. A lease owner and expiry are both set or both null, and only while `running` |
+| `battle_runs` | One battle: scenario snapshot, initial and current state, status, lease, attempt and graceful-requeue count, pause flag, result, owner, model-execution count, admission exemption, Tester allowance, decision-budget exemption, trace context | Status `queued`, `running`, `completed`, `failed` or `stopped`. A lease owner and expiry are both set or both null, and only while `running` |
 | `battle_events` | Ordered events per battle attempt | Primary key `(battle_id, attempt, sequence)` makes inserts idempotent and serves event paging |
 | `battle_replay_frames` | One engine checkpoint per decision window of a battle attempt (tick 0, then every `decisionIntervalTicks`), with that tick's events | Written in the same lease-guarded statement as the tick. Primary key `(battle_id, attempt, tick)` makes inserts idempotent and finds the nearest earlier checkpoint. `checkpoint` is a JSON object about the size of one `current_state`; `events` is a JSON array. Frames of every attempt stay until the battle is deleted |
 | `battle_decisions` | One strategy decision window: frozen observation and hash, controller, profile, model and `reasoning_effort` (empty for the model default), lease, lifecycle timestamps, resolved plan, fallback source, error category, usage, provider metadata, trace context | Unique per `(battle_id, attempt, faction_id, target_tick)`. Status `pending`, `running`, `accepted`, `fallback` or `failed`. `version` guards resolution; `idempotency_key` deduplicates submissions. `faction_id` is snapshot data, not a foreign key |
@@ -70,7 +70,7 @@ must supply the restricted login
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
 These diagrams show every column of every table, generated from the schema after
-migration `00024` with keys marked `PK` and `FK`. Update them with any schema
+migration `00027` with keys marked `PK` and `FK`. Update them with any schema
 change. Battles snapshot faction data instead of referencing `factions`, so
 deleting a faction never changes a battle. Gameplay content lives in the frozen
 scenario and state JSON of `battle_runs`, not in relational columns: each battle
@@ -113,6 +113,7 @@ erDiagram
         bool admission_exempt
         int graceful_requeues
         bool decision_budget_exempt
+        bool tester_allowance
     }
     BATTLE_EVENTS {
         uuid battle_id PK,FK
@@ -268,11 +269,13 @@ erDiagram
     RUNTIME_POLICY {
         bool id PK
         bool ai_enabled
-        int daily_battles
-        int user_unfinished
+        int player_daily_battles
+        int player_unfinished
         int global_unfinished
         int decision_executions
         int cli_concurrency
+        int tester_daily_battles
+        int tester_unfinished
     }
     AGENT_EXECUTION_LEASES {
         uuid id PK
@@ -383,14 +386,14 @@ API replica, engine and AI gateway instance sees one serialized policy:
 
 | Trigger (function) | Fires | Effect |
 | --- | --- | --- |
-| `friend_battle_admission` (`admit_friend_battle`) | Before inserting a battle | Locks `runtime_policy` and rejects with SQLSTATE `P0429` when the owner reached the daily or unfinished allowance, or the global unfinished cap. Skips `legacy-admin` and `admission_exempt` (Admin) battles; retried IDs reach the unique constraint without spending an allowance |
+| `friend_battle_admission` (`admit_friend_battle`) | Before inserting a battle | Locks `runtime_policy` and rejects with SQLSTATE `P0429` when the owner reached the daily or unfinished allowance, or the global unfinished cap. The `tester_*` allowances apply when the battle sets `tester_allowance`, which the API does only for a Tester; other battles use the `player_*` ones. Skips `legacy-admin` and `admission_exempt` (Admin) battles; retried IDs reach the unique constraint without spending an allowance |
 | `gate_decision` / `gate_generation` (`gate_new_ai_job`) | Before inserting a decision or generation job | A new model decision becomes `failed` with `ai_disabled_or_budget` when AI is stopped or the battle's budget is spent (never for a `decision_budget_exempt` battle), so the engine falls back at once. A new generation job raises `P0429` while AI is stopped |
 | `agent_decision_admission` / `agent_generation_admission` (`admit_agent_execution`) | Before a claim sets `lease_owner` or `worker_id` | Locks `runtime_policy`. Cancels the claim (returns `NULL`) when AI is stopped or CLI slots are full, prunes expired leases, counts the battle's model execution (marking the decision `failed` with `decision_budget` past the limit unless the battle is `decision_budget_exempt`), and inserts a CLI lease |
 | `release_decision_execution` / `release_generation_execution` (`release_agent_execution`) | After a worker reports usage | Deletes the job's CLI lease |
 
-Defaults (`runtime_policy`): 20 battles per person per UTC day, 2 unfinished per
-person, 4 unfinished globally, 100 model executions per battle, 4 CLI slots (1–8). API
-jobs do not take CLI slots. Paused battles remain `queued` or `running`, so they
+Defaults (`runtime_policy`): the Player and Tester battle allowances and the global
+cap listed in [admission limits](api.md#admission-limits), 100 model executions per
+battle, 4 CLI slots (1–8). API jobs do not take CLI slots. Paused battles remain `queued` or `running`, so they
 still count as unfinished. Admin battles skip the allowances but count toward other
 identities' global cap. League battles are Admin battles that also skip the model
 budget: only the league scheduler sets `decision_budget_exempt`, and only for an
