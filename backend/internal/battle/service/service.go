@@ -67,6 +67,9 @@ type CreateBattleParams struct {
 	// AdmissionExempt skips the per-person and global battle allowances; only an
 	// Admin actor sets it.
 	AdmissionExempt bool
+	// TesterAllowance applies runtime_policy's Tester allowances instead of the Player
+	// ones; only a Tester actor sets it.
+	TesterAllowance bool
 	// DecisionBudgetExempt lets model decisions continue past runtime_policy's
 	// per-battle budget; executions are still counted.
 	DecisionBudgetExempt bool
@@ -243,6 +246,7 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		Traceparent:          traceparent,
 		Tracestate:           tracestate,
 		AdmissionExempt:      isAdmin(ctx),
+		TesterAllowance:      hasRole(ctx, authn.Tester),
 		DecisionBudgetExempt: input.DecisionBudgetExempt && isAdmin(ctx),
 	})
 	if errors.Is(err, ErrBattleAlreadyExists) {
@@ -501,8 +505,12 @@ func cacheableResult(run *BattleRun, id string) bool {
 }
 
 func isAdmin(ctx context.Context) bool {
+	return hasRole(ctx, authn.Admin)
+}
+
+func hasRole(ctx context.Context, role authn.Role) bool {
 	a, ok := authn.ActorFromContext(ctx)
-	return ok && a.Role == authn.Admin
+	return ok && a.Role == role
 }
 
 func (s *battleService) authorize(ctx context.Context, id string) error {

@@ -203,11 +203,13 @@ Never fall back to anonymous or password mode during an authentication incident.
 
 PostgreSQL serializes admission across replicas:
 
-- 20 battles per identity per UTC day, 2 unfinished per identity and 4 unfinished
-  globally. Admin battles bypass all three limits, so an Admin can exceed the
-  global total, but they still count as unfinished when other identities' battles
-  are admitted, so a busy Admin can delay Player battles. Queued, running and
-  paused battles are all unfinished.
+- Players and Testers have separate daily and unfinished battle allowances and
+  share a global cap of unfinished battles; the
+  [admission limits](../architecture/api.md#admission-limits) list the defaults,
+  which operators change in `runtime_policy`. Admin battles bypass all three limits,
+  so an Admin can exceed the global total, but they still count as unfinished when
+  other identities' battles are admitted, so a busy Admin can delay Player and
+  Tester battles. Queued, running and paused battles are all unfinished.
 - A retry with the same battle ID, scenario snapshot, ticks and owner returns the
   existing battle; different inputs conflict.
 - Background generation allows 10 jobs per identity per UTC day, including for

@@ -54,17 +54,19 @@ approval for each API and CLI profile.
 
 ### Admission limits
 
-| Limit | Default |
-| --- | --- |
-| Battles per person per UTC day | 20 |
-| Unfinished battles per person | 2 |
-| Unfinished battles across the service | 4 |
-| Background generations per person per UTC day | 10 |
+| Limit | Player | Tester |
+| --- | --- | --- |
+| Battles started per person per UTC day | 5 | 10 |
+| Unfinished battles per person | 1 | 2 |
+| Unfinished battles across the service | 4, shared | 4, shared |
+| Background generations per person per UTC day | 10 | 10 |
 
 Operators can change these defaults in `runtime_policy` and the background
-generation configuration. Exceeding a limit returns `429`. Admin battles bypass all
-three battle limits, including the service-wide one, but still count as unfinished
-when other people's battles are admitted. Paused battles are unfinished. A
+generation configuration. Exceeding a limit returns `429`. A new battle is checked
+against the allowances of the role starting it; the counts include all of that
+person's battles, whatever role started them. Admin battles bypass all three battle
+limits, including the service-wide one, but still count as unfinished when other
+people's battles are admitted. Paused battles are unfinished. A
 retry that reuses a request's identifier with the same inputs and identity
 returns the work already admitted rather than consuming another allowance. League
 battles are Admin battles and also skip the per-battle model decision budget.
