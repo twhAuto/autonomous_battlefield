@@ -78,7 +78,7 @@ func New(db postgres.Pool, catalog *catalog.Catalog, maxTicks uint64, options Op
 	battleHandler := battleapi.NewHandler(battleService)
 	authenticationManager := authn.NewManager(authentication)
 	authenticationMiddleware := func(next http.Handler) http.Handler {
-		return authn.BrowserProtection(authentication.Origin, authn.RequireAuthentication(authenticationManager.Enabled(), authenticationManager, authn.RolePreview(authn.RoutePolicy(next))))
+		return authn.BrowserProtection([]string{authentication.Origin, authentication.GuestOrigin}, authn.RequireAuthentication(authenticationManager.Enabled(), authenticationManager, authn.RolePreview(authn.RoutePolicy(next))))
 	}
 	router := httpapi.NewRouterWithMiddleware(
 		[]httpapi.Middleware{authenticationMiddleware},

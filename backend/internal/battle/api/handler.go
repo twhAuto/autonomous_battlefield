@@ -103,7 +103,7 @@ func (h *Handler) ListDecisions(w http.ResponseWriter, r *http.Request) {
 		failure{message: "could not list decisions"}) {
 		return
 	}
-	if authn.IsPlayer(r.Context()) {
+	if authn.GameplayOnly(r.Context()) {
 		_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"decisions": playerDecisions(decisions)})
 		return
 	}
@@ -227,7 +227,7 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 		failure{"battle_events_read_failed", "could not list battle events", []any{"battle_id", r.PathValue("id")}}) {
 		return
 	}
-	if authn.IsPlayer(r.Context()) {
+	if authn.GameplayOnly(r.Context()) {
 		for i := range page.Events {
 			page.Events[i].Data = map[string]any{}
 		}
@@ -252,7 +252,7 @@ func (h *Handler) GetBattleReplay(w http.ResponseWriter, r *http.Request) {
 		failure{"battle_replay_failed", "could not get battle replay", []any{"battle_id", r.PathValue("id"), "tick", tick}}) {
 		return
 	}
-	if authn.IsPlayer(r.Context()) {
+	if authn.GameplayOnly(r.Context()) {
 		replay = withoutEventPayloads(replay)
 	}
 	_ = httpapi.WriteJSON(w, http.StatusOK, replay)
@@ -373,7 +373,7 @@ func leagueFor(run *battleservice.BattleRun) any {
 }
 
 func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {
-	if authn.IsPlayer(r.Context()) {
+	if authn.GameplayOnly(r.Context()) {
 		result := []map[string]any{}
 		for _, p := range profiles {
 			if profile.Allowed(r.Context(), p) && p.Available {
@@ -408,7 +408,7 @@ func productionFor(run *battleservice.BattleRun) *game.ProductionSchedule {
 }
 
 func battleResponseFor(r *http.Request, run *battleservice.BattleRun) any {
-	if !authn.IsPlayer(r.Context()) {
+	if !authn.GameplayOnly(r.Context()) {
 		return battleResponse(run)
 	}
 	participants := []map[string]any{}

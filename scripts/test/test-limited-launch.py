@@ -42,6 +42,24 @@ class LaunchTests(unittest.TestCase):
             args.cloudflared_image = 'cloudflare/cloudflared:latest'
             with self.assertRaises(ValueError): launch.render(args)
 
+    def test_guest_hostname_has_its_own_access_validated_routes(self):
+        with tempfile.TemporaryDirectory() as out:
+            args = SimpleNamespace(hostname='battle.example.com', team='friends', audience='a'*64,
+                tunnel_id='12345678-1234-1234-1234-123456789012', cloudflared_image='cloudflare/cloudflared@sha256:'+'b'*64,
+                output=out, admin=['owner@example.com'], tester=[], player=[],
+                guest_hostname='guest.example.com', guest_audience='c'*64)
+            routes = launch.render(args)['ingress']
+            self.assertEqual(routes[-1], {'service': 'http_status:404'})
+            self.assertEqual([(r['hostname'], r['service'], r['originRequest']['access']['audTag']) for r in routes[:-1]], [
+                ('battle.example.com', 'http://battlefield-api:8080', ['a'*64]),
+                ('battle.example.com', 'http://battlefield-frontend:8080', ['a'*64]),
+                ('guest.example.com', 'http://battlefield-api:8080', ['c'*64]),
+                ('guest.example.com', 'http://battlefield-frontend:8080', ['c'*64])])
+            self.assertTrue(all(r['originRequest']['access']['required'] for r in routes[:-1]))
+            for hostname, audience in [('guest.example.com', ''), ('', 'c'*64), ('battle.example.com', 'c'*64), ('guest.example.com', 'a'*64), ('guest', 'c'*64)]:
+                args.guest_hostname, args.guest_audience = hostname, audience
+                with self.assertRaises(ValueError): launch.render(args)
+
     def assert_scrape_policy_boundaries(self, resources):
         policies = {r['metadata']['name']: r['spec'] for r in resources if r['kind'] == 'NetworkPolicy'}
         tunnel = {'podSelector': {'matchLabels': {'app': 'battlefield-tunnel'}}}

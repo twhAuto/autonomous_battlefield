@@ -18,12 +18,12 @@ import { CreateLeaguePage } from '../features/leagues/pages/CreateLeaguePage'
 import { LeaguePage } from '../features/leagues/pages/LeaguePage'
 import { AnalyticsPage } from '../features/analytics/pages/AnalyticsPage'
 import { authenticationClient, type AuthenticationClient, type AuthSession } from '../features/auth/api/auth'
-import { RolePreviewContext, type PreviewRole } from '../features/auth/RolePreviewContext'
+import { RolePreviewContext, previewRoleNames, type PreviewRole } from '../features/auth/RolePreviewContext'
 import { authenticationRequiredEvent, setRequestPreviewRole } from '../shared/api/request'
 import { SessionContext } from '../features/auth/SessionContext'
 import '../styles.css'
 
-function AppLayout({ actorID, admin, inspect, logoutError, onLogout }: Readonly<{ actorID: string; admin: boolean; inspect: boolean; logoutError: string; onLogout(): void }>) {
+function AppLayout({ actorID, admin, inspect, play, logoutError, onLogout }: Readonly<{ actorID: string; admin: boolean; inspect: boolean; play: boolean; logoutError: string; onLogout(): void }>) {
   const location = useLocation()
   const preview = useContext(RolePreviewContext)
   const mobile = useMobile()
@@ -65,7 +65,7 @@ function AppLayout({ actorID, admin, inspect, logoutError, onLogout }: Readonly<
         </Link>
         {mobile && <button ref={menuButton} type="button" className="menu-toggle" aria-expanded={menuOpen} aria-controls="primary-navigation" onClick={() => setMenuOpen(value => !value)}>Menu</button>}
         <nav id="primary-navigation" className="primary-nav" aria-label="Primary navigation" hidden={mobile && !menuOpen}>
-          <NavLink to="/battles/new" onClick={closeMobileMenu}>Stage battle</NavLink>
+          {play && <NavLink to="/battles/new" onClick={closeMobileMenu}>Stage battle</NavLink>}
           <NavLink to="/factions" onClick={closeMobileMenu}>Factions</NavLink>
           <NavLink to="/battles" end onClick={closeMobileMenu}>Battle history</NavLink>
           {inspect && <NavLink to="/leagues" onClick={closeMobileMenu}>Leagues</NavLink>}
@@ -82,7 +82,8 @@ function AppLayout({ actorID, admin, inspect, logoutError, onLogout }: Readonly<
         </div>
       </header>
 
-      {preview.role && <output className="role-preview-banner"><span>Viewing as {preview.role === 'player' ? 'Player' : 'Tester'} · Read-only preview using your own account. Your administrator permissions are unchanged.</span><button type="button" onClick={() => preview.setRole(null)}>Exit preview</button></output>}
+      {preview.role && <output className="role-preview-banner"><span>Viewing as {previewRoleNames[preview.role]} · Read-only preview using your own account. Your administrator permissions are unchanged.</span><button type="button" onClick={() => preview.setRole(null)}>Exit preview</button></output>}
+      {!play && !preview.role && <output className="role-preview-banner"><span>Guest access · View only. You can watch battles and browse factions, but not change anything.</span></output>}
       {logoutError && <p className="logout-error" role="alert">{logoutError}</p>}
       <main id="main-content" tabIndex={-1} className={isBattleDetail ? 'main-content--battle' : undefined}><Outlet /></main>
 
@@ -152,6 +153,7 @@ export default function App({ authentication = authenticationClient, initialSess
   const adminNow = canAdmin && !previewRole
   const effectiveRole = effectiveSession?.actor?.role ?? (session?.mode === 'cloudflare' ? 'player' : 'admin')
   const inspect = effectiveRole === 'admin' || effectiveRole === 'tester'
+  const play = effectiveRole !== 'guest'
 
   if (sessionError) {
     return (
@@ -177,13 +179,13 @@ export default function App({ authentication = authenticationClient, initialSess
 
   return (
     <RolePreviewContext.Provider value={previewContext}><SessionContext.Provider value={effectiveSession ?? session}><Routes key={previewRole ?? 'admin'}>
-      <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} admin={adminNow} inspect={inspect} logoutError={logoutError} onLogout={logout} />}>
+      <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} admin={adminNow} inspect={inspect} play={play} logoutError={logoutError} onLogout={logout} />}>
         <Route index element={<HomePage />} />
-        <Route path="factions/new" element={<CreateFactionPage />} />
- <Route path="factions/:id/edit" element={<CreateFactionPage />} />
+        {play && <><Route path="factions/new" element={<CreateFactionPage />} />
+          <Route path="factions/:id/edit" element={<CreateFactionPage />} /></>}
+        <Route path="battles/new" element={play ? <CreateBattlePage /> : <NotFoundPage />} />
         <Route path="factions" element={<FactionsPage />} />
         <Route path="battles" element={<BattleHistoryPage />} />
-        <Route path="battles/new" element={<CreateBattlePage />} />
         <Route path="battles/:id" element={<BattlePage />} />
         {inspect && <><Route path="leagues" element={<LeaguesPage canCreate={adminNow} />} />
           <Route path="leagues/new" element={adminNow ? <CreateLeaguePage /> : <NotFoundPage />} />

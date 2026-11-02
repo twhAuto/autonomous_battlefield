@@ -53,7 +53,10 @@ Testers and Admins, including in Tester preview. The league setup form at
 `/leagues/new`, the start, cancel and disqualify actions, and the admin routes are only for
 Admins outside role preview; anyone else opening `/leagues/new` gets the not-found
 page. `/admin/members` also requires the session's `members` capability. Unknown
-paths render a not-found page.
+paths render a not-found page. Guests, including in Guest preview, get no Stage
+battle destination or creation links, the not-found page at `/battles/new`,
+`/factions/new` and `/factions/:id/edit`, and a view-only banner;
+`usePermissions().play` gates these, and `canManage` is false for them.
 
 The shell shows the signed-out screen after a successful logout or an HTTP 401
 confirming that the session is no longer authenticated. If the request otherwise

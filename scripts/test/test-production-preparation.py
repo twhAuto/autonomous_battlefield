@@ -42,6 +42,20 @@ class PreparationTests(unittest.TestCase):
             self.assertTrue((output/'network-policies.json').exists())
             self.assertNotIn('private',json.dumps(rendered))
 
+    def test_routes_the_configured_guest_hostname(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            app, profile, credential = self.fixture(directory)
+            output = directory/'scratch'
+            def routes():
+                prep.prepare(app, profile, output)
+                config = json.loads(json.loads((output/'tunnel.json').read_text())['items'][0]['data']['config.yml'])
+                return [(r.get('hostname'), r.get('originRequest', {}).get('access', {}).get('audTag')) for r in config['ingress']]
+            self.assertEqual({hostname for hostname, _ in routes()}, {'play.example.com', None})
+            with app.open('a') as env:
+                env.write('BATTLEFIELD_ACCESS_GUEST_AUDIENCE=' + 'e'*64 + '\nBATTLEFIELD_GUEST_ORIGIN=https://guest.example.com\n')
+            self.assertIn(('guest.example.com', ['e'*64]), routes())
+
     def test_rejects_invalid_credentials_and_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory=Path(tmp)

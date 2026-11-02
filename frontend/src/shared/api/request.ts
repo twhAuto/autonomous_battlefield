@@ -7,7 +7,7 @@ const unreachableMessage = 'The command post is unreachable. Check that the batt
 export const authenticationRequiredEvent = 'battlefield:authentication-required'
 
 class PreviewReadOnlyError extends Error {}
-let previewRole: 'tester' | 'player' | null = null
+let previewRole: 'tester' | 'player' | 'guest' | null = null
 export function setRequestPreviewRole(role: typeof previewRole) { previewRole = role }
 
 /** Sends an API request and optionally notifies the app of a 401; callers handle the response status. */

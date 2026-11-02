@@ -47,7 +47,7 @@ func request(h *Handler, method, path, body string, role authn.Role, origin, pre
 		r = r.WithContext(authn.WithActor(r.Context(), authn.Actor{ID: "verified-admin", Role: role}))
 	}
 	w := httptest.NewRecorder()
-	authn.BrowserProtection("https://game.example", authn.RolePreview(authn.RoutePolicy(mux))).ServeHTTP(w, r)
+	authn.BrowserProtection([]string{"https://game.example"}, authn.RolePreview(authn.RoutePolicy(mux))).ServeHTTP(w, r)
 	return w
 }
 

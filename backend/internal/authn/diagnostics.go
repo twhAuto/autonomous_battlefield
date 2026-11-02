@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"net"
+	"slices"
 	"time"
 )
 
@@ -43,10 +44,7 @@ func keyFetchFailure(err error) string {
 }
 
 func (c *Cloudflare) claimsFailure(claims accessClaims, now time.Time) string {
-	audience := false
-	for _, a := range claims.Aud {
-		audience = audience || a == c.Audience
-	}
+	audience := c.guestToken(claims) || slices.Contains(claims.Aud, c.Audience)
 	switch {
 	case claims.Iss != c.Issuer:
 		return "issuer_mismatch"

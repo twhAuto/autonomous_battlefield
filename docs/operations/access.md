@@ -42,7 +42,9 @@ these properties:
   ports. SSH stays restricted to the operator's private management network. The AI
   gateway, databases, Kubernetes, Jenkins, SonarQube and monitoring stay private.
 
-Both tunnel ingress rules require Access token validation. The API independently
+Every tunnel ingress rule requires Access token validation for its hostname's
+application: the game's two rules, and the two for the optional
+[guest hostname](#guest-access). The API independently
 validates the JWT signature, RS256 algorithm, issuer, application audience,
 expiry, issue time and subject or email claims. Missing keys or unknown roles deny
 access; there is no password, cookie or unsigned-header fallback.
@@ -151,11 +153,57 @@ apply at once. Without managed Players, every role comes from configuration.
   no host or deployment access.
 - Players receive gameplay-only responses; the
   [API roles](../architecture/api.md#roles-and-ownership) list what they can read.
+- [Guests](#guest-access), when a guest Access application is configured, receive
+  the same responses and can change nothing.
 
 In Cloudflare mode the application issues no auth cookie and ignores old ones.
 Logout sends the browser to `/cdn-cgi/access/logout`, and expired API sessions
 prompt reauthentication. Mutations must carry the configured HTTPS `Origin` and an
 `application/json` body. Private worker routes use their own bearer authentication.
+
+### Guest access
+
+Guests sign in at a separate hostname, such as `guest.ordinalfrontier.com`, through
+their own Access application that admits anyone with a one-time PIN. The game's
+application keeps its exact-email and managed-group policies, and the API maps
+every token from the guest application to the view-only Guest role, whatever its
+email. The guest application and its DNS record are manual Cloudflare changes,
+outside the [Cloudflare workflow](cloudflare-platform.md), which owns only the
+game's application and hostname.
+
+Each guest takes a Zero Trust seat on their first Access sign-in, from the same
+pool as Players and configured identities (the Free plan has 50). A seat is released
+only when the user is removed, so in Zero Trust **Settings → Admin controls →
+Remove inactive users from seats**, choose an inactivity period (one month to one
+year); a daily check then frees the seats of guests who stopped visiting. See
+[seat management](https://developers.cloudflare.com/cloudflare-one/team-and-resources/users/seat-management/).
+
+To enable guests:
+
+1. In Zero Trust, enable the **One-time PIN** identity provider if it is not
+   already on, then add a self-hosted Access application for the entire guest
+   hostname with only that provider. Give it one **Allow** policy: **Include →
+   Everyone**, **Require → Login Methods → One-time PIN**. Add no other policy.
+2. Add a proxied DNS `CNAME` for the guest hostname pointing to
+   `<BF_TUNNEL_ID>.cfargotunnel.com`, the same tunnel as the game.
+3. Put the guest application's AUD tag and origin in the production `.env`:
+
+   ```dotenv
+   BATTLEFIELD_ACCESS_GUEST_AUDIENCE=<64-character AUD tag>
+   BATTLEFIELD_GUEST_ORIGIN=https://guest.ordinalfrontier.com
+   ```
+
+   Both are set together and must differ from the game's audience and origin.
+4. Run `./scripts/ops/prepare-limited-production.sh`, the normal `main` delivery
+   with **APPLY_CONFIGURATION=true**, then `./scripts/cd/deploy-tunnel.sh`, which
+   renders the guest hostname's routes with the guest audience.
+5. Verify from a private window: any email can sign in at the guest hostname with a
+   code and sees the **Guest access · View only** banner; a request that changes
+   anything, such as `POST /v1/battles`, returns `403`; signing in at the game's
+   hostname is unchanged.
+
+To turn guests off, remove both settings and repeat step 4, then delete the guest
+Access application and its DNS record.
 
 ### Model access and role preview
 
@@ -182,10 +230,10 @@ is a deployment configuration task.
 To halt AI execution, use the [stop switch](#limits-and-the-stop-switch), not these
 toggles.
 
-**View as Player** or **View as Tester** opens a read-only preview with that
-role's actual API visibility and inspection permissions. Save or discard edits
-first. The banner stays visible while you navigate, and **Exit preview** restores
-the administrator view. Preview uses your own identity and ownership, impersonates
+**View as Player**, **View as Tester** or **View as Guest** opens a read-only
+preview with that role's actual API visibility and inspection permissions. Save or
+discard edits first. The banner stays visible while you navigate, and **Exit
+preview** restores the administrator view. Preview uses your own identity and ownership, impersonates
 nobody and grants nothing to non-admin callers.
 
 ### Remove an identity

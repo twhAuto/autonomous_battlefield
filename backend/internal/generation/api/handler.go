@@ -147,7 +147,7 @@ func logFailure(r *http.Request, event string, err error) {
 }
 
 func responseFor(r *http.Request, j generation.Job) any {
-	if !authn.IsPlayer(r.Context()) {
+	if !authn.GameplayOnly(r.Context()) {
 		return j
 	}
 	return map[string]any{"id": j.ID, "status": j.Status, "background": j.Background, "modelLabel": j.ModelLabel, "createdAt": j.CreatedAt, "expiresAt": j.ExpiresAt}

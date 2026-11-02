@@ -84,6 +84,18 @@ test('shared schema enforces production authentication and separates deployment 
     assert.throws(()=>validate(values,'production'),/role assignment/);
   }
   values.set('BATTLEFIELD_ACCESS_ROLES','{"admin":["owner@example.com"]}');
+  assert.equal(group('BATTLEFIELD_ACCESS_GUEST_AUDIENCE'),'auth');
+  assert.equal(group('BATTLEFIELD_GUEST_ORIGIN'),'auth');
+  values.set('BATTLEFIELD_ACCESS_GUEST_AUDIENCE','b'.repeat(64));
+  values.set('BATTLEFIELD_GUEST_ORIGIN','https://guest.example.com');
+  validate(values,'production');
+  for (const [audience, origin] of [['b'.repeat(64),''],['','https://guest.example.com'],['a'.repeat(64),'https://guest.example.com'],['b'.repeat(64),'https://play.example.com'],['b'.repeat(64),'http://guest.example.com'],['guest','https://guest.example.com']]) {
+    values.set('BATTLEFIELD_ACCESS_GUEST_AUDIENCE',audience);
+    values.set('BATTLEFIELD_GUEST_ORIGIN',origin);
+    assert.throws(()=>validate(values,'production'),/guest Access/);
+  }
+  values.delete('BATTLEFIELD_ACCESS_GUEST_AUDIENCE');
+  values.delete('BATTLEFIELD_GUEST_ORIGIN');
   values.set('BATTLEFIELD_AUTH_MODE','disabled-development');
   assert.throws(()=>validate(values,'production'),/Cloudflare/);
   validate(values,'dev');
