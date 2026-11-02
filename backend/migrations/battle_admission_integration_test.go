@@ -174,18 +174,20 @@ func TestRoleBattleAllowancesMigration(t *testing.T) {
 	}
 	const upgraded = `SELECT player_daily_battles,player_unfinished,tester_daily_battles,tester_unfinished FROM runtime_policy WHERE id`
 	const previous = `SELECT daily_battles,user_unfinished FROM runtime_policy WHERE id`
-	// Allowances at the previous defaults move to the new Player defaults and back.
+	// Allowances at the previous defaults move to the new Player defaults, and Down
+	// keeps whatever the row holds.
 	step(provider.UpTo(ctx, 26))
 	step(provider.UpTo(ctx, 27))
 	wantAllowances(t, db, upgraded, 5, 1, 10, 2)
 	step(provider.DownTo(ctx, 26))
-	wantAllowances(t, db, previous, 20, 2)
-	// An operator-set value is kept in both directions; a default beside it still moves.
+	wantAllowances(t, db, previous, 5, 1)
+	// Operator-set values are kept in both directions, including one equal to a new
+	// default.
 	step(db.ExecContext(ctx, `UPDATE runtime_policy SET daily_battles=3`))
 	step(provider.UpTo(ctx, 27))
 	wantAllowances(t, db, upgraded, 3, 1, 10, 2)
 	step(provider.DownTo(ctx, 26))
-	wantAllowances(t, db, previous, 3, 2)
+	wantAllowances(t, db, previous, 3, 1)
 }
 
 // wantAllowances scans one runtime_policy row and compares its integer columns.

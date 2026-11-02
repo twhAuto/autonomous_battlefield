@@ -57,7 +57,6 @@ ALTER TABLE battle_runs DROP COLUMN tester_allowance;
 ALTER TABLE runtime_policy DROP COLUMN tester_daily_battles, DROP COLUMN tester_unfinished;
 ALTER TABLE runtime_policy RENAME COLUMN player_daily_battles TO daily_battles;
 ALTER TABLE runtime_policy RENAME COLUMN player_unfinished TO user_unfinished;
+-- The current Player allowances stay: an earlier default and an operator's value
+-- cannot be told apart, and keeping either never loosens a limit.
 ALTER TABLE runtime_policy ALTER COLUMN daily_battles SET DEFAULT 20, ALTER COLUMN user_unfinished SET DEFAULT 2;
-UPDATE runtime_policy SET
- daily_battles = CASE WHEN daily_battles=5 THEN 20 ELSE daily_battles END,
- user_unfinished = CASE WHEN user_unfinished=1 THEN 2 ELSE user_unfinished END;
