@@ -244,8 +244,8 @@ living units plus paid units in training, the total the engine caps, shown again
 the battle's `maximumUnits` when the ruleset has a cap; buildings exclude the castle.
 Each strip also
 carries that faction's production chips, one upgrade chip with an icon per owned
-upgrade (the highest level per general track, with its numeral) and, for inspecting
-viewers, a plan disclosure. Every strip control is one 44 px touch target tall; an
+upgrade (the highest level per general track, with its numeral) and a plan
+disclosure. Every strip control is one 44 px touch target tall; an
 upgrade chip too wide for its column wraps its icons and grows instead of overflowing.
 Production and upgrade chips wrap in their own column beside the plan. Chips and the plan share one exclusive `<details name>` group per
 strip, so opening one closes the others. Hovering an upgrade icon shows its name and

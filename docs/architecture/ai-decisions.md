@@ -16,11 +16,12 @@ Battle setup can override the map's decision interval for a single battle
 validated and frozen in the scenario snapshot. Shorter intervals request plans
 more often; tick pacing does not shorten the model decision deadline.
 
-For Admin and Tester viewers, each faction status box shows the latest
-accepted or fallback plan at or before the current tick and its submitted
+Each faction status box shows the faction's latest decision status and the latest
+accepted or fallback plan at or before the current tick with its submitted
 rationale. A pending or future decision does not replace the applied plan.
 Stopped battles retain the last plan; missing records have explicit empty states.
-Fallback plans are labeled. Players cannot inspect decisions.
+Fallback plans are labeled. Saved decision context and model diagnostics are
+limited to Tester and Admin ([roles](api.md#roles-and-ownership)).
 
 ## Decision lifecycle
 

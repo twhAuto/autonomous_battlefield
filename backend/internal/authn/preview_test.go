@@ -16,8 +16,9 @@ func TestRolePreviewBoundaries(t *testing.T) {
 	}{
 		{"normal admin", Admin, "", "GET", "/v1/model-profiles", 200, Admin},
 		{"player preview", Admin, "player", "GET", "/v1/model-profiles", 200, Player},
-		{"tester preview", Admin, "tester", "GET", "/v1/battles/x/decisions", 200, Tester},
-		{"player inspection denied", Admin, "player", "GET", "/v1/battles/x/decisions", 403, ""},
+		{"tester preview", Admin, "tester", "GET", "/v1/battles/x/decisions/r/context", 200, Tester},
+		{"player decision history", Admin, "player", "GET", "/v1/battles/x/decisions", 200, Player},
+		{"player inspection denied", Admin, "player", "GET", "/v1/battles/x/decisions/r/context", 403, ""},
 		{"preview admin denied", Admin, "player", "GET", "/v1/admin/model-access", 403, ""},
 		{"preview mutation denied", Admin, "tester", "PUT", "/v1/admin/model-access", 403, ""},
 		{"player cannot preview", Player, "tester", "GET", "/v1/model-profiles", 403, ""},

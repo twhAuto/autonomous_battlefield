@@ -1,6 +1,5 @@
 import type { CSSProperties } from 'react'
 import type { BattleParticipant, BattleRun, DecisionHistory } from '../api/battles'
-import { usePermissions } from '../../auth/SessionContext'
 import { factionColors, modelLabel, unknownFactionColor } from '../presentation/factions'
 import { latestDecision } from './AIDecisionPanel'
 import { ProductionChips } from './BuildingProduction'
@@ -37,12 +36,11 @@ function forces(battle: BattleRun, status: ReturnType<typeof playerStatus>) {
   }
 }
 
-// One compact strip per faction: identity, economy, forces, production and upgrade chips and,
-// for viewers who may inspect decisions, the applied plan with its rationale behind a disclosure.
+// One compact strip per faction: identity, economy, forces, production and upgrade chips and
+// the applied plan with its rationale behind a disclosure.
 export function FactionSummaries({ battle, decisions, decisionMessage }: Readonly<{
   battle: BattleRun; decisions: DecisionHistory[]; decisionMessage: string
 }>) {
-  const { inspect } = usePermissions()
   const colors = factionColors(battle.participants.map((participant) => participant.id))
   return <section className="faction-summaries" aria-label="Faction summaries">
     {battle.participants.map((participant) => {
@@ -74,12 +72,11 @@ export function FactionSummaries({ battle, decisions, decisionMessage }: Readonl
             {battle.state && <ProductionChips state={battle.state} factionId={participant.id} factionName={participant.name} group={`faction-${participant.id}`} />}
             <UpgradeChips upgradeIds={status.faction?.ownedUpgradeIds} factionName={participant.name} group={`faction-${participant.id}`} />
           </div>
-          {!inspect && label && <p className={activityClass}>{label}</p>}
-          {inspect && <details className="faction-summary__plan" name={`faction-${participant.id}`}>
+          <details className="faction-summary__plan" name={`faction-${participant.id}`}>
             <summary title={`${planLabel}: ${planName}`}>{label && <><span className={activityClass}>{label}</span> <span aria-hidden="true">·</span></>} {applied?.status === 'fallback' && <span>fallback</span>} <strong>{planName}</strong></summary>
             <textarea readOnly rows={8} aria-label={`${participant.name} plan and rationale`}
               value={`${planLabel}\n${planName}\n\nRationale\n${applied?.resolvedPlan?.rationale || 'No rationale recorded.'}`} />
-          </details>}
+          </details>
         </div>
       </article>
     })}

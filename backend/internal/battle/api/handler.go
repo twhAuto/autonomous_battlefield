@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
@@ -101,7 +102,32 @@ func (h *Handler) ListDecisions(w http.ResponseWriter, r *http.Request) {
 		failure{message: "could not list decisions"}) {
 		return
 	}
+	if authn.IsPlayer(r.Context()) {
+		_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"decisions": playerDecisions(decisions)})
+		return
+	}
 	_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"decisions": decisions})
+}
+
+// playerDecision is what a Player may see of a decision: its status and the applied
+// plan, without model, usage, timing, trace or error diagnostics.
+type playerDecision struct {
+	RequestID      string     `json:"requestId"`
+	FactionID      string     `json:"factionId"`
+	TargetTick     uint64     `json:"targetTick"`
+	Status         string     `json:"status"`
+	ControllerType string     `json:"controllerType"`
+	ResolvedPlan   any        `json:"resolvedPlan,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	ResolvedAt     *time.Time `json:"resolvedAt,omitempty"`
+}
+
+func playerDecisions(decisions []battleservice.DecisionHistory) []playerDecision {
+	result := make([]playerDecision, 0, len(decisions))
+	for _, d := range decisions {
+		result = append(result, playerDecision{RequestID: d.RequestID, FactionID: d.FactionID, TargetTick: d.TargetTick, Status: d.Status, ControllerType: d.ControllerType, ResolvedPlan: d.ResolvedPlan, CreatedAt: d.CreatedAt, ResolvedAt: d.ResolvedAt})
+	}
+	return result
 }
 
 func (h *Handler) ListModelProfiles(w http.ResponseWriter, r *http.Request) {

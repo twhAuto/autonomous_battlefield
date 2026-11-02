@@ -6,11 +6,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
 
 func TestPlayerProjectionAfterSharedCachedRead(t *testing.T) {
@@ -30,6 +32,42 @@ func TestPlayerProjectionAfterSharedCachedRead(t *testing.T) {
 	raw, e = json.Marshal(visibleProfiles(player, profiles))
 	if e != nil || strings.Contains(string(raw), secret) || strings.Contains(string(raw), "paid") || strings.Contains(string(raw), "cli") || !strings.Contains(string(raw), "approved") {
 		t.Fatal(string(raw), e)
+	}
+}
+
+func TestPlayerDecisionHistoryKeepsPlansAndDropsDiagnostics(t *testing.T) {
+	secret := "internal-secret-diagnostic"
+	started, claimed := int64(42), time.Unix(1, 0)
+	battles := &fakeBattleService{history: []battleservice.DecisionHistory{{
+		RequestID: "request", FactionID: "faction", TargetTick: 10, Status: "fallback", ControllerType: "model",
+		ResolvedPlan:    map[string]any{"name": "Hold the bridge", "rationale": "Protect the economy."},
+		ContextDelivery: secret, CLIProcessStartMS: &started, ReasoningEffort: secret, ClaimedAt: &claimed, TraceURL: secret,
+		ProfileID: secret, Provider: secret, Runtime: secret, ModelIdentifier: secret, FallbackSource: secret, ErrorCategory: secret,
+		Usage: ai.Usage{Scope: secret, InputTokens: 4242},
+	}}}
+	router := httpapi.NewRouter(NewHandler(battles))
+	read := func(role authn.Role) string {
+		request := httptest.NewRequest("GET", "/v1/battles/7f22e693-bacd-46bb-b942-64fa613cd388/decisions?attempt=1", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "viewer", Role: role}))
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != 200 {
+			t.Fatalf("%s: %d %s", role, response.Code, response.Body.String())
+		}
+		return response.Body.String()
+	}
+	player := read(authn.Player)
+	for _, want := range []string{`"requestId":"request"`, `"factionId":"faction"`, `"targetTick":10`, `"status":"fallback"`, `"controllerType":"model"`, "Hold the bridge", "Protect the economy."} {
+		if !strings.Contains(player, want) {
+			t.Fatalf("player response lacks %s: %s", want, player)
+		}
+	}
+	for _, hidden := range []string{secret, "4242", "usage", "claimedAt", "cliProcessStartMs"} {
+		if strings.Contains(player, hidden) {
+			t.Fatalf("player response exposes %s: %s", hidden, player)
+		}
+	}
+	if tester := read(authn.Tester); !strings.Contains(tester, secret) || !strings.Contains(tester, "4242") {
+		t.Fatalf("tester response lost diagnostics: %s", tester)
 	}
 }
 

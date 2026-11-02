@@ -575,7 +575,7 @@ paths:
       tags: [Battles]
       operationId: listBattleDecisions
       summary: List AI decision history for an attempt
-      description: Requires the Tester or Admin role.
+      description: Players receive the reduced `DecisionHistory` shape.
       parameters:
         - name: attempt
           in: query
@@ -2431,8 +2431,12 @@ components:
         tokensReported: {type: boolean}
 
     DecisionHistory:
+      description: |
+        Players receive only `requestId`, `factionId`, `targetTick`, `status`,
+        `controllerType`, `resolvedPlan`, `createdAt` and `resolvedAt`; Testers and
+        Admins always receive `usage`.
       type: object
-      required: [requestId, factionId, targetTick, status, controllerType, usage, createdAt]
+      required: [requestId, factionId, targetTick, status, controllerType, createdAt]
       properties:
         requestId: {type: string, format: uuid}
         factionId: {type: string}
