@@ -96,7 +96,7 @@ export function BattleHistoryPage() {
             <caption className="visually-hidden">Battles, newest first</caption>
             <thead><tr><th>Battle</th><th>Created</th><th>Status</th><th>Progress</th><th>Outcome</th><th><span className="visually-hidden">Details</span></th></tr></thead>
             <tbody>{page.battles.map((battle) => <tr key={battle.id}>
-              <td data-label="Battle"><strong>{battle.participants.map((participant) => participant.name).join(' vs ')}</strong><small>{battle.scenarioId}</small></td>
+              <td data-label="Battle"><strong>{battle.participants.map((participant) => participant.name).join(' vs ')}</strong><small>{battle.scenarioId}</small>{battle.ownerName && <small className="history-owner">Started by {battle.ownerName}</small>}</td>
               <td data-label="Created"><time dateTime={battle.createdAt}>{new Date(battle.createdAt).toLocaleString()}</time></td>
               <td data-label="Status"><span className="history-status">{battle.paused && (battle.status === 'queued' || battle.status === 'running') ? 'Paused' : battle.status}</span></td>
               <td data-label="Progress">{battle.currentTick} / {battle.requestedTicks} ticks</td>

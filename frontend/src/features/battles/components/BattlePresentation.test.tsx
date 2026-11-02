@@ -35,6 +35,15 @@ it('names the knockout stage and leaves other battles unlinked', () => {
   expect(screen.queryByText(/LEAGUE/)).not.toBeInTheDocument()
 })
 
+it('names who started the battle, and nobody when the name is unavailable', () => {
+  const view = header({ ...battle, ownerId: 'issuer|ada', ownerName: 'Ada' })
+  expect(screen.getByText('Started by', { exact: false })).toHaveTextContent('Started by Ada')
+  expect(screen.queryByText('issuer|ada')).not.toBeInTheDocument()
+  view.unmount()
+  header(battle)
+  expect(screen.queryByText(/Started by/)).not.toBeInTheDocument()
+})
+
 it('names the winner with its model, and a scripted winner without one', () => {
   const view = render(<Outcome battle={completed} winnerName="Jov" />)
   expect(screen.getByText(/Jov wins/)).toHaveTextContent('Jov wins gpt-6.1-sol · high')

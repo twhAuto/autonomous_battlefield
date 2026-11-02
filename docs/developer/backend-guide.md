@@ -507,6 +507,7 @@ Where to start for each cross-cutting feature. The linked page owns its behavior
 | Access and roles | `authn/cloudflare.go`, `audience.go`, `diagnostics.go`, `authorization.go`, `preview.go` | `features/auth/SessionContext.tsx`, `RolePreviewContext.ts` | `config/access_test.go`, `battle/api/player_test.go`, [`test/integration`](#end-to-end-api-integration-test) | [Security boundaries](../architecture/system-architecture.md#8-security-and-trust-boundaries) |
 | Admission and AI limits | Triggers in migrations `00011`, `00014`, `00016`; `ai/agent/policy.go`, `credentials_linux.go`; `ai/runner/process_linux.go` | — | `migrations/battle_admission_integration_test.go`, `generation/repo/cli_capacity_integration_test.go` | [Database](../architecture/database.md#admission-triggers) |
 | Managed Players and Testers | `internal/members`, `config/members.go` | `features/admin/pages/MembersPage.tsx` | `internal/members` integration tests | [Player invitations](../operations/player-invitations.md) |
+| Display names and owner labels | `internal/people` (store, `PUT /v1/profile`); `authn.Config.People` session hook; `WithOwnerNames` on the `battle/api` and `faction/api` handlers, wired in `internal/app`; migration `00029` | `features/profile`; `BattleHistoryPage`, `BattlePresentation`, `FactionsPage` | `internal/people` integration tests, `owner_names_test.go` in both handler packages, `test/integration`, `e2e/display-names.spec.ts` | [HTTP API](../architecture/api.md#display-names) |
 | Content catalog | `battle/catalog/library.go`, `shared_content.go`; `ai/decision/validate.go` | `ExpansionMap.test.tsx` | `game/expansion_test.go`; catalog `expansion_test.go`, `balance_test.go`, `maps_test.go` | [Content libraries](content-library.md), [Frontier Siege](../game/frontier-siege.md) |
 | Doctrine and opening purchases | `faction/service/update.go`; `game/opening.go`, `upgrades.go` | `/factions/new`, `/factions/:id/edit` editor | `game` opening and upgrade tests | [Game rules](../game/game-rules.md) |
 | Background generation | [`internal/generation`](#internalgeneration-faction-background-generation); `ai/agent/generation.go`; `ai/mcpserver/generation.go` | `features/factions/components/BackgroundGenerator.tsx`, `api/backgrounds.ts` | generation repository and MCP transport tests | [HTTP API](../architecture/api.md#faction-background-generation) |
@@ -528,7 +529,9 @@ users), and answers 503. Faction limits are declared in `internal/faction/factio
 and mirrored in frontend `features/factions/limits.ts`; change both together. Emblem
 identifiers are listed in the faction service, the `factions.emblem` check
 constraint, the OpenAPI `FactionEmblem` enum and `shared/domain/emblems.ts`; change
-all four together.
+all four together. The display-name rule is in `internal/people`, the `people`
+check constraint, the OpenAPI `DisplayName` schema and frontend
+`features/profile/api/profile.ts`; change all four together.
 
 Match runtime that survives between ticks but is not in `State`, such as the battle
 statistics counters, must join `game.Checkpoint`; the checkpoint restore tests fail

@@ -70,5 +70,6 @@ introduce a new boundary.
 | [`observability/redact`](../../backend/internal/observability/redact) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`observability/requestid`](../../backend/internal/observability/requestid) | ✓ | ✓ | ✓ | ✓ |  |
 | [`observability/tracing`](../../backend/internal/observability/tracing) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`people`](../../backend/internal/people) | ✓ |  |  |  |  |
 | [`postgres`](../../backend/internal/postgres) | ✓ | ✓ | ✓ |  |  |
 <!-- component-map:end -->

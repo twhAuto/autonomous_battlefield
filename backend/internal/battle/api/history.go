@@ -29,5 +29,18 @@ func (h *Handler) ListBattles(w http.ResponseWriter, r *http.Request) {
 		failure{event: "battle_history_read_failed", message: "could not list battles"}) {
 		return
 	}
+	h.labelOwners(r, page.Battles)
 	_ = httpapi.WriteJSON(w, http.StatusOK, page)
+}
+
+// labelOwners names every row's owner with one lookup for the page.
+func (h *Handler) labelOwners(r *http.Request, battles []battleservice.BattleSummary) {
+	owners := make([]string, len(battles))
+	for i, battle := range battles {
+		owners[i] = battle.OwnerID
+	}
+	labels := h.ownerNames(r, owners)
+	for i := range battles {
+		battles[i].OwnerName = labels[battles[i].OwnerID]
+	}
 }

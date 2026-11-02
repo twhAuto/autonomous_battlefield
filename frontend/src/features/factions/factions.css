@@ -7,6 +7,7 @@
 .registry-card__body { min-width: 0; }
 .registry-card__body > span { color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .16em; }
 .registry-card h2 { margin: 9px 0 12px; overflow: hidden; font-size: 24px; font-weight: 500; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; }
+.registry-card__owner { margin: -6px 0 12px; color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .08em; }
 .registry-card code { display: block; overflow: hidden; color: var(--muted); font: 12px 'DM Mono', monospace; text-overflow: ellipsis; }
 .registry-card__status { position: absolute; right: 20px; bottom: 18px; display: flex; align-items: center; gap: 7px; color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .1em; }
 .registry-card__delete { position: absolute; left: 30px; bottom: 16px; border: 0; background: transparent; color: #a96c63; cursor: pointer; font: 12px 'DM Mono', monospace; letter-spacing: .1em; }

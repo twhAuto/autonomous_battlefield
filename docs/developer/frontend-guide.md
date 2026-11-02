@@ -14,15 +14,16 @@ The frontend is a React/Vite single-page application.
 | --- | --- |
 | [`app/App.tsx`](../../frontend/src/app/App.tsx) | Shared layout and route table |
 | [`features/auth/api/auth.ts`](../../frontend/src/features/auth/api/auth.ts) | Session discovery, login, and logout client |
+| [`features/profile`](../../frontend/src/features/profile) | Display-name rules, the signed-in name, the save request (`api/profile.ts`), the shared form, the first-sign-in prompt and the profile page |
 | [`shared/api/request.ts`](../../frontend/src/shared/api/request.ts) | API base URL, cancellation-preserving network error mapping, and opt-in unauthorized-session notifications |
 | [`features/factions/api/factions.ts`](../../frontend/src/features/factions/api/factions.ts) | Typed faction and ruleset requests |
 | [`features/battles/api/battles.ts`](../../frontend/src/features/battles/api/battles.ts) | Typed scenario, profile, battle, allowance, history, event, view, control, and decision requests |
 | [`features/factions/pages/CreateFactionPage.tsx`](../../frontend/src/features/factions/pages/CreateFactionPage.tsx) | Faction profile editor and background generator |
-| [`features/factions/pages/FactionsPage.tsx`](../../frontend/src/features/factions/pages/FactionsPage.tsx) | Faction registry and authorized edit links; deletion lives in the editor's Danger zone |
+| [`features/factions/pages/FactionsPage.tsx`](../../frontend/src/features/factions/pages/FactionsPage.tsx) | Faction registry with each faction's creator and authorized edit links; deletion lives in the editor's Danger zone |
 | [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario (default `frontier-siege`), participants, controllers, tick-limit selection, and the caller's battle allowance |
 | [`features/battles/components/ControllerSelect.tsx`](../../frontend/src/features/battles/components/ControllerSelect.tsx) | Scripted or model controller with dependent model and effort selectors (default Low effort), shared by battle and league setup |
 | [`features/battles/components/MapPreview.tsx`](../../frontend/src/features/battles/components/MapPreview.tsx) | Static terrain and castle-spawn preview of the selected scenario map |
-| [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status-filtered history table/cards, cursor navigation, refresh, and detail links |
+| [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status-filtered history table/cards with who started each battle, cursor navigation, refresh, and detail links |
 | [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Route-level composition, selected panel, and control actions |
 | [`features/auth/pages/LoginPage.tsx`](../../frontend/src/features/auth/pages/LoginPage.tsx) | Local-password login form used only in the development auth mode |
 | [`features/admin/pages/AdminSettingsPage.tsx`](../../frontend/src/features/admin/pages/AdminSettingsPage.tsx) | Persistent provider/profile switches, allowed roles for each profile and for each of its model options, save/conflict states, and entry to read-only role preview |
@@ -47,9 +48,9 @@ combines directory access with its Create faction action; the creation and
 editing routes keep the Factions navigation item active.
 
 Routes: `/` (Home), `/battles/new`, `/battles`, `/battles/:id`, `/factions`,
-`/factions/new`, `/factions/:id/edit`, `/leagues`, `/leagues/new`, `/leagues/:id`,
-`/analytics`, `/admin`, and `/admin/members`. League and statistics routes mount for
-every role. The league setup form at
+`/factions/new`, `/factions/:id/edit`, `/profile`, `/leagues`, `/leagues/new`,
+`/leagues/:id`, `/analytics`, `/admin`, and `/admin/members`. League and statistics
+routes mount for every role. The league setup form at
 `/leagues/new`, the start, cancel and disqualify actions, and the admin routes are only for
 Admins outside role preview; anyone else opening `/leagues/new` gets the not-found
 page. `/admin/members` also requires the session's `members` capability. Unknown
@@ -57,6 +58,17 @@ paths render a not-found page. Guests, including in Guest preview, get no Stage
 battle destination or creation links, the not-found page at `/battles/new`,
 `/factions/new` and `/factions/:id/edit`, and a view-only banner;
 `usePermissions().play` gates these, and `canManage` is false for them.
+
+A Player or Tester whose session has no `displayName` sees only the blocking
+**Choose your display name** screen, with a Log out action, until a name is saved;
+Admins, including in role preview, and Guests never see it. The form checks the
+[display-name rules](../architecture/api.md#display-names) before sending and shows
+the server's reason, including a taken name, when a save fails. The top bar shows
+**Signed in as** the display name, `Admin` or `Guest` beside Log out, and the mobile
+menu shows the same label instead of the account ID. For Players and Testers the
+label links to `/profile`, which mounts only for them and changes the name. Battle
+history rows and the battle header show **Started by** and faction cards
+**Created by** with the server's `ownerName`, and show nothing when it is absent.
 
 The shell shows the signed-out screen after a successful logout or an HTTP 401
 confirming that the session is no longer authenticated. An Access logout instead

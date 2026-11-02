@@ -21,7 +21,10 @@ public for infrastructure probes; everything under `/v1` follows the rules below
 | `disabled-development` | Shared `local-development` identity for every client; never a production mode. |
 
 `GET /v1/auth/session` is always public so a client can learn the mode; an
-unauthenticated caller receives `401` with a session body rather than an error.
+unauthenticated caller receives `401` with a session body rather than an error. For
+an Admin, Tester or Player it also records the caller's current role and returns
+their [display name](#display-names) as `actor.displayName` once one is set; it
+returns `503` if that record cannot be read or written.
 Unsafe browser requests must send the configured `Origin`, and nonempty bodies
 must be `application/json`. Missing or invalid credentials return `401`; a missing
 role or permission never grants access. See the
@@ -60,6 +63,25 @@ Selecting a model controller, for a battle or for background generation, require
 an enabled, verified profile and a role the
 [model access policy](#model-access-administration) allows for both the profile and
 the model. Players need explicit approval for each API and CLI profile.
+
+### Display names
+
+`PUT /v1/profile` sets the caller's own display name. Players, Testers and Admins
+may call it; Guests receive `403`. The name is trimmed, must be 3 to 24 letters,
+digits, spaces, hyphens or underscores (`400` otherwise), and must not match
+another person's name ignoring case (`409 conflict`); saving one's own name again in
+another case succeeds. Names can be changed at any time. The
+[frontend guide](../developer/frontend-guide.md#routes-and-session) describes when the
+web app asks for one.
+
+Factions from `GET /v1/factions`, battle history rows, and the battle returned by
+`GET /v1/battles/{id}` and by stop, pause and resume carry `ownerName` for every
+role, Guests included: `Admin` for anything an Admin owns, league battles and
+`legacy-admin` rows included; otherwise the owner's display name, or
+`Unnamed commander` before they choose one. The label follows the owner's role as
+last recorded by their session, so an Admin's items say `Admin` whatever name they
+hold. No response names another person by email. When names cannot be read
+promptly, responses omit `ownerName` instead of waiting or failing.
 
 ### Admission limits
 

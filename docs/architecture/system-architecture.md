@@ -600,6 +600,8 @@ Player projections ([API roles](api.md#roles-and-ownership)), which Guests also
 receive, run after shared cache retrieval and omit model diagnostics, raw prompts and
 internal errors. The frontend hides inspection panels and stops their requests for
 Players and Guests.
+Responses name owners by display name or `Admin` from the `people` table, never by
+email ([display names](api.md#display-names)).
 Cloudflare Access admission and MFA are independent deployment requirements. For
 static roles, user removal requires Access rule removal, session revocation,
 application role removal,

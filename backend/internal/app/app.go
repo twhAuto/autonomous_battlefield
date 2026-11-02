@@ -29,6 +29,7 @@ import (
 	leagueservice "github.com/twh09/autonomous_battlefield/backend/internal/league/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/members"
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
+	"github.com/twh09/autonomous_battlefield/backend/internal/people"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
@@ -74,15 +75,17 @@ func New(db postgres.Pool, catalog *catalog.Catalog, maxTicks uint64, options Op
 	leagueService := leagueservice.New(leaguerepo.NewPostgres(db), battleService, factionRepository, leagueservice.Options{BattleSlots: options.EngineConcurrency, Profiles: profiles})
 	analyticsService := analyticsservice.New(analyticsrepo.NewPostgres(db), currentRulesVersion(catalog))
 
-	factionHandler := factionapi.NewHandler(factionService)
-	battleHandler := battleapi.NewHandler(battleService)
+	peopleStore := people.NewStore(db)
+	authentication.People = peopleStore.SessionName
+	factionHandler := factionapi.NewHandler(factionService).WithOwnerNames(peopleStore)
+	battleHandler := battleapi.NewHandler(battleService).WithOwnerNames(peopleStore)
 	authenticationManager := authn.NewManager(authentication)
 	authenticationMiddleware := func(next http.Handler) http.Handler {
 		return authn.BrowserProtection([]string{authentication.Origin, authentication.GuestOrigin}, authn.RequireAuthentication(authenticationManager.Enabled(), authenticationManager, authn.RolePreview(authn.RoutePolicy(next))))
 	}
 	router := httpapi.NewRouterWithMiddleware(
 		[]httpapi.Middleware{authenticationMiddleware},
-		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, leagueapi.NewHandler(leagueService), analyticsapi.NewHandler(analyticsService), generationHandler, adminHandler, members.NewHandler(options.Members, authentication.Origin),
+		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, leagueapi.NewHandler(leagueService), analyticsapi.NewHandler(analyticsService), generationHandler, adminHandler, members.NewHandler(options.Members, authentication.Origin), people.NewHandler(peopleStore),
 	)
 	// Tracing wraps access logging so completion logs share the request span.
 	return &App{httpHandler: tracing.HTTPHandler("battlefield-api.http", router), leagues: leagueService}

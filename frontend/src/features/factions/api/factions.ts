@@ -30,6 +30,8 @@ export interface FactionRuleset {
 
 export interface Faction {
   ownerId?: string
+  /** Who created the faction: their display name, Admin, or a neutral fallback; absent when names are unavailable. */
+  ownerName?: string
   id: string
   name: string
   doctrine: string

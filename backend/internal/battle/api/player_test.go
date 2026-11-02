@@ -26,13 +26,13 @@ func TestPlayerProjectionAfterSharedCachedRead(t *testing.T) {
 	// Players and Guests see which model played each side and the battle's league, but
 	// no diagnostics.
 	for _, request := range []*http.Request{player, guest} {
-		raw, e := json.Marshal(battleResponseFor(request, run))
+		raw, e := json.Marshal(battleResponseFor(request, run, ""))
 		if e != nil || strings.Contains(string(raw), secret) || !strings.Contains(string(raw), `"modelIdentifier":"gpt-test"`) || !strings.Contains(string(raw), `"reasoningEffort":"high"`) || !strings.Contains(string(raw), `"name":"Autumn Cup"`) {
 			t.Fatal(string(raw), e)
 		}
 	}
 	tester := player.WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "tester", Role: authn.Tester}))
-	raw, e := json.Marshal(battleResponseFor(tester, run))
+	raw, e := json.Marshal(battleResponseFor(tester, run, ""))
 	if e != nil || !strings.Contains(string(raw), secret) {
 		t.Fatal("shared cache was mutated", string(raw), e)
 	}
@@ -115,7 +115,7 @@ func TestBattleResponsesExposeNextProduction(t *testing.T) {
 	for _, tt := range cases {
 		for _, role := range []authn.Role{authn.Player, authn.Tester} {
 			request := httptest.NewRequest("GET", "/v1/battles/battle", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "caller", Role: role}))
-			raw, err := json.Marshal(battleResponseFor(request, &tt.run))
+			raw, err := json.Marshal(battleResponseFor(request, &tt.run, ""))
 			if err != nil || !strings.Contains(string(raw), tt.want) {
 				t.Fatalf("%s as %s: %s %v", tt.name, role, raw, err)
 			}
@@ -128,7 +128,7 @@ func TestBattleResponsesReportTheUnitCapAndContestedTerritoryOnlyWhenSet(t *test
 	for _, role := range []authn.Role{authn.Player, authn.Tester} {
 		request := httptest.NewRequest("GET", "/v1/battles/battle", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "viewer", Role: role}))
 		read := func() map[string]any {
-			raw, err := json.Marshal(battleResponseFor(request, run))
+			raw, err := json.Marshal(battleResponseFor(request, run, ""))
 			var body map[string]any
 			if err == nil {
 				err = json.Unmarshal(raw, &body)

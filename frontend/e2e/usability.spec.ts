@@ -303,7 +303,7 @@ test('players can see continuous production progress and pauses without controls
   Object.assign(battle.state.buildings[0], { trains: ['vanguard'], production: { unitType: 'striker', enabled: false }, trainingQueue: [{ unitType: 'vanguard', remainingTicks: 2, trainingTicks: 4, queuedAtTick: 0 }] })
   battle.state.buildings.push({ ...battle.state.buildings[0], id: `${factionId}:barracks:1`, type: 'barracks', position: { x: 4, y: 5 } })
   Object.assign(battle.state.buildings.at(-1)!, { production: { unitType: 'vanguard', enabled: true, waitingForGold: true }, trainingQueue: [] })
-  await page.route('**/v1/auth/session', route => route.fulfill({ json: { enabled: true, authenticated: true, actor: { id: 'viewer', role: 'player' } } }))
+  await page.route('**/v1/auth/session', route => route.fulfill({ json: { enabled: true, authenticated: true, actor: { id: 'viewer', role: 'player', displayName: 'Viewer' } } }))
   await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: battle }))
   await page.goto(`/battles/${battleId}`)
   const panel = page.getByRole('list', { name: 'Amber production', exact: true })
@@ -328,7 +328,7 @@ test('players can read researched upgrades from their icons by hover, touch or k
   const battle = battleFixture()
   Object.assign(battle.state.factions[0], { ownedUpgradeIds: ['arsenal', 'industry', 'arsenal_2', 'plating', 'industry_2', 'industry_3', 'gunpowder', 'knighthood', 'vanguard_bulwark', 'ranger_skirmish', 'herbalist_potency', 'siege_breach'] })
   Object.assign(battle.state.buildings[0], { trains: ['vanguard'], production: { unitType: 'vanguard', enabled: true } })
-  await page.route('**/v1/auth/session', route => route.fulfill({ json: { enabled: true, authenticated: true, actor: { id: 'viewer', role: 'player' } } }))
+  await page.route('**/v1/auth/session', route => route.fulfill({ json: { enabled: true, authenticated: true, actor: { id: 'viewer', role: 'player', displayName: 'Viewer' } } }))
   await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: battle }))
   await page.goto(`/battles/${battleId}`)
   const upgrades = page.getByRole('group', { name: 'Amber upgrades', exact: true })
@@ -406,7 +406,7 @@ test('shows the complete failure reason for a failed battle', async ({ page }) =
 })
 
 test('a Player who owns a faction is told why creation is unavailable', async ({ page }) => {
-  await page.route('**/v1/auth/session', route => route.fulfill({ json: { enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'viewer', role: 'player' } } }))
+  await page.route('**/v1/auth/session', route => route.fulfill({ json: { enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'viewer', role: 'player', displayName: 'Viewer' } } }))
   await page.route('**/v1/factions', route => route.fulfill({ json: { factions: [{ ...factions[0], ownerId: 'viewer' }, factions[1]] } }))
   const reason = 'Players can own one faction at a time. Delete your faction to create a new one.'
   await page.goto('/factions')
