@@ -6,7 +6,7 @@ import App from '../../../app/App'
 import { MembersPage } from './MembersPage'
 import type { Member } from '../api/members'
 
-const seed: Member = { id: 'one', email: 'friend@example.com', desiredAccess: true, version: 1, syncedVersion: 0, updatedAt: '2026-09-19T00:00:00Z' }
+const seed: Member = { id: 'one', email: 'friend@example.com', role: 'player', desiredAccess: true, version: 1, syncedVersion: 0, updatedAt: '2026-09-19T00:00:00Z' }
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 function renderPage() { return render(<MemoryRouter><MembersPage /></MemoryRouter>) }
 beforeEach(() => vi.stubGlobal('fetch', vi.fn()))
@@ -26,7 +26,7 @@ it('grants, removes and reinvites a Player and copies the game URL', async () =>
   })
   renderPage()
   expect(screen.getByText('Loading members…')).toBeInTheDocument()
-  await screen.findByText('No Players have been invited yet.')
+  await screen.findByText('No members have been invited yet.')
   await user.type(screen.getByLabelText('Email address'), seed.email)
   await user.click(screen.getByRole('button', { name: 'Grant access' }))
   await screen.findByText(/Waiting for access/)
@@ -39,7 +39,7 @@ it('grants, removes and reinvites a Player and copies the game URL', async () =>
   await screen.findByText(/Waiting for access/)
   members = [{ ...seed, syncedVersion: 1 }]
   await user.click(screen.getByRole('button', { name: 'Refresh' }))
-  await screen.findByText('Ready to play · Cloudflare synchronized')
+  await screen.findByText('Player · Ready to play · Cloudflare synchronized')
   await user.click(screen.getByRole('button', { name: 'Copy game link' }))
   expect(await navigator.clipboard.readText()).toBe('https://game.example')
   expect(screen.getByRole('status')).toHaveTextContent('Game link copied')
@@ -58,10 +58,10 @@ it('shows Cloudflare errors and requests synchronization retry', async () => {
 it('keeps failed invitations editable and reports clipboard failure', async () => {
   const user = userEvent.setup()
   vi.mocked(fetch).mockImplementation(async (_url, init) => init?.method === 'POST' ? json({}, 409) : json({ members: [], gameUrl: 'https://game.example', syncError: '' }))
-  renderPage(); await screen.findByText('No Players have been invited yet.')
+  renderPage(); await screen.findByText('No members have been invited yet.')
   await user.type(screen.getByLabelText('Email address'), 'admin@example.com')
   await user.click(screen.getByRole('button', { name: 'Grant access' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('Administrator and tester')
+  expect(await screen.findByRole('alert')).toHaveTextContent('role set in server configuration')
   expect(screen.getByLabelText('Email address')).toHaveValue('admin@example.com')
   vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('blocked'))
   await user.click(screen.getByRole('button', { name: 'Copy game link' }))
@@ -76,7 +76,7 @@ it('reports load failure and recovers on refresh', async () => {
   expect(screen.getByRole('button', { name: 'Grant access' })).toBeDisabled()
   vi.mocked(fetch).mockResolvedValue(json({ members: [], gameUrl: 'https://game.example', syncError: '' }))
   await user.click(screen.getByRole('button', { name: 'Refresh' }))
-  await screen.findByText('No Players have been invited yet.')
+  await screen.findByText('No members have been invited yet.')
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
 
@@ -87,7 +87,7 @@ it('polls synchronization without overlapping requests and stops after unmount',
   await act(async () => { await vi.advanceTimersByTimeAsync(1) })
   vi.mocked(fetch).mockResolvedValue(json({ members: [{ ...seed, syncedVersion: 1 }], gameUrl: 'https://game.example', syncError: '' }))
   await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
-  expect(screen.getByText('Ready to play · Cloudflare synchronized')).toBeInTheDocument()
+  expect(screen.getByText('Player · Ready to play · Cloudflare synchronized')).toBeInTheDocument()
   view.unmount(); const calls = vi.mocked(fetch).mock.calls.length
   await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
   expect(fetch).toHaveBeenCalledTimes(calls)
@@ -104,4 +104,33 @@ it('exposes the members route to Admins and never loads it for Players or Tester
     expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining('/v1/admin/members'), expect.anything())
     other.unmount()
   }
+})
+
+it('invites a Tester and changes the role of an active member', async () => {
+  const user = userEvent.setup()
+  const bodies: unknown[] = []
+  let members: Member[] = [{ ...seed, syncedVersion: 1 }, { ...seed, id: 'two', email: 'gone@example.com', role: 'tester', desiredAccess: false, version: 2, syncedVersion: 2 }]
+  vi.mocked(fetch).mockImplementation(async (_url, init) => {
+    if (init?.method === 'POST') {
+      const body = JSON.parse(init.body as string) as { email: string; role?: Member['role'] }
+      bodies.push(body)
+      members = members.map(member => member.email === body.email ? { ...member, role: body.role ?? member.role, desiredAccess: true } : member)
+      return new Response(null, { status: 202 })
+    }
+    return json({ members, gameUrl: 'https://game.example', syncError: '' })
+  })
+  renderPage()
+  await screen.findByText('Player · Ready to play · Cloudflare synchronized')
+  expect(screen.getByText(/^Tester · Removed/)).toBeInTheDocument()
+  // Removed members show no role picker; a reinvite keeps their stored role.
+  expect(screen.queryByRole('combobox', { name: 'Role for gone@example.com' })).not.toBeInTheDocument()
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Role for friend@example.com' }), 'tester')
+  expect(screen.getByRole('status')).toHaveTextContent('friend@example.com is now a Tester. The change applies to their next request.')
+  await user.click(screen.getByRole('button', { name: 'Grant access to gone@example.com' }))
+  await user.type(screen.getByLabelText('Email address'), 'new@example.com')
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Role' }), 'tester')
+  await user.click(screen.getByRole('button', { name: 'Grant access' }))
+  await waitFor(() => expect(bodies).toEqual([
+    { email: 'friend@example.com', role: 'tester' }, { email: 'gone@example.com' }, { email: 'new@example.com', role: 'tester' },
+  ]))
 })

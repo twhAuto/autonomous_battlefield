@@ -80,40 +80,40 @@ func member(t *testing.T, s *Store, email string) Member {
 func TestMembershipGrantRemoveAndReinvite(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
-	if s.Allowed(ctx, "seed@example.com") {
+	if allowed(s, ctx, "seed@example.com") {
 		t.Fatal("import active before sync")
 	}
 	var sent []string
 	s.Writer = groupFunc(func(_ context.Context, emails []string) error { sent = emails; return nil })
 	must(t, s.Reconcile(ctx))
-	if !s.Allowed(ctx, "seed@example.com") || !reflect.DeepEqual(sent, []string{"seed@example.com"}) {
+	if !allowed(s, ctx, "seed@example.com") || !reflect.DeepEqual(sent, []string{"seed@example.com"}) {
 		t.Fatal("seed not synchronized", sent)
 	}
-	must(t, s.Change(ctx, "owner", " Friend@Example.com ", "", true))
+	must(t, s.Change(ctx, "owner", " Friend@Example.com ", "", true, ""))
 	m := member(t, s, "friend@example.com")
-	must(t, s.Change(ctx, "owner", "friend@example.com", "", true))
-	if member(t, s, m.Email).Version != m.Version || s.Allowed(ctx, m.Email) {
+	must(t, s.Change(ctx, "owner", "friend@example.com", "", true, ""))
+	if member(t, s, m.Email).Version != m.Version || allowed(s, ctx, m.Email) {
 		t.Fatal("duplicate grant changed version or activated")
 	}
 	must(t, s.Reconcile(ctx))
-	if !s.Allowed(ctx, m.Email) {
+	if !allowed(s, ctx, m.Email) {
 		t.Fatal("grant not active")
 	}
-	must(t, s.Change(ctx, "owner", "", m.ID, false))
-	must(t, s.Change(ctx, "owner", "", m.ID, false))
-	if s.Allowed(ctx, m.Email) {
+	must(t, s.Change(ctx, "owner", "", m.ID, false, ""))
+	must(t, s.Change(ctx, "owner", "", m.ID, false, ""))
+	if allowed(s, ctx, m.Email) {
 		t.Fatal("removal failed before remote update")
 	}
 	must(t, s.Reconcile(ctx))
 	if !reflect.DeepEqual(sent, []string{"seed@example.com"}) {
 		t.Fatal("removed member still in group")
 	}
-	must(t, s.Change(ctx, "owner", m.Email, "", true))
-	if s.Allowed(ctx, m.Email) {
+	must(t, s.Change(ctx, "owner", m.Email, "", true, ""))
+	if allowed(s, ctx, m.Email) {
 		t.Fatal("reinvite reused old successful version")
 	}
 	must(t, s.Reconcile(ctx))
-	if !s.Allowed(ctx, m.Email) {
+	if !allowed(s, ctx, m.Email) {
 		t.Fatal("reinvite failed")
 	}
 	var grants, removes int
@@ -154,9 +154,9 @@ func TestMembershipSyncFailurePersistsBackoff(t *testing.T) {
 func TestMembershipRestartKeepsRemovalTombstone(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
-	must(t, s.Change(ctx, "owner", "friend@example.com", "", true))
+	must(t, s.Change(ctx, "owner", "friend@example.com", "", true, ""))
 	m := member(t, s, "friend@example.com")
-	must(t, s.Change(ctx, "owner", "", m.ID, false))
+	must(t, s.Change(ctx, "owner", "", m.ID, false, ""))
 	s.Roles[m.Email] = authn.Player
 	must(t, s.Initialize(ctx))
 	if member(t, s, m.Email).Desired {
@@ -168,11 +168,11 @@ func TestMembershipDatabaseFailureDeniesAccess(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	must(t, s.Reconcile(ctx))
-	if !s.Allowed(ctx, "seed@example.com") {
+	if !allowed(s, ctx, "seed@example.com") {
 		t.Fatal("seed not allowed before database failure")
 	}
 	s.DB.Close()
-	if s.Allowed(ctx, "seed@example.com") {
+	if allowed(s, ctx, "seed@example.com") {
 		t.Fatal("database failure allowed access")
 	}
 }
@@ -181,7 +181,7 @@ func TestConcurrentReplicaSyncAndRemoveReinvite(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	must(t, s.Reconcile(ctx))
-	must(t, s.Change(ctx, "admin", "race@example.com", "", true))
+	must(t, s.Change(ctx, "admin", "race@example.com", "", true, ""))
 	m := member(t, s, "race@example.com")
 	entered, release := make(chan struct{}), make(chan struct{})
 	s.Writer = groupFunc(func(context.Context, []string) error { close(entered); <-release; return nil })
@@ -192,18 +192,18 @@ func TestConcurrentReplicaSyncAndRemoveReinvite(t *testing.T) {
 	must(t, other.Reconcile(ctx))
 	editCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	must(t, other.Change(editCtx, "admin", "", m.ID, false))
-	must(t, other.Change(editCtx, "admin", m.Email, "", true))
+	must(t, other.Change(editCtx, "admin", "", m.ID, false, ""))
+	must(t, other.Change(editCtx, "admin", m.Email, "", true, ""))
 	close(release)
 	if <-result == nil {
 		t.Fatal("stale sync transaction committed")
 	}
-	if s.Allowed(ctx, m.Email) {
+	if allowed(s, ctx, m.Email) {
 		t.Fatal("stale response activated reinvite")
 	}
 	s.Writer = groupFunc(func(context.Context, []string) error { return nil })
 	must(t, s.Reconcile(ctx))
-	if !s.Allowed(ctx, m.Email) {
+	if !allowed(s, ctx, m.Email) {
 		t.Fatal("failed to recover stale transaction")
 	}
 }
@@ -216,7 +216,7 @@ func TestConcurrentGrantsAndEmptyGroup(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := s.Change(ctx, "owner", "same@example.com", "", true); err != nil {
+			if err := s.Change(ctx, "owner", "same@example.com", "", true, ""); err != nil {
 				t.Error(err)
 			}
 		}()
@@ -228,7 +228,7 @@ func TestConcurrentGrantsAndEmptyGroup(t *testing.T) {
 		t.Fatal("duplicate concurrent members", ms)
 	}
 	for _, m := range ms {
-		must(t, s.Change(ctx, "owner", "", m.ID, false))
+		must(t, s.Change(ctx, "owner", "", m.ID, false, ""))
 	}
 	s.Writer = groupFunc(func(_ context.Context, emails []string) error {
 		if len(emails) != 0 {
@@ -237,7 +237,7 @@ func TestConcurrentGrantsAndEmptyGroup(t *testing.T) {
 		return nil
 	})
 	must(t, s.Reconcile(ctx))
-	if s.Allowed(ctx, "same@example.com") {
+	if allowed(s, ctx, "same@example.com") {
 		t.Fatal("empty group allowed")
 	}
 }
@@ -246,21 +246,21 @@ func TestProtectedAndInvalidMembers(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	for _, email := range []string{"bad", "Name <friend@example.com>", "a@example.com\nb@example.com", "a@localhost", ""} {
-		if !errors.Is(s.Change(ctx, "owner", email, "", true), ErrInvalid) {
+		if !errors.Is(s.Change(ctx, "owner", email, "", true, ""), ErrInvalid) {
 			t.Fatal("invalid accepted", email)
 		}
 	}
 	for _, email := range []string{"Owner@example.com", "tester@example.com"} {
-		if !errors.Is(s.Change(ctx, "owner", email, "", true), ErrProtected) {
+		if !errors.Is(s.Change(ctx, "owner", email, "", true, ""), ErrProtected) {
 			t.Fatal("privilege accepted", email)
 		}
 	}
-	if !errors.Is(s.Change(ctx, "owner", "", "bad-id", false), ErrNotFound) {
+	if !errors.Is(s.Change(ctx, "owner", "", "bad-id", false, ""), ErrNotFound) {
 		t.Fatal("missing removal accepted")
 	}
 	seed := member(t, s, "seed@example.com")
 	s.Roles[seed.Email] = authn.Admin
-	if !errors.Is(s.Change(ctx, "owner", "", seed.ID, false), ErrProtected) {
+	if !errors.Is(s.Change(ctx, "owner", "", seed.ID, false, ""), ErrProtected) {
 		t.Fatal("promoted identity mutable")
 	}
 	ms, _, err := s.List(ctx)
@@ -275,7 +275,7 @@ func TestProtectedAndInvalidMembers(t *testing.T) {
 		return nil
 	})
 	must(t, s.Reconcile(ctx))
-	if s.Allowed(ctx, seed.Email) {
+	if allowed(s, ctx, seed.Email) {
 		t.Fatal("privileged identity resolved as player")
 	}
 }
@@ -288,14 +288,14 @@ func TestSyncRecoveryAfterAmbiguousResponse(t *testing.T) {
 		calls++
 		return errors.New("Cloudflare request failed; retry pending")
 	})
-	if s.Reconcile(ctx) == nil || s.Allowed(ctx, "seed@example.com") {
+	if s.Reconcile(ctx) == nil || allowed(s, ctx, "seed@example.com") {
 		t.Fatal("ambiguous success activated")
 	}
 	must(t, s.Initialize(ctx))
 	must(t, s.Retry(ctx, "owner"))
 	s.Writer = groupFunc(func(context.Context, []string) error { calls++; return nil })
 	must(t, s.Reconcile(ctx))
-	if calls != 2 || !s.Allowed(ctx, "seed@example.com") {
+	if calls != 2 || !allowed(s, ctx, "seed@example.com") {
 		t.Fatal("restart did not recover")
 	}
 	runCtx, cancel := context.WithCancel(ctx)
@@ -322,7 +322,7 @@ func TestPrivilegePromotionCannotRestoreOldInvitation(t *testing.T) {
 	}
 	// Another old replica or later offboarding must never resurrect it.
 	must(t, s.Initialize(ctx))
-	if s.Allowed(ctx, seed.Email) {
+	if allowed(s, ctx, seed.Email) {
 		t.Fatal("role removal restored player")
 	}
 	promoted.Writer = groupFunc(func(_ context.Context, emails []string) error {
@@ -336,11 +336,11 @@ func TestPrivilegePromotionCannotRestoreOldInvitation(t *testing.T) {
 	must(t, offboarded.Initialize(ctx))
 	must(t, offboarded.Retry(ctx, "admin"))
 	must(t, offboarded.Reconcile(ctx))
-	if offboarded.Allowed(ctx, seed.Email) || member(t, offboarded, seed.Email).Desired {
+	if allowed(offboarded, ctx, seed.Email) || member(t, offboarded, seed.Email).Desired {
 		t.Fatal("offboarding restored invitation")
 	}
-	must(t, offboarded.Change(ctx, "admin", seed.Email, "", true))
-	if offboarded.Allowed(ctx, seed.Email) {
+	must(t, offboarded.Change(ctx, "admin", seed.Email, "", true, ""))
+	if allowed(offboarded, ctx, seed.Email) {
 		t.Fatal("explicit reinvite bypassed synchronization")
 	}
 }
@@ -369,7 +369,7 @@ func TestStartImportsThenReconcilesUntilStopped(t *testing.T) {
 		return nil
 	}))
 	must(t, err)
-	must(t, store.Change(context.Background(), "admin", "friend@example.com", "", true))
+	must(t, store.Change(context.Background(), "admin", "friend@example.com", "", true, ""))
 	stop, err := store.Start(context.Background())
 	must(t, err)
 	select {
@@ -386,5 +386,86 @@ func TestStartImportsThenReconcilesUntilStopped(t *testing.T) {
 	cancel()
 	if _, err := store.Start(cancelled); err == nil {
 		t.Fatal("Start succeeded with a cancelled context")
+	}
+}
+
+// allowed reports whether email resolves to an active managed member.
+func allowed(s *Store, ctx context.Context, email string) bool { return s.ActiveRole(ctx, email) != "" }
+
+// syncVersion reads the singleton synchronization version that a Cloudflare update follows.
+func syncVersion(t *testing.T, s *Store) int64 {
+	t.Helper()
+	var version int64
+	must(t, s.DB.QueryRow(context.Background(), "SELECT version FROM player_membership_sync WHERE id").Scan(&version))
+	return version
+}
+
+// roleAudits lists a member's audited actions with their roles, oldest first.
+func roleAudits(t *testing.T, s *Store, id string) []string {
+	t.Helper()
+	rows, err := s.DB.Query(context.Background(), "SELECT action||':'||coalesce(role,'') FROM player_membership_audit WHERE member_id=$1 ORDER BY id", id)
+	must(t, err)
+	defer rows.Close()
+	audits := []string{}
+	for rows.Next() {
+		var audit string
+		must(t, rows.Scan(&audit))
+		audits = append(audits, audit)
+	}
+	must(t, rows.Err())
+	return audits
+}
+
+func TestMemberRolesChangeWithoutCloudflare(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	// An invited Tester becomes active only after Cloudflare confirms the grant.
+	must(t, s.Change(ctx, "owner", "friend@example.com", "", true, authn.Tester))
+	m := member(t, s, "friend@example.com")
+	if m.Role != authn.Tester || s.ActiveRole(ctx, m.Email) != "" {
+		t.Fatal("unsynchronized Tester", m.Role, s.ActiveRole(ctx, m.Email))
+	}
+	must(t, s.Reconcile(ctx))
+	if s.ActiveRole(ctx, m.Email) != authn.Tester {
+		t.Fatal("synchronized Tester", s.ActiveRole(ctx, m.Email))
+	}
+	// A role change applies at once, keeps the member synchronized and needs no update.
+	version, synced := member(t, s, m.Email).Version, syncVersion(t, s)
+	must(t, s.Change(ctx, "owner", m.Email, "", true, authn.Player))
+	must(t, s.Change(ctx, "owner", m.Email, "", true, authn.Player))
+	if s.ActiveRole(ctx, m.Email) != authn.Player || member(t, s, m.Email).Version != version || syncVersion(t, s) != synced {
+		t.Fatal("role change waited for Cloudflare", s.ActiveRole(ctx, m.Email), member(t, s, m.Email).Version, syncVersion(t, s))
+	}
+	// A grant without a role keeps the stored one; a removed member returns with it.
+	must(t, s.Change(ctx, "owner", "", m.ID, false, ""))
+	must(t, s.Change(ctx, "owner", m.Email, "", true, ""))
+	must(t, s.Reconcile(ctx))
+	if s.ActiveRole(ctx, m.Email) != authn.Player {
+		t.Fatal("reinvite changed the role", s.ActiveRole(ctx, m.Email))
+	}
+	want := []string{"grant:tester", "role:player", "remove:", "grant:player"}
+	if got := roleAudits(t, s, m.ID); !reflect.DeepEqual(got, want) {
+		t.Fatalf("audit = %v; want %v", got, want)
+	}
+	if !errors.Is(s.Change(ctx, "owner", m.Email, "", true, authn.Admin), ErrInvalidRole) {
+		t.Fatal("Admin assigned through membership")
+	}
+	if !errors.Is(s.Change(ctx, "owner", "tester@example.com", "", true, authn.Player), ErrProtected) {
+		t.Fatal("configured Tester demoted through membership")
+	}
+}
+
+func TestMembersDefaultToPlayer(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	must(t, s.Change(ctx, "owner", "friend@example.com", "", true, ""))
+	must(t, s.Reconcile(ctx))
+	for _, email := range []string{"friend@example.com", "seed@example.com"} {
+		if member(t, s, email).Role != authn.Player || s.ActiveRole(ctx, email) != authn.Player {
+			t.Fatal("default role", email, member(t, s, email).Role)
+		}
+	}
+	if got := roleAudits(t, s, member(t, s, "seed@example.com").ID); !reflect.DeepEqual(got, []string{"import:player"}) {
+		t.Fatal("import audit", got)
 	}
 }

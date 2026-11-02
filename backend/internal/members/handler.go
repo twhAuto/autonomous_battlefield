@@ -15,7 +15,7 @@ import (
 
 type Repository interface {
 	List(context.Context) ([]Member, string, error)
-	Change(context.Context, string, string, string, bool) error
+	Change(ctx context.Context, actor, email, id string, grant bool, role authn.Role) error
 	Retry(context.Context, string) error
 }
 type Handler struct {
@@ -59,14 +59,19 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 }
 func (h *Handler) grant(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Email string `json:"email"`
+		Email string     `json:"email"`
+		Role  authn.Role `json:"role"`
 	}
 	if httpapi.ReadJSON(w, r, &body) != nil {
 		memberError(w, r, ErrInvalid)
 		return
 	}
+	if !assignable(body.Role) {
+		memberError(w, r, ErrInvalidRole)
+		return
+	}
 	actor, _ := authn.ActorFromContext(r.Context())
-	if err := h.Store.Change(r.Context(), actor.ID, body.Email, "", true); err != nil {
+	if err := h.Store.Change(r.Context(), actor.ID, body.Email, "", true, body.Role); err != nil {
 		memberError(w, r, err)
 		return
 	}
@@ -74,7 +79,7 @@ func (h *Handler) grant(w http.ResponseWriter, r *http.Request) {
 }
 func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
 	actor, _ := authn.ActorFromContext(r.Context())
-	if err := h.Store.Change(r.Context(), actor.ID, "", r.PathValue("id"), false); err != nil {
+	if err := h.Store.Change(r.Context(), actor.ID, "", r.PathValue("id"), false, ""); err != nil {
 		memberError(w, r, err)
 		return
 	}
@@ -92,6 +97,8 @@ func memberError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, ErrInvalid):
 		apierror.Write(w, r, http.StatusBadRequest, ErrInvalid.Error())
+	case errors.Is(err, ErrInvalidRole):
+		apierror.Write(w, r, http.StatusBadRequest, ErrInvalidRole.Error())
 	case errors.Is(err, ErrProtected):
 		apierror.Write(w, r, http.StatusConflict, ErrProtected.Error())
 	case errors.Is(err, ErrNotFound):

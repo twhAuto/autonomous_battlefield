@@ -1,6 +1,7 @@
 package members
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -15,8 +16,9 @@ import (
 )
 
 var ErrInvalid = errors.New("enter a valid email address")
-var ErrProtected = errors.New("administrator and tester identities are managed outside this page")
+var ErrProtected = errors.New("this email has a role set in server configuration and is managed outside this page")
 var ErrNotFound = errors.New("member not found")
+var ErrInvalidRole = errors.New("choose the Player or Tester role")
 
 type Store struct {
 	DB     *pgxpool.Pool
@@ -39,12 +41,13 @@ func NewStore(db *pgxpool.Pool, roles map[string]authn.Role, writer GroupWriter)
 }
 
 type Member struct {
-	ID      string    `json:"id"`
-	Email   string    `json:"email"`
-	Desired bool      `json:"desiredAccess"`
-	Version int64     `json:"version"`
-	Synced  int64     `json:"syncedVersion"`
-	Updated time.Time `json:"updatedAt"`
+	ID      string     `json:"id"`
+	Email   string     `json:"email"`
+	Role    authn.Role `json:"role"`
+	Desired bool       `json:"desiredAccess"`
+	Version int64      `json:"version"`
+	Synced  int64      `json:"syncedVersion"`
+	Updated time.Time  `json:"updatedAt"`
 }
 
 func (s *Store) protected(email string) bool {
@@ -106,7 +109,7 @@ func (s *Store) Initialize(ctx context.Context) error {
 		if err = tx.QueryRow(ctx, "INSERT INTO player_members(email,desired_access) VALUES($1,true) RETURNING id", normalized).Scan(&id); err != nil {
 			return err
 		}
-		if _, err = tx.Exec(ctx, "INSERT INTO player_membership_audit(member_id,actor_id,action) VALUES($1,'configuration','import')", id); err != nil {
+		if _, err = tx.Exec(ctx, "INSERT INTO player_membership_audit(member_id,actor_id,action,role) VALUES($1,'configuration','import','player')", id); err != nil {
 			return err
 		}
 	}
@@ -138,15 +141,21 @@ func (s *Store) retirePrivileged(ctx context.Context, tx pgx.Tx) error {
 	return err
 }
 
-func (s *Store) Allowed(ctx context.Context, email string) bool {
+// ActiveRole returns the stored role of a member whose grant Cloudflare has confirmed,
+// or "" for anyone else, including a configured Admin or Tester.
+func (s *Store) ActiveRole(ctx context.Context, email string) authn.Role {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	var allowed bool
-	err := s.DB.QueryRow(ctx, "SELECT desired_access AND version=synced_version FROM player_members WHERE email=$1", email).Scan(&allowed)
-	return err == nil && allowed && !s.protected(email)
+	var role authn.Role
+	var active bool
+	err := s.DB.QueryRow(ctx, "SELECT role,desired_access AND version=synced_version FROM player_members WHERE email=$1", email).Scan(&role, &active)
+	if err != nil || !active || s.protected(email) {
+		return ""
+	}
+	return role
 }
 func (s *Store) List(ctx context.Context) ([]Member, string, error) {
-	rows, err := s.DB.Query(ctx, "SELECT id,email,desired_access,version,synced_version,updated_at FROM player_members ORDER BY email")
+	rows, err := s.DB.Query(ctx, "SELECT id,email,role,desired_access,version,synced_version,updated_at FROM player_members ORDER BY email")
 	if err != nil {
 		return nil, "", err
 	}
@@ -154,7 +163,7 @@ func (s *Store) List(ctx context.Context) ([]Member, string, error) {
 	result := []Member{}
 	for rows.Next() {
 		var m Member
-		if err = rows.Scan(&m.ID, &m.Email, &m.Desired, &m.Version, &m.Synced, &m.Updated); err != nil {
+		if err = rows.Scan(&m.ID, &m.Email, &m.Role, &m.Desired, &m.Version, &m.Synced, &m.Updated); err != nil {
 			return nil, "", err
 		}
 		if !s.protected(m.Email) {
@@ -170,10 +179,15 @@ func (s *Store) List(ctx context.Context) ([]Member, string, error) {
 }
 
 // Change serializes desired-state writes on the singleton row. Remote calls never
-// hold that row lock, so removing a member does not wait on Cloudflare.
-func (s *Store) Change(ctx context.Context, actor, email, id string, grant bool) error {
+// hold that row lock, so removing a member does not wait on Cloudflare. A grant sets
+// role when it is non-empty; a new member without one is a Player. Changing only the
+// role of an active member needs no Cloudflare update, so it applies at once.
+func (s *Store) Change(ctx context.Context, actor, email, id string, grant bool, role authn.Role) error {
 	if !grant && !memberID.MatchString(id) {
 		return ErrNotFound
+	}
+	if !assignable(role) {
+		return ErrInvalidRole
 	}
 	email, err := s.changeEmail(email, grant)
 	if err != nil {
@@ -187,29 +201,45 @@ func (s *Store) Change(ctx context.Context, actor, email, id string, grant bool)
 	if _, err = tx.Exec(ctx, "SELECT id FROM player_membership_sync WHERE id FOR UPDATE"); err != nil {
 		return err
 	}
-	change, err := s.prepareChange(ctx, tx, email, id, grant)
+	change, err := s.prepareChange(ctx, tx, email, id, grant, role)
+	if err != nil || change.action == "" {
+		return commitUnless(ctx, tx, err)
+	}
+	if _, err = tx.Exec(ctx, "INSERT INTO player_membership_audit(member_id,actor_id,action,role) VALUES($1,$2,$3,NULLIF($4,''))", change.id, actor, change.action, change.role); err != nil {
+		return err
+	}
+	if change.action != auditRole {
+		if _, err = tx.Exec(ctx, "UPDATE player_membership_sync SET version=version+1,attempts=0,next_attempt=now(),last_error='' WHERE id"); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// assignable reports whether a grant may set role; empty keeps the stored role.
+func assignable(role authn.Role) bool {
+	return role == "" || role == authn.Player || role == authn.Tester
+}
+
+func commitUnless(ctx context.Context, tx pgx.Tx, err error) error {
 	if err != nil {
-		return err
-	}
-	if !change.changed {
-		return tx.Commit(ctx)
-	}
-	action := "remove"
-	if grant {
-		action = "grant"
-	}
-	if _, err = tx.Exec(ctx, "INSERT INTO player_membership_audit(member_id,actor_id,action) VALUES($1,$2,$3)", change.id, actor, action); err != nil {
-		return err
-	}
-	if _, err = tx.Exec(ctx, "UPDATE player_membership_sync SET version=version+1,attempts=0,next_attempt=now(),last_error='' WHERE id"); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
+// Audit actions a change records. A role change alone leaves Cloudflare untouched.
+const (
+	auditGrant  = "grant"
+	auditRemove = "remove"
+	auditRole   = "role"
+)
+
+// preparedChange is the audited result of a change; an empty action changed nothing.
 type preparedChange struct {
-	id      string
-	changed bool
+	id     string
+	action string
+	role   authn.Role
 }
 
 func (s *Store) changeEmail(email string, grant bool) (string, error) {
@@ -226,20 +256,22 @@ func (s *Store) changeEmail(email string, grant bool) (string, error) {
 	return email, nil
 }
 
-func (s *Store) prepareChange(ctx context.Context, tx pgx.Tx, email, id string, grant bool) (preparedChange, error) {
+func (s *Store) prepareChange(ctx context.Context, tx pgx.Tx, email, id string, grant bool, role authn.Role) (preparedChange, error) {
 	var desired bool
+	var stored authn.Role
 	var err error
 	if grant {
-		err = tx.QueryRow(ctx, "SELECT id,desired_access FROM player_members WHERE email=$1", email).Scan(&id, &desired)
+		err = tx.QueryRow(ctx, "SELECT id,desired_access,role FROM player_members WHERE email=$1", email).Scan(&id, &desired, &stored)
 	} else {
-		err = tx.QueryRow(ctx, "SELECT email,desired_access FROM player_members WHERE id=$1", id).Scan(&email, &desired)
+		err = tx.QueryRow(ctx, "SELECT email,desired_access,role FROM player_members WHERE id=$1", id).Scan(&email, &desired, &stored)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		if !grant {
 			return preparedChange{}, ErrNotFound
 		}
-		err = tx.QueryRow(ctx, "INSERT INTO player_members(email,desired_access) VALUES($1,true) RETURNING id", email).Scan(&id)
-		return preparedChange{id: id, changed: true}, err
+		role = cmp.Or(role, authn.Player)
+		err = tx.QueryRow(ctx, "INSERT INTO player_members(email,desired_access,role) VALUES($1,true,$2) RETURNING id", email, role).Scan(&id)
+		return preparedChange{id: id, action: auditGrant, role: role}, err
 	}
 	if err != nil {
 		return preparedChange{}, err
@@ -247,11 +279,32 @@ func (s *Store) prepareChange(ctx context.Context, tx pgx.Tx, email, id string, 
 	if s.protected(email) {
 		return preparedChange{}, ErrProtected
 	}
-	if desired == grant {
+	if !grant {
+		return s.prepareRemoval(ctx, tx, id, desired)
+	}
+	return s.prepareGrant(ctx, tx, id, desired, stored, cmp.Or(role, stored))
+}
+
+func (s *Store) prepareRemoval(ctx context.Context, tx pgx.Tx, id string, desired bool) (preparedChange, error) {
+	if !desired {
 		return preparedChange{id: id}, nil
 	}
-	_, err = tx.Exec(ctx, "UPDATE player_members SET desired_access=$2,version=version+1,updated_at=now() WHERE id=$1", id, grant)
-	return preparedChange{id: id, changed: true}, err
+	_, err := tx.Exec(ctx, "UPDATE player_members SET desired_access=false,version=version+1,updated_at=now() WHERE id=$1", id)
+	return preparedChange{id: id, action: auditRemove}, err
+}
+
+// prepareGrant restores access with role, or changes only the role of an active member
+// without a new version, so the member stays synchronized.
+func (s *Store) prepareGrant(ctx context.Context, tx pgx.Tx, id string, desired bool, stored, role authn.Role) (preparedChange, error) {
+	if !desired {
+		_, err := tx.Exec(ctx, "UPDATE player_members SET desired_access=true,role=$2,version=version+1,updated_at=now() WHERE id=$1", id, role)
+		return preparedChange{id: id, action: auditGrant, role: role}, err
+	}
+	if role == stored {
+		return preparedChange{id: id}, nil
+	}
+	_, err := tx.Exec(ctx, "UPDATE player_members SET role=$2,updated_at=now() WHERE id=$1", id, role)
+	return preparedChange{id: id, action: auditRole, role: role}, err
 }
 func (s *Store) Retry(ctx context.Context, actor string) error {
 	tx, err := s.DB.Begin(ctx)
