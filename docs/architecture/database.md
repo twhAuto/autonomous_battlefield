@@ -64,13 +64,13 @@ must supply the restricted login
 | `runtime_policy` | Singleton: AI stop switch, battle allowances, per-battle model budget, CLI concurrency | Row lock serializes every admission decision |
 | `agent_execution_leases` | Active CLI execution slots, keyed by decision or generation ID | Rows expire with their lease and are pruned on admission |
 | `model_access_policy` | Singleton administrator model-access policy | `version` rejects conflicting saves |
-| `player_members` / `player_membership_sync` / `player_membership_audit` | Managed Player and Tester grants with each member's role, Cloudflare Access group synchronization state, and audit history | Unique email; versioned desired and synced state. `role` is `player` or `tester`; a role change keeps the version. Audit actions are `grant`, `remove`, `retry`, `import` and `role`, with the role set by a grant, import or role change |
+| `player_members` / `player_membership_sync` / `player_membership_audit` | Managed Player and Tester grants with each member's role, Cloudflare Access group synchronization state, and audit history | Unique email; versioned desired and synced state. `role` is `player` or `tester`; a role change keeps the version. Audit actions are `grant`, `remove`, `retry`, `import` and `role`, with the role set by a grant, import or role change. Removed members [expire](#expiry); deleting one sets its audit rows' `member_id` to null and keeps them |
 | `battle_controller_evaluation` (view) | Per-controller decision count, fallback and invalid-plan rates, latency, tokens, plan diversity and win rate | Readable by the AI gateway role. `GET /v1/analytics` reports these figures by model and reasoning effort as well, from `battle_runs` and `battle_decisions` |
 | `friend_ai_usage` (view) | Model usage per identity across decisions and generation jobs | Private reporting view |
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
 These diagrams show every column of every table, generated from the schema after
-migration `00028` with keys marked `PK` and `FK`. Update them with any schema
+migration `00029` with keys marked `PK` and `FK`. Update them with any schema
 change. Battles snapshot faction data instead of referencing `factions`, so
 deleting a faction never changes a battle. Gameplay content lives in the frozen
 scenario and state JSON of `battle_runs`, not in relational columns: each battle
@@ -294,7 +294,7 @@ erDiagram
 
 ```mermaid
 erDiagram
-    PLAYER_MEMBERS ||--o{ PLAYER_MEMBERSHIP_AUDIT : "audited by"
+    PLAYER_MEMBERS |o--o{ PLAYER_MEMBERSHIP_AUDIT : "audited by"
     PLAYER_MEMBERS {
         uuid id PK
         text email
@@ -457,6 +457,12 @@ accepted.
   queued job past its expiry becomes `expired` (`queue_timeout`); a running one
   becomes `failed` (`timeout`).
 - **CLI leases:** pruned on every admission and deleted when usage is reported.
+- **Removed members:** each API replica's membership reconciler purges when it
+  starts and then hourly. It deletes a member, and with it the email, once the member
+  was removed more than seven days ago and Cloudflare has confirmed the removal; a
+  removal still awaiting confirmation is kept. The purge takes the singleton
+  desired-state lock that membership changes take, so a concurrent grant either
+  restores the member first or creates a new member afterwards.
 
 ## Migrations
 

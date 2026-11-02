@@ -617,7 +617,8 @@ supported only in development. Local cookie logout does not revoke copied tokens
 Optional Admin → Members routes persist grants, removals, role changes and audit
 events for Players and Testers in PostgreSQL (`player_members`,
 `player_membership_sync` and `player_membership_audit`). The singleton imports
-configured Players once, retaining removed-member tombstones across restarts. Every
+configured Players once, and removed-member tombstones survive restarts until they
+[expire](database.md#expiry). Every
 initialization also durably revokes and audits prior invitations for identities
 configured as Admin or Tester, so removing that configured role later cannot
 resurrect an invitation. Configured roles and CI identities keep their own

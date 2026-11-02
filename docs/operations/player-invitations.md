@@ -77,7 +77,10 @@ Tester [permissions](../architecture/api.md#roles-and-ownership) and
 [battle allowance](../architecture/api.md#admission-limits). Changing an active
 member's role in its row applies to the member's next API request without a
 Cloudflare update, because every managed member belongs to the same group. A
-removed member keeps its role, and **Grant access** on its row restores it.
+removed member keeps its role, and **Grant access** on its row restores it, until
+the member [expires](../architecture/database.md#expiry) and leaves the list.
+Granting that email afterwards is a new invitation, as a Player unless you choose
+Tester.
 
 **Remove access** denies subsequent game API requests as soon as the database
 change commits, including requests with a previously valid JWT. Cloudflare group
@@ -116,7 +119,9 @@ For errors, check the configured account/group IDs, token expiry/permissions, an
 API network access to `https://api.cloudflare.com`. API logs emit
 `player_members_sync_failed` with a sanitized HTTP status or transport/database/timeout
 category, without credentials or Cloudflare response bodies. Expected concurrent-edit
-serialization retries use debug-level `player_members_sync_retry`.
+serialization retries use debug-level `player_members_sync_retry`. A purge of expired
+members logs `player_members_purged` with a count, or `player_members_purge_failed`
+with a fixed reason, never an email; a failed purge retries an hour later.
 Configured Admin and Tester authentication remains available independently of
 the membership lookup. Member lookup failures deny access; they never fall back to
 static roles.

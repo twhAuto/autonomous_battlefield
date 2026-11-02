@@ -438,7 +438,9 @@ requests immediately. A grant may name the role: a new member without one is a
 Player, and an existing member keeps its role unless the grant names another.
 Changing only the role of an active member leaves `version` unchanged, so it
 applies to the member's next request. Admin cannot be assigned here, and any other
-role returns `400`. Repeating an unchanged grant or removal is idempotent. Emails
+role returns `400`. Repeating an unchanged grant or removal is idempotent. The list includes
+removed members until they [expire](database.md#expiry); a grant after that creates
+a new member. Emails
 are trimmed and lowercased, and must use a dotted DNS domain, a local part of at
 most 64 bytes and a total of at most 254 bytes. A configured Admin or Tester email
 returns `409`. `syncError` is a sanitized group-level failure, and automatic
