@@ -96,6 +96,13 @@ generation is disabled.
 and editing, or between factions, starts fresh form, loading, and error state and
 cancels the previous editor's load.
 
+`usePermissions().atFactionLimit` applies the Player
+[faction limit](../architecture/api.md#factions) to a loaded faction list. For a
+Player who owns a faction, the Factions page and `/factions/new` show
+`factionLimitMessage` from `features/factions/limits.ts` instead of the create
+action or form, and the API's `409 conflict` maps to the same message. When the
+list cannot be read, creation stays available and the API decides.
+
 ## Battle data lifecycle
 
 The battle feature's `hooks/` directory owns status, event, and decision-history requests. Each hook preserves its own polling cadence, retries, cancellation, and terminal-state handling. `components/AIDecisionPanel.tsx`, `components/EventConsole.tsx`, and `components/BattlePresentation.tsx` own the panels and visual presentation; shared UI state types live in `types.ts`. There is no WebSocket or server-sent-event client.

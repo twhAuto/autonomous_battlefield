@@ -342,9 +342,9 @@ Shared production plan validation lives in [`validation.go`](../../backend/inter
 | Area | Responsibility |
 | --- | --- |
 | [`faction.go`](../../backend/internal/faction/faction.go) | Stored and decorated faction model |
-| [`service`](../../backend/internal/faction/service) | UUID/name/doctrine/background validation, profile creation/update with owner-or-Admin edits, idempotent create retries, and the ruleset catalog. `Service` and `Repository` list every operation; nothing is discovered by type assertion. The service records the caller as owner |
+| [`service`](../../backend/internal/faction/service) | UUID/name/doctrine/background validation, profile creation/update with owner-or-Admin edits, idempotent create retries, the Player faction limit, and the ruleset catalog. `Service` and `Repository` list every operation; nothing is discovered by type assertion. The service records the caller as owner and passes the caller's faction limit to the repository |
 | [`api`](../../backend/internal/faction/api) | Faction list/create/update/delete and faction-ruleset HTTP routes |
-| [`repo`](../../backend/internal/faction/repo) | PostgreSQL serialization and errors; persists the owner the service supplies |
+| [`repo`](../../backend/internal/faction/repo) | PostgreSQL serialization and errors; persists the owner the service supplies and enforces a faction limit in one per-owner locked transaction |
 
 Faction creation and editing share `normalizeFaction` in `service/service.go`,
 so whitespace normalization and Unicode length limits stay consistent. The

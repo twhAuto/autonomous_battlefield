@@ -263,6 +263,9 @@ PostgreSQL serializes admission across replicas:
   Tester battles. Queued, running and paused battles are all unfinished.
 - A retry with the same battle ID, scenario snapshot, ticks and owner returns the
   existing battle; different inputs conflict.
+- A Player can own one faction at a time; Testers and Admins have no faction
+  limit. The [faction rules](../architecture/api.md#factions) cover Players who
+  own several. The limit is fixed in code, not in `runtime_policy`.
 - Background generation allows 10 jobs per identity per UTC day, including for
   Admin, with a cooldown, queue and execution timeouts, and idempotency keys.
   Expired queued jobs and failed executions both count.

@@ -182,6 +182,9 @@ paths:
         safe. Repeating the request with the same `id`, caller, and trimmed name,
         doctrine, and background returns `201` again without another write. Reusing
         the `id` with a different caller or content returns `409 already_exists`.
+
+        **Faction limit:** a Player who owns any faction cannot create another with
+        a new `id` and receives `409 conflict`. Testers and Admins have no limit.
       parameters:
         - {$ref: '#/components/parameters/Origin'}
       requestBody:
@@ -200,7 +203,18 @@ paths:
         '400': {$ref: '#/components/responses/InvalidRequest'}
         '401': {$ref: '#/components/responses/AuthenticationRequired'}
         '403': {$ref: '#/components/responses/PermissionDenied'}
-        '409': {$ref: '#/components/responses/AlreadyExists'}
+        '409':
+          description: |
+            `already_exists`: the `id` is in use with a different caller or content.
+            `conflict`: the caller is a Player who already owns a faction.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+              examples:
+                factionLimit:
+                  value: {error: {code: conflict, message: players can own only one faction at a time, requestId: 4f0c1e…}}
+                reusedId:
+                  value: {error: {code: already_exists, message: faction already exists, requestId: 4f0c1e…}}
         '415': {$ref: '#/components/responses/UnsupportedMediaType'}
         '500': {$ref: '#/components/responses/Internal'}
 

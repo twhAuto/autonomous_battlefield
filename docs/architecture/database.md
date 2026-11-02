@@ -410,6 +410,14 @@ Background generation is admitted in application code under the actor's
 (default 10) jobs per UTC day, counting queued jobs that later expire, with one
 active job per actor and same-key retries reusing the existing job.
 
+A Player's faction create is also admitted in application code. One transaction
+takes advisory lock `pg_advisory_xact_lock(741928330, hashtext(owner_id))`, checks
+that the owner owns no faction, and inserts, so concurrent creates by one owner
+run one after another and the later one sees the earlier faction. An `id` already
+in use skips the check and reaches the unique constraint, as a retry does. Tester
+and Admin creates take no lock. The [faction rules](api.md#factions) state the
+limit.
+
 ### Wake-up notifications
 
 Inserting a model decision runs `pg_notify('battlefield_decision_ready', profile_id)`.
