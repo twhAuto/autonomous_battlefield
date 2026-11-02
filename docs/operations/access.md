@@ -183,7 +183,10 @@ To enable guests:
 1. In Zero Trust, enable the **One-time PIN** identity provider if it is not
    already on, then add a self-hosted Access application for the entire guest
    hostname with only that provider. Give it one **Allow** policy: **Include →
-   Everyone**, **Require → Login Methods → One-time PIN**. Add no other policy.
+   Everyone**, **Require → Login Methods → One-time PIN**, and **Multi-factor
+   authentication → Disable MFA**. Without that override, the account's global MFA
+   setting asks every guest to enrol an authenticator after the code. Add no other
+   policy.
 2. Add a proxied DNS `CNAME` for the guest hostname pointing to
    `<BF_TUNNEL_ID>.cfargotunnel.com`, the same tunnel as the game.
 3. Put the guest application's AUD tag and origin in the production `.env`:
