@@ -7,7 +7,6 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
@@ -21,23 +20,7 @@ func (p *Postgres) Read(ctx context.Context) (Settings, error) {
 		return s, err
 	}
 	err = json.Unmarshal(raw, &s.Policy)
-	renameLegacyRoles(s.Policy)
 	return s, err
-}
-
-// legacyTesterRole is how earlier images save the tester role. Reads translate it, so
-// a policy saved through such an image, including one still serving during a rollout,
-// keeps working until a migration rewrites saved policies.
-const legacyTesterRole = "developer"
-
-func renameLegacyRoles(policy profile.AccessPolicy) {
-	for _, access := range policy.Profiles {
-		for i, role := range access.AllowedRoles {
-			if role == legacyTesterRole {
-				access.AllowedRoles[i] = "tester"
-			}
-		}
-	}
 }
 
 func (p *Postgres) Save(ctx context.Context, s Settings, actorID string) (Settings, error) {
