@@ -47,7 +47,7 @@ func TestBrowserMutationBoundary(t *testing.T) {
 			r.Header.Set("Origin", tt.origin)
 			r.Header.Set("Content-Type", tt.content)
 			w := httptest.NewRecorder()
-			BrowserProtection("https://play.example", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })).ServeHTTP(w, r)
+			BrowserProtection([]string{"https://play.example"}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })).ServeHTTP(w, r)
 			if w.Code != tt.status {
 				t.Fatalf("status=%d want %d", w.Code, tt.status)
 			}

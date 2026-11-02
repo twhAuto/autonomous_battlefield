@@ -47,6 +47,14 @@ only their status and applied plan, and a reduced model-profile list. Saved
 decision context, [leagues](#leagues) and [analytics](#analytics) require Tester
 or Admin; only Admins create or cancel a league or disqualify its entrants.
 
+Guests only view. Every token from the guest Access application is a Guest,
+whatever its email, and guests are off unless that application is configured.
+Guests read the scenario catalog, factions, faction rulesets, battle history,
+battles, faction views, events, replays and decision history, with the Player
+projection. Every other route returns `403`, including model profiles, the battle
+allowance, background generation and every mutation, and Guests own nothing they
+can manage.
+
 Selecting a model controller, for a battle or for background generation, requires
 an enabled, verified profile and a role allowed by the
 [model access policy](#model-access-administration). Players need explicit

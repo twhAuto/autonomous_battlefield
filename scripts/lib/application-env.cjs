@@ -4,7 +4,7 @@ const path = require('node:path');
 const fields = {
   // MCP_DATABASE_URL is the pre-rename name for AI_GATEWAY_DATABASE_URL.
   database: 'POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL AI_GATEWAY_DATABASE_URL MCP_DATABASE_URL',
-  auth: 'BATTLEFIELD_AUTH_MODE BATTLEFIELD_AUTH_ENABLED BATTLEFIELD_ADMIN_USERNAME BATTLEFIELD_ADMIN_PASSWORD BATTLEFIELD_SESSION_SECRET BATTLEFIELD_AUTH_COOKIE_SECURE BATTLEFIELD_ACCESS_ISSUER BATTLEFIELD_ACCESS_AUDIENCE BATTLEFIELD_ACCESS_ROLES BATTLEFIELD_ACCESS_CI_CLIENT_ID BATTLEFIELD_PUBLIC_ORIGIN',
+  auth: 'BATTLEFIELD_AUTH_MODE BATTLEFIELD_AUTH_ENABLED BATTLEFIELD_ADMIN_USERNAME BATTLEFIELD_ADMIN_PASSWORD BATTLEFIELD_SESSION_SECRET BATTLEFIELD_AUTH_COOKIE_SECURE BATTLEFIELD_ACCESS_ISSUER BATTLEFIELD_ACCESS_AUDIENCE BATTLEFIELD_ACCESS_ROLES BATTLEFIELD_ACCESS_CI_CLIENT_ID BATTLEFIELD_PUBLIC_ORIGIN BATTLEFIELD_ACCESS_GUEST_AUDIENCE BATTLEFIELD_GUEST_ORIGIN',
   ai: 'BATTLEFIELD_AGENT_SECRET BATTLEFIELD_MCP_CAPABILITY_SECRET BATTLEFIELD_CLI_ISOLATION_VERIFIED OPENAI_API_KEY OPENAI_MODEL OPENAI_PROFILE_AVAILABLE GEMINI_API_KEY GEMINI_MODEL GEMINI_PROFILE_AVAILABLE CODEX_CLI_PROFILE_AVAILABLE GEMINI_CLI_PROFILE_AVAILABLE CLAUDE_CLI_PROFILE_AVAILABLE',
   members: 'BATTLEFIELD_MANAGED_PLAYERS BATTLEFIELD_MEMBERS_ACCOUNT_ID BATTLEFIELD_MEMBERS_GROUP_ID BATTLEFIELD_MEMBERS_API_TOKEN',
   cache: 'BATTLEFIELD_REDIS_URL',
@@ -27,6 +27,19 @@ function read(file) {
 function group(key) {
   for (const [name, keys] of Object.entries(fields)) if (keys.split(' ').includes(key)) return name;
   throw new Error(`Unknown application setting: ${key}`);
+}
+
+// The optional guest Access application needs its own audience and HTTPS origin, set
+// together and distinct from the game's.
+function validateGuest(values, origin) {
+  const audience = values.get('BATTLEFIELD_ACCESS_GUEST_AUDIENCE') || '';
+  const guestOrigin = values.get('BATTLEFIELD_GUEST_ORIGIN') || '';
+  if (!audience && !guestOrigin) return;
+  let guest;
+  try { guest = new URL(guestOrigin); } catch { throw new Error('Invalid guest Access audience or origin.'); }
+  if (!/^[a-fA-F0-9]{64}$/.test(audience) || audience === values.get('BATTLEFIELD_ACCESS_AUDIENCE') || guest.protocol !== 'https:' || guest.username || guest.password || guest.pathname !== '/' || guest.search || guest.hash || guest.origin === origin.origin) {
+    throw new Error('Invalid guest Access audience or origin.');
+  }
 }
 
 function validate(values, environment) {
@@ -75,6 +88,7 @@ function validate(values, environment) {
     let origin, roles;
     try { origin = new URL(values.get('BATTLEFIELD_PUBLIC_ORIGIN')); roles = JSON.parse(values.get('BATTLEFIELD_ACCESS_ROLES')); } catch { throw new Error('Invalid Access origin or roles.'); }
     if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error('Invalid Access origin.');
+    validateGuest(values, origin);
     const seen = new Set();
     if (!roles || !Array.isArray(roles.admin) || !roles.admin.length) throw new Error('Assign at least one Access admin.');
     for (const [role, emails] of Object.entries(roles)) {

@@ -25,6 +25,8 @@ func TestRolePreviewBoundaries(t *testing.T) {
 		{"tester cannot preview", Tester, "player", "GET", "/v1/model-profiles", 403, ""},
 		{"anonymous cannot preview", "", "player", "GET", "/v1/model-profiles", 403, ""},
 		{"invalid preview", Admin, "admin", "GET", "/v1/model-profiles", 400, ""},
+		{"guest preview", Admin, "guest", "GET", "/v1/battles/x/decisions", 200, Guest},
+		{"guest model profiles denied", Admin, "guest", "GET", "/v1/model-profiles", 403, ""},
 		{"player admin settings denied", Player, "", "GET", "/v1/admin/model-access", 403, ""},
 		{"admin settings allowed", Admin, "", "PUT", "/v1/admin/model-access", 200, Admin},
 	} {

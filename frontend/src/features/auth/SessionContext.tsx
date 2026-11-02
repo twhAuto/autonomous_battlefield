@@ -7,5 +7,7 @@ export function usePermissions() {
  const session = useContext(SessionContext)
  const preview = useContext(RolePreviewContext)
  const role = session.actor?.role ?? (session.mode === 'cloudflare' ? 'player' : 'admin')
- return { inspect: role === 'admin' || role === 'tester', canManage: (owner?: string) => !preview.role && (role === 'admin' || (!!owner && owner === session.actor?.id)) }
+ // Guests only view: they start, create and manage nothing.
+ const play = role !== 'guest'
+ return { inspect: role === 'admin' || role === 'tester', play, canManage: (owner?: string) => !preview.role && play && (role === 'admin' || (!!owner && owner === session.actor?.id)) }
 }

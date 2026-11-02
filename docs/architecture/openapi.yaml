@@ -1311,6 +1311,13 @@ components:
       type: string
       enum: [admin, tester, player]
 
+    SessionRole:
+      description: |
+        A `guest` signed in through the guest Access application, which is off unless
+        configured, and can only view.
+      type: string
+      enum: [admin, tester, player, guest]
+
     Session:
       type: object
       required: [enabled, authenticated, mode]
@@ -1329,7 +1336,7 @@ components:
           properties:
             id: {type: string}
             email: {type: string}
-            role: {$ref: '#/components/schemas/Role'}
+            role: {$ref: '#/components/schemas/SessionRole'}
         capabilities:
           type: object
           properties:

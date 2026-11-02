@@ -94,7 +94,7 @@ func TestCloudflareServiceIdentity(t *testing.T) {
 func TestCIReadOnlyRouteBoundary(t *testing.T) {
 	actor := Actor{ID: "ci", Role: CI}
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) })
-	handler := BrowserProtection("https://play.example.com", RoutePolicy(next))
+	handler := BrowserProtection([]string{"https://play.example.com"}, RoutePolicy(next))
 	for _, test := range []struct {
 		method, path string
 		want         int

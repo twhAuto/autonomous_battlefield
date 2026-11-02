@@ -11,6 +11,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 type Cloudflare struct {
 	ResolvePlayer      func(context.Context, string) bool
 	Issuer, Audience   string
+	GuestAudience      string
 	CIClientID         string
 	Roles              map[string]Role
 	Client             *http.Client
@@ -160,8 +162,23 @@ type accessClaims struct {
 	Exp, Iat, Nbf         int64
 }
 
-// Service identities are explicitly enrolled and never inherit a human role.
+// guestToken reports a token for the guest Access application. A token naming both
+// applications is treated as a guest's, the lesser of the two.
+func (c *Cloudflare) guestToken(claims accessClaims) bool {
+	return c.GuestAudience != "" && slices.Contains(claims.Aud, c.GuestAudience)
+}
+
+// Service identities are explicitly enrolled and never inherit a human role. Guest
+// tokens map to Guest whatever the email, so a configured or managed identity
+// signing in through the guest application never gains more.
 func (c *Cloudflare) actorWithContext(ctx context.Context, claims accessClaims) (Actor, bool) {
+	if c.guestToken(claims) {
+		email := strings.ToLower(strings.TrimSpace(claims.Email))
+		if claims.CommonName != "" || claims.Sub == "" || email == "" {
+			return Actor{}, false
+		}
+		return Actor{ID: c.Issuer + "|" + claims.Sub, Email: email, Role: Guest}, true
+	}
 	if claims.CommonName != "" {
 		if c.CIClientID == "" || claims.CommonName != c.CIClientID || claims.Type != "app" || claims.Sub != "" || claims.Email != "" {
 			return Actor{}, false

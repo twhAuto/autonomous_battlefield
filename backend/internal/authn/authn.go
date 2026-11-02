@@ -30,6 +30,10 @@ type Config struct {
 	Origin        string
 	Issuer        string
 	Audience      string
+	// GuestAudience and GuestOrigin identify the guest Access application. Both are
+	// empty unless guests are enabled; every token for that audience is a Guest.
+	GuestAudience string
+	GuestOrigin   string
 	CIClientID    string
 	Roles         map[string]Role
 	Enabled       bool
@@ -67,7 +71,7 @@ func NewManager(config Config) *Manager {
 	if config.Mode == ModeCloudflare {
 		config.Enabled = true
 	}
-	return &Manager{config: config, now: time.Now, cloudflare: &Cloudflare{Issuer: config.Issuer, Audience: config.Audience, Roles: config.Roles, CIClientID: config.CIClientID, ResolvePlayer: config.ResolvePlayer}}
+	return &Manager{config: config, now: time.Now, cloudflare: &Cloudflare{Issuer: config.Issuer, Audience: config.Audience, GuestAudience: config.GuestAudience, Roles: config.Roles, CIClientID: config.CIClientID, ResolvePlayer: config.ResolvePlayer}}
 }
 
 func (m *Manager) Enabled() bool {

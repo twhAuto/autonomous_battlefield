@@ -28,6 +28,7 @@ func TestProductionAccessConfiguration(t *testing.T) {
 		{"BATTLEFIELD_ACCESS_CI_CLIENT_ID", "admin@example.com"},
 		{"BATTLEFIELD_ACCESS_ROLES", `{}`}, {"BATTLEFIELD_ACCESS_ROLES", `{"admin":["A@example.com"],"player":["a@example.com"]}`},
 		{"BATTLEFIELD_ACCESS_ROLES", `{"root":["a@example.com"]}`}, {"BATTLEFIELD_ACCESS_ROLES", `{"developer":["a@example.com"]}`},
+		{"BATTLEFIELD_ACCESS_ROLES", `{"guest":["a@example.com"]}`},
 	} {
 		t.Run(tt.key+tt.value, func(t *testing.T) {
 			t.Setenv(tt.key, tt.value)
@@ -35,6 +36,32 @@ func TestProductionAccessConfiguration(t *testing.T) {
 				t.Fatal("unsafe configuration accepted")
 			}
 		})
+	}
+}
+func TestGuestAccessConfiguration(t *testing.T) {
+	t.Setenv("BATTLEFIELD_AUTH_MODE", "cloudflare")
+	t.Setenv("BATTLEFIELD_AUTH_ENABLED", "")
+	t.Setenv("BATTLEFIELD_ACCESS_ISSUER", "https://friends.cloudflareaccess.com")
+	t.Setenv("BATTLEFIELD_ACCESS_AUDIENCE", "application-audience")
+	t.Setenv("BATTLEFIELD_PUBLIC_ORIGIN", "https://battle.example.com")
+	t.Setenv("BATTLEFIELD_ACCESS_ROLES", `{"admin":["owner@example.com"]}`)
+	if cfg, e := parseAuthConfig(fileConfig{}, true); e != nil || cfg.GuestAudience != "" || cfg.GuestOrigin != "" {
+		t.Fatal("guests enabled without configuration", cfg, e)
+	}
+	t.Setenv("BATTLEFIELD_ACCESS_GUEST_AUDIENCE", "guest-audience")
+	t.Setenv("BATTLEFIELD_GUEST_ORIGIN", "https://guest.example.com/")
+	if cfg, e := parseAuthConfig(fileConfig{}, true); e != nil || cfg.GuestAudience != "guest-audience" || cfg.GuestOrigin != "https://guest.example.com" {
+		t.Fatal(cfg, e)
+	}
+	for _, tt := range []struct{ audience, origin string }{
+		{"guest-audience", ""}, {"", "https://guest.example.com"}, {"application-audience", "https://guest.example.com"},
+		{"guest-audience", "https://battle.example.com"}, {"guest-audience", "http://guest.example.com"}, {"guest-audience", "https://guest.example.com/path"},
+	} {
+		t.Setenv("BATTLEFIELD_ACCESS_GUEST_AUDIENCE", tt.audience)
+		t.Setenv("BATTLEFIELD_GUEST_ORIGIN", tt.origin)
+		if _, e := parseAuthConfig(fileConfig{}, true); e == nil {
+			t.Fatal("unsafe guest configuration accepted", tt)
+		}
 	}
 }
 func TestTesterRoleAssignment(t *testing.T) {

@@ -8,7 +8,7 @@ export interface AuthSession {
   authenticated: boolean
   mode?: string
   capabilities?: { inspect: boolean; admin: boolean; members?: boolean }
-  actor?: { id: string; email?: string; role?: 'player' | 'tester' | 'admin' }
+  actor?: { id: string; email?: string; role?: 'guest' | 'player' | 'tester' | 'admin' }
 }
 
 export interface AuthenticationClient {

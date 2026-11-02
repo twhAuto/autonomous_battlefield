@@ -575,7 +575,12 @@ Production API manifests require `BATTLEFIELD_ENV=production`; startup accepts o
 `BATTLEFIELD_AUTH_MODE=cloudflare` with valid issuer (`BATTLEFIELD_ACCESS_ISSUER`),
 audience (`BATTLEFIELD_ACCESS_AUDIENCE`), HTTPS origin (`BATTLEFIELD_PUBLIC_ORIGIN`)
 and nonconflicting email/role assignments (`BATTLEFIELD_ACCESS_ROLES`, keyed by
-`admin`, `tester` and `player`). JWT
+`admin`, `tester` and `player`). An optional guest Access application has its own
+audience (`BATTLEFIELD_ACCESS_GUEST_AUDIENCE`) and HTTPS origin
+(`BATTLEFIELD_GUEST_ORIGIN`), set together and distinct from the game's. A token for
+that audience always maps to the view-only Guest role, never to an email's
+configured or managed role, so signing in there cannot bypass the game's Access
+policies; the guest origin may send mutations, which the route policy denies. JWT
 verification uses RS256, a fixed issuer's JWKS with one-hour key cache and a
 30-second refresh throttle, and required identity/
 time/audience checks. The audience claim accepts a single string or an array of
@@ -587,11 +592,13 @@ bounded `auth_failure` reason in the server log
 sessions and logout; the application issues no production auth cookie, and logout
 sends the browser to `/cdn-cgi/access/logout`.
 
-Players, Testers and Admins share gameplay/faction reads. Mutation ownership is
+Guests, Players, Testers and Admins share gameplay/faction reads. Mutation ownership is
 stored in PostgreSQL and taken from the authenticated request, never client JSON.
 Legacy rows belong to `legacy-admin`. Only Admin can manage another owner's rows.
-Player projections ([API roles](api.md#roles-and-ownership)) run after shared cache
-retrieval and omit model diagnostics, raw prompts and internal errors. The frontend hides inspection panels and stops their requests for Players.
+Player projections ([API roles](api.md#roles-and-ownership)), which Guests also
+receive, run after shared cache retrieval and omit model diagnostics, raw prompts and
+internal errors. The frontend hides inspection panels and stops their requests for
+Players and Guests.
 Cloudflare Access admission and MFA are independent deployment requirements. For
 static roles, user removal requires Access rule removal, session revocation,
 application role removal,

@@ -20,14 +20,14 @@ function MenuCard({ to, number, title, description, children }: Readonly<{
 }
 
 export function HomePage() {
-  const { inspect } = usePermissions()
+  const { inspect, play } = usePermissions()
   return <section className="command-menu" aria-labelledby="menu-heading">
     <header className="command-menu__header">
       <h1 id="menu-heading">Main menu</h1>
       <p>Choose your next move.</p>
     </header>
     <div className={`menu-grid${inspect ? '' : ' menu-grid--play'}`}>
-      <Link className="menu-card menu-card--battle" to="/battles/new" aria-labelledby="menu-title-01" aria-describedby="menu-description-01">
+      {play && <Link className="menu-card menu-card--battle" to="/battles/new" aria-labelledby="menu-title-01" aria-describedby="menu-description-01">
         <div className="menu-card__top" aria-hidden="true"><span className="menu-card__number">01</span><span className="menu-card__eyebrow">BATTLE SETUP</span></div>
         <svg className="menu-card__map" viewBox="0 0 320 180" fill="none" aria-hidden="true">
           <path className="menu-card__contour" d="m80 16 64 36v72l-64 36-64-36V52Zm0 22 44 25v50l-44 25-44-25V63Zm160-22 64 36v72l-64 36-64-36V52Zm0 22 44 25v50l-44 25-44-25V63Z" />
@@ -40,8 +40,8 @@ export function HomePage() {
           <p id="menu-description-01">Choose your factions, set the battlefield and put your strategy to the test.</p>
         </div>
         <span className="menu-card__action" aria-hidden="true">Prepare a battle <span>→</span></span>
-      </Link>
-      <MenuCard to="/factions" number="02" title="Factions" description="Create a faction and shape its doctrine.">
+      </Link>}
+      <MenuCard to="/factions" number="02" title="Factions" description={play ? 'Create a faction and shape its doctrine.' : 'Browse the factions and their doctrines.'}>
         <path d="m12 3 8 3v6c0 4-5 7-8 9-3-2-8-5-8-9V6Zm0 5v8m-4-4h8" />
       </MenuCard>
       <MenuCard to="/battles" number="03" title="Battle history" description="Return to active battles or review the results.">

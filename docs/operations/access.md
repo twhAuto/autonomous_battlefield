@@ -148,6 +148,8 @@ synchronization. Without managed Players, every role comes from configuration.
   no host or deployment access.
 - Players receive gameplay-only responses; the
   [API roles](../architecture/api.md#roles-and-ownership) list what they can read.
+- Guests, when a guest Access application is configured, receive the same responses
+  and can change nothing.
 
 In Cloudflare mode the application issues no auth cookie and ignores old ones.
 Logout sends the browser to `/cdn-cgi/access/logout`, and expired API sessions
@@ -179,10 +181,10 @@ is a deployment configuration task.
 To halt AI execution, use the [stop switch](#limits-and-the-stop-switch), not these
 toggles.
 
-**View as Player** or **View as Tester** opens a read-only preview with that
-role's actual API visibility and inspection permissions. Save or discard edits
-first. The banner stays visible while you navigate, and **Exit preview** restores
-the administrator view. Preview uses your own identity and ownership, impersonates
+**View as Player**, **View as Tester** or **View as Guest** opens a read-only
+preview with that role's actual API visibility and inspection permissions. Save or
+discard edits first. The banner stays visible while you navigate, and **Exit
+preview** restores the administrator view. Preview uses your own identity and ownership, impersonates
 nobody and grants nothing to non-admin callers.
 
 ### Remove an identity
