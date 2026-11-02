@@ -1546,7 +1546,7 @@ components:
                     description: Required when `type` is `model`.
                     type: string
                   modelIdentifier:
-                    description: Operator-allowlisted model; omission uses the profile default.
+                    description: Operator-allowlisted model; omission selects the model the model-profile list names in `modelLabel` for the caller's role.
                     type: string
                   reasoningEffort:
                     description: Supported effort for the selected model; omission uses the configured option default or provider default.
