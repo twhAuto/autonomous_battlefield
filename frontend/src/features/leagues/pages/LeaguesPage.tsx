@@ -1,5 +1,5 @@
-// League registry for Testers and Admins: status, progress and champion, with the
-// league setup link for Admins.
+// League registry: status, progress and champion, with the league setup link for
+// Admins.
 
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'

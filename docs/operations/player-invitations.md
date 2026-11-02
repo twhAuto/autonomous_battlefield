@@ -19,8 +19,10 @@ Testers assigned in `BATTLEFIELD_ACCESS_ROLES`.
    owns this group's complete contents, including its name, include/exclude rules,
    and empty require list; do not share it with other apps or edit it manually.
 4. Add an **Allow** policy to the game: **Include → Access groups → Battlefield
-   managed Players**, **Require → Login Methods → One-time PIN**. Login Methods
-   must be a Require rule, not an additional Include rule. Keep the Admin MFA
+   managed Players**, **Require → Login Methods → One-time PIN**, and
+   **Multi-factor authentication → Disable MFA** so the account's global MFA
+   setting does not apply. Login Methods must be a Require rule, not an additional
+   Include rule. Keep the Admin MFA
    policy, any policy for configured Testers and the CI service policy separate.
    Remove any older Player-specific Allow rules so this group is the sole
    admission path for managed members. These are manual Access

@@ -41,17 +41,18 @@ to.
 Faction and battle responses carry a server-assigned `ownerId`. Updating or
 deleting a faction, and stopping, pausing or resuming a battle, require ownership
 or the Admin role. Players can read shared factions, battles, events, replays,
-history and decision history, but receive gameplay-only responses: events and
-replay events without payloads, battles without inspection fields, decisions with
-only their status and applied plan, and a reduced model-profile list. Saved
-decision context, [leagues](#leagues) and [analytics](#analytics) require Tester
-or Admin; only Admins create or cancel a league or disqualify its entrants.
+history, decision history, [leagues](#leagues) and [analytics](#analytics), but
+receive gameplay-only responses: events and replay events without payloads,
+battles without inspection fields but with each side's controller and league,
+decisions with only their status and applied plan, and a reduced model-profile
+list. Saved decision context requires Tester or Admin; only Admins create or cancel
+a league or disqualify its entrants.
 
 Guests only view. Every token from the guest Access application is a Guest,
 whatever its email, and guests are off unless that application is configured.
 Guests read the scenario catalog, factions, faction rulesets, battle history,
-battles, faction views, events, replays and decision history, with the Player
-projection. Every other route returns `403`, including model profiles, the battle
+battles, faction views, events, replays, decision history, leagues and analytics,
+with the Player projection. Every other route returns `403`, including model profiles, the battle
 allowance, background generation and every mutation, and Guests own nothing they
 can manage.
 
@@ -301,7 +302,7 @@ of lookups it made. A request belonging to another battle or attempt returns
 ## Leagues
 
 A league plays AI entrants against each other in background battles. Admins create
-and cancel leagues and disqualify entrants; Testers and Admins read them.
+and cancel leagues and disqualify entrants; every signed-in role reads them.
 
 `POST /v1/leagues` takes a client-supplied `id`, a `name`, one to five
 `scenarioIds`, the battle timing (`tickCount`, optional `tickDuration` and
@@ -373,7 +374,7 @@ champion. Repeating it returns `200` with the league unchanged.
 
 ## Analytics
 
-`GET /v1/analytics` summarizes completed battles for Testers and Admins: per
+`GET /v1/analytics` summarizes completed battles for every signed-in role: per
 controller (scripted, or profile, model and reasoning effort) the win, draw and loss
 record, castle wins, a 95% Wilson interval on the win rate, mean ticks to win,
 fallback and invalid-plan rates, mean decision latency and tokens per battle; the

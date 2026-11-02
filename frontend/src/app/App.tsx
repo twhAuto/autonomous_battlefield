@@ -23,7 +23,7 @@ import { authenticationRequiredEvent, setRequestPreviewRole } from '../shared/ap
 import { SessionContext } from '../features/auth/SessionContext'
 import '../styles.css'
 
-function AppLayout({ actorID, admin, inspect, play, logoutError, onLogout }: Readonly<{ actorID: string; admin: boolean; inspect: boolean; play: boolean; logoutError: string; onLogout(): void }>) {
+function AppLayout({ actorID, admin, play, logoutError, onLogout }: Readonly<{ actorID: string; admin: boolean; play: boolean; logoutError: string; onLogout(): void }>) {
   const location = useLocation()
   const preview = useContext(RolePreviewContext)
   const mobile = useMobile()
@@ -68,8 +68,8 @@ function AppLayout({ actorID, admin, inspect, play, logoutError, onLogout }: Rea
           {play && <NavLink to="/battles/new" onClick={closeMobileMenu}>Stage battle</NavLink>}
           <NavLink to="/factions" onClick={closeMobileMenu}>Factions</NavLink>
           <NavLink to="/battles" end onClick={closeMobileMenu}>Battle history</NavLink>
-          {inspect && <NavLink to="/leagues" onClick={closeMobileMenu}>Leagues</NavLink>}
-          {inspect && <NavLink to="/analytics" onClick={closeMobileMenu}>Statistics</NavLink>}
+          <NavLink to="/leagues" onClick={closeMobileMenu}>Leagues</NavLink>
+          <NavLink to="/analytics" onClick={closeMobileMenu}>Statistics</NavLink>
           {admin && <NavLink to="/admin" onClick={closeMobileMenu}>Admin</NavLink>}
           {mobile && <div className="mobile-account"><span>Signed in as {actorID}</span><button type="button" onClick={onLogout} aria-label={`Log out ${actorID}`}>Log out</button></div>}
         </nav>
@@ -152,7 +152,6 @@ export default function App({ authentication = authenticationClient, initialSess
   const previewContext = useMemo(() => ({ role: previewRole, setRole: changePreviewRole }), [previewRole, changePreviewRole])
   const adminNow = canAdmin && !previewRole
   const effectiveRole = effectiveSession?.actor?.role ?? (session?.mode === 'cloudflare' ? 'player' : 'admin')
-  const inspect = effectiveRole === 'admin' || effectiveRole === 'tester'
   const play = effectiveRole !== 'guest'
 
   if (sessionError) {
@@ -179,7 +178,7 @@ export default function App({ authentication = authenticationClient, initialSess
 
   return (
     <RolePreviewContext.Provider value={previewContext}><SessionContext.Provider value={effectiveSession ?? session}><Routes key={previewRole ?? 'admin'}>
-      <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} admin={adminNow} inspect={inspect} play={play} logoutError={logoutError} onLogout={logout} />}>
+      <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} admin={adminNow} play={play} logoutError={logoutError} onLogout={logout} />}>
         <Route index element={<HomePage />} />
         {play && <><Route path="factions/new" element={<CreateFactionPage />} />
           <Route path="factions/:id/edit" element={<CreateFactionPage />} /></>}
@@ -187,10 +186,10 @@ export default function App({ authentication = authenticationClient, initialSess
         <Route path="factions" element={<FactionsPage />} />
         <Route path="battles" element={<BattleHistoryPage />} />
         <Route path="battles/:id" element={<BattlePage />} />
-        {inspect && <><Route path="leagues" element={<LeaguesPage canCreate={adminNow} />} />
-          <Route path="leagues/new" element={adminNow ? <CreateLeaguePage /> : <NotFoundPage />} />
-          <Route path="leagues/:id" element={<LeaguePage canManage={adminNow} />} />
-          <Route path="analytics" element={<AnalyticsPage />} /></>}
+        <Route path="leagues" element={<LeaguesPage canCreate={adminNow} />} />
+        <Route path="leagues/new" element={adminNow ? <CreateLeaguePage /> : <NotFoundPage />} />
+        <Route path="leagues/:id" element={<LeaguePage canManage={adminNow} />} />
+        <Route path="analytics" element={<AnalyticsPage />} />
         {canAdmin && !previewRole && <><Route path="admin" element={<AdminSettingsPage />} />{session.capabilities?.members && <Route path="admin/members" element={<MembersPage />} />}</>}
         <Route path="*" element={<NotFoundPage />} />
       </Route>

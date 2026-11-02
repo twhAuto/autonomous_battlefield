@@ -1,15 +1,19 @@
-// Checks battle-history HTTP filters, pagination, and service error responses.
+// Checks battle-history HTTP filters, pagination, service error responses, and that
+// every reader sees each side's controller.
 
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 func TestListBattleHistoryHTTP(t *testing.T) {
@@ -51,5 +55,19 @@ func checkEmptyHistoryPage(t *testing.T, response *httptest.ResponseRecorder) {
 	var page battleservice.BattleHistoryPage
 	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || page.Battles == nil || page.NextCursor != nil {
 		t.Fatalf("body=%s err=%v", response.Body, err)
+	}
+}
+
+func TestBattleHistoryNamesEachSidesModelForGuests(t *testing.T) {
+	model := game.ControllerConfig{Type: "model", ProfileID: "frontier", ModelIdentifier: "gpt-test", ReasoningEffort: "high"}
+	service := &fakeBattleService{historyPage: battleservice.BattleHistoryPage{Battles: []battleservice.BattleSummary{{ID: "battle", Participants: []battleservice.BattleParticipantSummary{{ID: "a", Name: "A", Controller: model}}}}}}
+	mux := http.NewServeMux()
+	NewHandler(service).RegisterRoutes(mux)
+	response := httptest.NewRecorder()
+	guest := authn.WithActor(context.Background(), authn.Actor{ID: "guest", Role: authn.Guest})
+	mux.ServeHTTP(response, httptest.NewRequest("GET", "/v1/battles", nil).WithContext(guest))
+	var page battleservice.BattleHistoryPage
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Battles) != 1 || page.Battles[0].Participants[0].Controller != model {
+		t.Fatalf("code=%d body=%s err=%v", response.Code, response.Body, err)
 	}
 }

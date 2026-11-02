@@ -175,7 +175,29 @@ func TestCreateLeagueRetriesReturnTheStoredLeagueOnlyWhenIdentical(t *testing.T)
 	}
 }
 
-func TestReadsRequireInspection(t *testing.T) {
+func TestPlayersAndGuestsReadLeaguesButCannotManageThem(t *testing.T) {
+	h := newHarness()
+	if _, err := h.service.CreateLeague(actorContext(authn.Admin), validInput(8)); err != nil {
+		t.Fatal(err)
+	}
+	for _, role := range []authn.Role{authn.Player, authn.Guest} {
+		reader := actorContext(role)
+		if got, err := h.service.GetLeague(reader, leagueID); err != nil || got.ID != leagueID {
+			t.Errorf("%s get = %+v, %v", role, got, err)
+		}
+		if list, err := h.service.ListLeagues(reader, 0); err != nil || len(list) != 1 {
+			t.Errorf("%s list = %+v, %v", role, list, err)
+		}
+		if _, err := h.service.Scheduling(reader); err != nil {
+			t.Errorf("%s scheduling err = %v", role, err)
+		}
+		if _, err := h.service.CancelLeague(reader, leagueID); !errors.Is(err, authn.ErrForbidden) {
+			t.Errorf("%s cancel err = %v", role, err)
+		}
+	}
+}
+
+func TestLeagueReads(t *testing.T) {
 	h := newHarness()
 	if _, err := h.service.CreateLeague(actorContext(authn.Admin), validInput(8)); err != nil {
 		t.Fatal(err)
@@ -192,12 +214,12 @@ func TestReadsRequireInspection(t *testing.T) {
 			t.Errorf("limit %d: err = %v", limit, err)
 		}
 	}
-	player := actorContext(authn.Player)
-	if _, err := h.service.GetLeague(player, leagueID); !errors.Is(err, authn.ErrForbidden) {
-		t.Errorf("player get err = %v", err)
+	ci := actorContext(authn.CI)
+	if _, err := h.service.GetLeague(ci, leagueID); !errors.Is(err, authn.ErrForbidden) {
+		t.Errorf("service identity get err = %v", err)
 	}
-	if _, err := h.service.ListLeagues(player, 0); !errors.Is(err, authn.ErrForbidden) {
-		t.Errorf("player list err = %v", err)
+	if _, err := h.service.ListLeagues(ci, 0); !errors.Is(err, authn.ErrForbidden) {
+		t.Errorf("service identity list err = %v", err)
 	}
 	if _, err := h.service.GetLeague(tester, "league"); !errors.Is(err, ErrInvalidLeague) {
 		t.Errorf("bad ID err = %v", err)
