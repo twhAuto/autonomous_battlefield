@@ -26,7 +26,7 @@ func (r *fakeRepo) CompletedBattles(_ context.Context, filter Filter, limit int)
 }
 
 func inspector() context.Context {
-	return authn.WithActor(context.Background(), authn.Actor{ID: "developer", Role: authn.Developer})
+	return authn.WithActor(context.Background(), authn.Actor{ID: "tester", Role: authn.Tester})
 }
 
 func completed(winner string, fallback bool) analytics.Battle {

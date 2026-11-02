@@ -113,7 +113,7 @@ it('explains empty, truncated and failed reports', async () => {
   second.unmount()
   serve(() => reply(403, {}))
   show()
-  expect(await screen.findByRole('alert')).toHaveTextContent('developers and administrators')
+  expect(await screen.findByRole('alert')).toHaveTextContent('testers and administrators')
 })
 
 it('drops the previous report when a filter change fails', async () => {

@@ -2,7 +2,7 @@ import { test, expect } from './fixtures'
 
 test('admin model access saves and role preview works on desktop and mobile', async ({ page }) => {
   const model = { id: 'api', displayName: 'OpenAI API', modelLabel: 'Configured model', provider: 'openai', runtime: 'api', scope: 'cluster', available: true }
-  let policy = { providers: { openai: true }, profiles: { api: { enabled: true, allowedRoles: ['admin', 'developer', 'player'] } } }
+  let policy = { providers: { openai: true }, profiles: { api: { enabled: true, allowedRoles: ['admin', 'tester', 'player'] } } }
   let version = 0
   await page.route('**/v1/admin/model-access', async route => {
     if (route.request().method() === 'PUT') { policy = route.request().postDataJSON().policy; version++; return route.fulfill({ json: { policy, version } }) }

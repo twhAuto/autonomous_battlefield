@@ -93,7 +93,7 @@ func TestPlayerCLIAccessGrantAndRevocation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		roles := []string{"admin", "developer"}
+		roles := []string{"admin", "tester"}
 		if allow {
 			roles = append(roles, "player")
 		}

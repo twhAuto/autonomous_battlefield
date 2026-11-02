@@ -31,7 +31,7 @@ The frontend is a React/Vite single-page application.
 | [`features/battles/components/TypeStatistics.tsx`](../../frontend/src/features/battles/components/TypeStatistics.tsx) | After-action unit and building tables by type and the upgrade timeline; renders nothing for a result without per-type figures |
 | [`features/leagues/api/leagues.ts`](../../frontend/src/features/leagues/api/leagues.ts) | Typed league list, read, create and cancel requests, and entrant disqualification |
 | [`features/leagues/pages/CreateLeaguePage.tsx`](../../frontend/src/features/leagues/pages/CreateLeaguePage.tsx) | League setup: name, 8 or 16 entrants with faction, group and controller, maps, timing, and estimates of battles, duration and model decisions; `?from=<league id>` pre-fills the form from that league, and copied factions, maps, profiles, models or efforts that no longer exist block starting until replaced |
-| [`features/leagues/pages/LeaguePage.tsx`](../../frontend/src/features/leagues/pages/LeaguePage.tsx) | Running battles with tick progress, each group's placements, win and loss records and five matches, the knockout bracket, and fixtures with battle links and tiebreak winners (`components/LeagueStandings.tsx`), each entrant named with its controller, and [disqualifications](../architecture/api.md#leagues), refreshed while the league runs; for Admins, cancellation, disqualification from the group tables (`components/DisqualifyEntrant.tsx`), and **START AGAIN** into a pre-filled setup |
+| [`features/leagues/pages/LeaguePage.tsx`](../../frontend/src/features/leagues/pages/LeaguePage.tsx) | Running battles with tick progress, each group's placements, win and loss records and five matches, the knockout bracket, and fixtures with battle links and tiebreak winners (`components/LeagueStandings.tsx`), each entrant named with its controller, and [disqualifications](../architecture/api.md#leagues), refreshed while the league runs; for Admins, cancellation, disqualification of an entrant picked from the page header (`components/DisqualifyEntrant.tsx`), and **START AGAIN** into a pre-filled setup |
 | [`features/analytics/pages/AnalyticsPage.tsx`](../../frontend/src/features/analytics/pages/AnalyticsPage.tsx) | Statistics report with URL-backed league, rules-version and fallback filters: model, head-to-head, unit, army-mix, upgrade, faction and map tables |
 | [`features/analytics/components/WinRateChart.tsx`](../../frontend/src/features/analytics/components/WinRateChart.tsx) | Model leaderboard: win rate per controller with its 95% interval |
 | [`features/admin/pages/MembersPage.tsx`](../../frontend/src/features/admin/pages/MembersPage.tsx) | Managed Player invitations, removal, sync retry, and game link (Admins only, when enabled) |
@@ -40,7 +40,7 @@ The frontend is a React/Vite single-page application.
 ## Routes and session
 
 Home and primary navigation share destinations in this order: Stage battle,
-Factions, Battle history, and, for Developers and Admins, Leagues and Statistics.
+Factions, Battle history, and, for Testers and Admins, Leagues and Statistics.
 Admin appears only in primary navigation for Admins outside role preview.
 The compact home has no promotional hero. Factions
 combines directory access with its Create faction action; the creation and
@@ -49,7 +49,7 @@ editing routes keep the Factions navigation item active.
 Routes: `/` (Home), `/battles/new`, `/battles`, `/battles/:id`, `/factions`,
 `/factions/new`, `/factions/:id/edit`, `/leagues`, `/leagues/new`, `/leagues/:id`,
 `/analytics`, `/admin`, and `/admin/members`. League and statistics routes mount for
-Developers and Admins, including in Developer preview. The league setup form at
+Testers and Admins, including in Tester preview. The league setup form at
 `/leagues/new`, the start, cancel and disqualify actions, and the admin routes are only for
 Admins outside role preview; anyone else opening `/leagues/new` gets the not-found
 page. `/admin/members` also requires the session's `members` capability. Unknown

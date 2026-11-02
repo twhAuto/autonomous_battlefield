@@ -7,5 +7,5 @@ export function usePermissions() {
  const session = useContext(SessionContext)
  const preview = useContext(RolePreviewContext)
  const role = session.actor?.role ?? (session.mode === 'cloudflare' ? 'player' : 'admin')
- return { inspect: role === 'admin' || role === 'developer', canManage: (owner?: string) => !preview.role && (role === 'admin' || (!!owner && owner === session.actor?.id)) }
+ return { inspect: role === 'admin' || role === 'tester', canManage: (owner?: string) => !preview.role && (role === 'admin' || (!!owner && owner === session.actor?.id)) }
 }

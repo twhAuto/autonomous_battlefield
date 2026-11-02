@@ -32,9 +32,9 @@ production), Jenkins and SonarQube.
 - Run two-faction castle-siege battles on open maps with autonomous combat, terrain bonuses, building-range expansion, defending castles, five specialized training buildings and continuous AI-selected unit production.
 - Give each faction a scripted controller or a model, choosing the model and reasoning effort from the operator allowlist, and set tick duration and decision interval or keep map defaults.
 - Inspect live battles, saved results, events and AI decision history, and replay finished battles tick by tick.
-- Run AI leagues (Admins start them; Developers follow them), with group and knockout stages played in the background.
-- Compare models, factions, units, upgrades and maps across completed battles on the Statistics page (Developers and Admins).
-- Manage invited players and model access through Player, Developer and Admin roles.
+- Run AI leagues (Admins start them; Testers follow them), with group and knockout stages played in the background.
+- Compare models, factions, units, upgrades and maps across completed battles on the Statistics page (Testers and Admins).
+- Manage invited players and model access through Player, Tester and Admin roles.
 
 | League groups and live fixtures | Statistics across completed battles |
 | --- | --- |

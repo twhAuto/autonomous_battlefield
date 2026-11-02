@@ -1,12 +1,13 @@
 // One league: progress, champion, running battles, disqualifications, each group's table
 // and matches, the knockout bracket and fixtures. Refreshes while the league runs. Admins
-// can cancel it or disqualify an entrant after confirming, or start a new league from a
-// copy of its setup.
+// can cancel it or pick an entrant to disqualify, each after confirming, or start a new
+// league from a copy of its setup.
 
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { cancelLeague, getLeague, LeagueApiError, type League } from '../api/leagues'
-import { Disqualifications, FixtureList, GroupStage, KnockoutBracket, NowPlaying, type EntrantManagement } from '../components/LeagueStandings'
+import { DisqualifyEntrant } from '../components/DisqualifyEntrant'
+import { Disqualifications, FixtureList, GroupStage, KnockoutBracket, NowPlaying } from '../components/LeagueStandings'
 import { entrantName } from '../presentation/leagues'
 
 export const leagueRefreshMs = 10_000
@@ -18,7 +19,7 @@ export function LeaguePage({ canManage }: Readonly<{ canManage: boolean }>) {
   const [version, setVersion] = useState(0)
   const [confirming, setConfirming] = useState(false)
   const [cancelError, setCancelError] = useState('')
-  const [disqualifying, setDisqualifying] = useState<number | null>(null)
+  const [disqualifying, setDisqualifying] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -36,11 +37,6 @@ export function LeaguePage({ canManage }: Readonly<{ canManage: boolean }>) {
     const timer = window.setInterval(() => setVersion(value => value + 1), leagueRefreshMs)
     return () => window.clearInterval(timer)
   }, [running])
-
-  const manage: EntrantManagement | undefined = canManage && running ? {
-    confirming: disqualifying, start: setDisqualifying, close: () => setDisqualifying(null),
-    done: updated => { setLeague(updated); setDisqualifying(null) },
-  } : undefined
 
   async function cancel() {
     setCancelError('')
@@ -71,19 +67,23 @@ export function LeaguePage({ canManage }: Readonly<{ canManage: boolean }>) {
           <div className="league-actions">
             <Link className="compact-action" to={`/analytics?leagueId=${encodeURIComponent(league.id)}`}>STATISTICS →</Link>
             {canManage && <Link className="compact-action" to={`/leagues/new?from=${encodeURIComponent(league.id)}`}>START AGAIN →</Link>}
+            {canManage && running && <button className="compact-action" type="button" aria-expanded={disqualifying} aria-controls="league-disqualify"
+              onClick={() => setDisqualifying(open => !open)}>DISQUALIFY ENTRANT</button>}
             {canManage && running && !confirming && <button className="compact-action" type="button" onClick={() => setConfirming(true)}>CANCEL LEAGUE</button>}
             {canManage && running && confirming && <><button className="compact-action compact-action--danger" type="button" onClick={cancel}>CONFIRM CANCEL</button>
               <button className="compact-action" type="button" onClick={() => setConfirming(false)}>KEEP RUNNING</button></>}
           </div>
         </div>
         {cancelError && <p className="field-error" role="alert">{cancelError}</p>}
+        {canManage && running && disqualifying && <DisqualifyEntrant id="league-disqualify" league={league}
+          onDone={updated => { setLeague(updated); setDisqualifying(false) }} onClose={() => setDisqualifying(false)} />}
         {error && <output className="field-error league-refresh-error">Refresh failed: {error}</output>}
       </section>
       {league.champion !== null && <output className="league-champion">Champion: <strong>{entrantName(league, league.champion)}</strong></output>}
       <progress className="battle-progress" max={league.progress.total} value={league.progress.settled} aria-label="League progress" />
       <NowPlaying league={league} />
       <Disqualifications league={league} />
-      <GroupStage league={league} manage={manage} />
+      <GroupStage league={league} />
       <KnockoutBracket league={league} />
       <FixtureList league={league} />
     </>

@@ -21,10 +21,10 @@ func TestControllerEligibilityByIdentity(t *testing.T) {
 		{"player approved API", authn.Player, "api", []string{"player"}, true},
 		{"player default CLI", authn.Player, "cli", nil, false},
 		{"player approved CLI", authn.Player, "cli", []string{"player"}, true},
-		{"player revoked CLI", authn.Player, "cli", []string{"admin", "developer"}, false},
-		{"developer default CLI", authn.Developer, "cli", nil, true},
+		{"player revoked CLI", authn.Player, "cli", []string{"admin", "tester"}, false},
+		{"tester default CLI", authn.Tester, "cli", nil, true},
 		{"admin default API", authn.Admin, "api", nil, true},
-		{"developer excluded", authn.Developer, "api", []string{"admin"}, false},
+		{"tester excluded", authn.Tester, "api", []string{"admin"}, false},
 		{"unknown role", "root", "api", nil, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

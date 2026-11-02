@@ -31,7 +31,7 @@ func newManagedPlayerFixture(t *testing.T) *managedPlayerFixture {
 	f := &managedPlayerFixture{t: t, key: key, now: time.Now(), allowed: true}
 	f.cfg = Config{
 		Mode: ModeCloudflare, Issuer: "https://team.cloudflareaccess.com", Audience: "game",
-		Roles: map[string]Role{"owner@example.com": Admin, "dev@example.com": Developer, "old@example.com": Player},
+		Roles: map[string]Role{"owner@example.com": Admin, "tester@example.com": Tester, "old@example.com": Player},
 		ResolvePlayer: func(ctx context.Context, email string) bool {
 			f.calls++
 			return ctx.Err() == nil && email == "friend@example.com" && f.allowed
@@ -87,7 +87,7 @@ func TestManagedPlayersVerifyJWTBeforeMembershipLookup(t *testing.T) {
 
 func TestManagedPlayersPreservePrivilegedAndCIAuthentication(t *testing.T) {
 	f := newManagedPlayerFixture(t)
-	for email, role := range map[string]Role{"owner@example.com": Admin, "dev@example.com": Developer} {
+	for email, role := range map[string]Role{"owner@example.com": Admin, "tester@example.com": Tester} {
 		a, ok := f.authenticate(f.token(email, "game", "privileged"))
 		if !ok || a.Role != role {
 			t.Fatal("privileged role changed", a)

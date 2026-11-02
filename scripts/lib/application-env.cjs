@@ -78,7 +78,7 @@ function validate(values, environment) {
     const seen = new Set();
     if (!roles || !Array.isArray(roles.admin) || !roles.admin.length) throw new Error('Assign at least one Access admin.');
     for (const [role, emails] of Object.entries(roles)) {
-      if (!['admin','developer','player'].includes(role) || !Array.isArray(emails)) throw new Error('Invalid Access role assignment.');
+      if (!['admin','tester','developer','player'].includes(role) || !Array.isArray(emails)) throw new Error('Invalid Access role assignment.');
       for (const email of emails) {
         if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || seen.has(email.toLowerCase())) throw new Error('Invalid or duplicate Access identity.');
         if (managedPlayers === 'true' && role === 'player') {

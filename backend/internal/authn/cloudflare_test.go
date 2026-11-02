@@ -139,7 +139,7 @@ func TestRouteRolesAndOrigins(t *testing.T) {
 	}{
 		{Player, "/v1/battles", "GET", "", "", 204},
 		{Player, "/v1/battles/b/decisions", "GET", "", "", 403},
-		{Developer, "/v1/battles/b/decisions", "GET", "", "", 204},
+		{Tester, "/v1/battles/b/decisions", "GET", "", "", 204},
 		{Admin, "/v1/new-admin-route", "GET", "", "", 403},
 		{Player, "/v1/factions", "POST", "https://evil.example", "application/json", 403},
 		{Admin, "/v1/factions", "POST", "", "application/json", 403},

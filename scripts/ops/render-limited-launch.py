@@ -18,7 +18,7 @@ def render(args):
         raise ValueError('invalid tunnel UUID')
     if not re.fullmatch(r'cloudflare/cloudflared@sha256:[a-f0-9]{64}', args.cloudflared_image):
         raise ValueError('provide a verified, digest-pinned cloudflared image')
-    roles = {r: [v.strip().lower() for v in getattr(args, r)] for r in ('admin', 'developer', 'player')}
+    roles = {r: [v.strip().lower() for v in getattr(args, r)] for r in ('admin', 'tester', 'player')}
     emails = [e for values in roles.values() for e in values]
     if not roles['admin'] or len(emails) != len(set(emails)) or any(not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', e) for e in emails):
         raise ValueError('assign at least one Admin and each valid email exactly once')
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     parser.add_argument('--policies-only', action='store_true')
     for name in ('hostname', 'team', 'audience', 'tunnel-id', 'cloudflared-image'):
         parser.add_argument('--' + name)
-    for role in ('admin', 'developer', 'player'):
+    for role in ('admin', 'tester', 'player'):
         parser.add_argument('--' + role, action='append', default=[])
     try:
         args = parser.parse_args()

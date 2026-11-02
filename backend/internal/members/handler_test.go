@@ -60,7 +60,7 @@ func TestMemberRoutesRequireAdmin(t *testing.T) {
 	f := &fakeRepository{}
 	h := NewHandler(f, "https://game.example")
 	for _, tt := range memberRoutes() {
-		for _, role := range []authn.Role{"", authn.Player, authn.Developer, authn.CI} {
+		for _, role := range []authn.Role{"", authn.Player, authn.Tester, authn.CI} {
 			w := request(h, tt.method, tt.path, tt.body, role, "https://game.example", "")
 			if w.Code != 401 && w.Code != 403 {
 				t.Fatal("unauthorized route", role, w.Code)

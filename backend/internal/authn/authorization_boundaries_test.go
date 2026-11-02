@@ -15,7 +15,7 @@ func TestPermissionMiddlewareRejectsUnknownAndAnonymous(t *testing.T) {
 		status     int
 	}{
 		{"anonymous", "play", "", 401}, {"unknown permission", "future", Admin, 403},
-		{"player admin", "admin", Player, 403}, {"developer admin", "admin", Developer, 403},
+		{"player admin", "admin", Player, 403}, {"tester admin", "admin", Tester, 403},
 		{"admin", "admin", Admin, 204}, {"unknown role", "play", "root", 403},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

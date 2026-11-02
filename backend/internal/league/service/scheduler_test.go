@@ -343,11 +343,11 @@ func TestSchedulePassAndSchedulingSurfaceCapacityErrors(t *testing.T) {
 	if err := h.service.SchedulePass(context.Background()); !errors.Is(err, errDatabase) || len(h.battles.created) != 0 {
 		t.Fatalf("pass err = %v, created %d", err, len(h.battles.created))
 	}
-	if _, err := h.service.Scheduling(actorContext(authn.Developer)); !errors.Is(err, errDatabase) {
+	if _, err := h.service.Scheduling(actorContext(authn.Tester)); !errors.Is(err, errDatabase) {
 		t.Fatalf("scheduling err = %v", err)
 	}
 	h.repo.capErr = nil
-	if got, err := h.service.Scheduling(actorContext(authn.Developer)); err != nil || got != (league.Scheduling{BattleSlots: 4, CLISlots: 4}) {
+	if got, err := h.service.Scheduling(actorContext(authn.Tester)); err != nil || got != (league.Scheduling{BattleSlots: 4, CLISlots: 4}) {
 		t.Fatalf("scheduling = %+v, %v", got, err)
 	}
 	if _, err := h.service.Scheduling(actorContext(authn.Player)); !errors.Is(err, authn.ErrForbidden) {

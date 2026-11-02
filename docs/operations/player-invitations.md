@@ -3,7 +3,7 @@
 Admin → Members manages ordinary Players without a deployment per invitation.
 An administrator grants an exact email, shares the game URL, and the player asks
 Cloudflare for a one-time email code. The application does not send invitation
-emails. Admin/Developer identities and their MFA policies remain operator-managed.
+emails. Admin/Tester identities and their MFA policies remain operator-managed.
 
 ## Enable managed Players
 
@@ -19,7 +19,7 @@ emails. Admin/Developer identities and their MFA policies remain operator-manage
    and empty require list; do not share it with other apps or edit it manually.
 4. Add an **Allow** policy to the game: **Include → Access groups → Battlefield
    managed Players**, **Require → Login Methods → One-time PIN**. Login Methods
-   must be a Require rule, not an additional Include rule. Keep Admin/Developer
+   must be a Require rule, not an additional Include rule. Keep Admin/Tester
    MFA and CI service policies separate. Remove any older Player-specific Allow
    rules so this group is the sole Player admission path. These are manual Access
    policy changes; see
@@ -41,7 +41,7 @@ emails. Admin/Developer identities and their MFA policies remain operator-manage
    32-character lowercase hexadecimal account ID, a lowercase group UUID, and a
    nonblank, single-line API token. Invalid settings fail API startup.
 
-   Keep `BATTLEFIELD_ACCESS_ROLES` with the existing Admin/Developer assignments.
+   Keep `BATTLEFIELD_ACCESS_ROLES` with the existing Admin/Tester assignments.
    Its Player emails are imported **once** at first managed startup. Imported
    Players wait for successful synchronization before becoming active. Later
    changes to the configured Player list do not change database membership.
@@ -75,10 +75,10 @@ may finish; accepted battles and generation jobs continue. Ownership and game
 history are retained. Reinviting the same email waits for fresh synchronization;
 ownership still follows the verified Cloudflare `issuer|subject`, not the email.
 
-Admin/Developer emails cannot be invited, removed, or assigned a role here. On
+Admin/Tester emails cannot be invited, removed, or assigned a role here. On
 every managed API startup while the feature is enabled, any prior active Player
 invitation for a configured
-Admin/Developer is permanently revoked and audited before readiness. Removing
+Admin/Tester is permanently revoked and audited before readiness. Removing
 that privileged role later does not restore its old Player access; a new explicit
 invitation is required. Role changes performed entirely while managed Players are
 disabled cannot be inferred later; reconcile invitations before restoring Player
@@ -105,7 +105,7 @@ API network access to `https://api.cloudflare.com`. API logs emit
 `player_members_sync_failed` with a sanitized HTTP status or transport/database/timeout
 category, without credentials or Cloudflare response bodies. Expected concurrent-edit
 serialization retries use debug-level `player_members_sync_retry`.
-Admin/Developer authentication remains available independently of the membership
+Admin/Tester authentication remains available independently of the membership
 lookup. Player lookup failures deny access; they never fall back to static roles.
 Managed configuration, including imported Player email syntax/length, is validated
 before opening the API database pool; invalid configuration fails startup with a
@@ -137,7 +137,7 @@ its own immediate API denial and dedicated group removal instead.
 - Removal blocks the next API request from an already authenticated player, and
   synchronization removes that email from the dedicated group.
 - Reinvitation waits for synchronization and survives an API restart.
-- Admin/Developer MFA still challenges as configured; the Player policy cannot
+- Admin/Tester MFA still challenges as configured; the Player policy cannot
   admit either privileged identity. CI service authentication remains separate.
 - Secrets are absent from the frontend, migration/worker environments, and logs.
 

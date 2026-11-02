@@ -176,7 +176,7 @@ func TestPlayerCLIGenerationFollowsAdminPolicy(t *testing.T) {
 	mux := http.NewServeMux()
 	NewHandler(repo, c, profiles).RegisterRoutes(mux)
 	for _, allow := range []bool{false, true, false} {
-		roles := []string{"admin", "developer"}
+		roles := []string{"admin", "tester"}
 		if allow {
 			roles = append(roles, "player")
 		}

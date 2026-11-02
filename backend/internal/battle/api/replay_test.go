@@ -35,7 +35,7 @@ func TestBattleReplayRouteHidesEventPayloadsFromPlayers(t *testing.T) {
 	segment := battleservice.BattleReplay{BattleID: replayRouteBattleID, Attempt: 1, FinalTick: 60, ToTick: 9, NextTick: &next, Frames: []battleservice.ReplayFrame{
 		{Tick: 0, State: game.State{BattleID: replayRouteBattleID}, Events: []game.Event{{Sequence: 1, Type: "plan_applied", Data: map[string]any{"name": "secret-plan"}}}},
 	}}
-	for role, wantPayload := range map[authn.Role]bool{authn.Player: false, authn.Developer: true, authn.Admin: true} {
+	for role, wantPayload := range map[authn.Role]bool{authn.Player: false, authn.Tester: true, authn.Admin: true} {
 		battles := &fakeBattleService{replay: segment}
 		response := replayRequest(t, battles, "?tick=7", role)
 		if response.Code != http.StatusOK || battles.replayTick != 7 {
@@ -56,11 +56,11 @@ func TestBattleReplayRouteHidesEventPayloadsFromPlayers(t *testing.T) {
 
 func TestBattleReplayRouteDefaultsAndValidatesTick(t *testing.T) {
 	battles := &fakeBattleService{replayTick: 99}
-	if response := replayRequest(t, battles, "", authn.Developer); response.Code != http.StatusOK || battles.replayTick != 0 {
+	if response := replayRequest(t, battles, "", authn.Tester); response.Code != http.StatusOK || battles.replayTick != 0 {
 		t.Fatalf("default tick: status=%d tick=%d", response.Code, battles.replayTick)
 	}
 	for _, query := range []string{"?tick=-1", "?tick=soon"} {
-		if response := replayRequest(t, &fakeBattleService{}, query, authn.Developer); response.Code != http.StatusBadRequest {
+		if response := replayRequest(t, &fakeBattleService{}, query, authn.Tester); response.Code != http.StatusBadRequest {
 			t.Fatalf("%s: status=%d", query, response.Code)
 		}
 	}
@@ -78,7 +78,7 @@ func TestBattleReplayRouteMapsErrors(t *testing.T) {
 		{authn.ErrForbidden, http.StatusForbidden, apierror.CodePermissionDenied},
 		{errors.New("restore failed"), http.StatusInternalServerError, apierror.CodeInternal},
 	} {
-		response := replayRequest(t, &fakeBattleService{err: test.err}, "?tick=3", authn.Developer)
+		response := replayRequest(t, &fakeBattleService{err: test.err}, "?tick=3", authn.Tester)
 		if response.Code != test.status || envelopeOf(t, response).Code != test.code {
 			t.Fatalf("%v: status=%d body=%s", test.err, response.Code, response.Body.String())
 		}
