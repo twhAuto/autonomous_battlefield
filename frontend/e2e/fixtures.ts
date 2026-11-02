@@ -70,6 +70,7 @@ export const test = base.extend<{ api: FixtureState }>({
       if (pathname === '/v1/faction-background-generations/options') return reply(api.generation)
       if (pathname === '/v1/scenarios') return reply({ scenarios: [{ id: 'castle-siege', rulesVersion: '3', rulesetId: 'battlefield', mapWidth: 15, mapHeight: 11, maximumTicks: 800, tickDuration: '1s', decisionIntervalTicks: 10, map: { kind: 'authored', width: 15, height: 11, rows: Array<string>(11).fill('..g....f....#..'), castleSpawns: [{ x: 1, y: 5 }, { x: 13, y: 5 }], economySites: [[], []] } }] })
       if (pathname === '/v1/model-profiles') return reply({ profiles: [{ id: 'offline', displayName: 'Offline AI', available: false, runtime: 'api', modelLabel: '', unavailableReason: 'Disabled by operator' }] })
+      if (pathname === '/v1/battles/allowance') return reply({ limited: false, startedToday: 0, unfinished: 0, serviceUnfinished: 0, resetAt: '2099-01-01T00:00:00Z' })
       const battleReply = battleRoute(api, pathname, searchParams)
       if (battleReply !== null) return reply(battleReply)
       api.unexpected.push(`${method} ${pathname}`)

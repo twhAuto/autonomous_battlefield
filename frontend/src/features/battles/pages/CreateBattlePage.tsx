@@ -1,15 +1,16 @@
-// Loads faction, scenario, and model choices, validates the battle setup, and navigates to
-// the queued battle after creation.
+// Loads faction, scenario, and model choices and the caller's battle allowance, validates the
+// battle setup, and navigates to the queued battle after creation.
 
 import { type SubmitEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { BattleApiError, createBattle, listScenarios, listModelProfiles, type ScenarioSummary } from '../api/battles'
+import { BattleApiError, createBattle, getBattleAllowance, listScenarios, listModelProfiles, type BattleAllowance, type ScenarioSummary } from '../api/battles'
 import type { ModelProfile } from '../../../shared/domain/model-profile'
 import { Faction, FactionApiError, listFactions } from '../../factions/api/factions'
 import { Emblem } from '../../../shared/components/Emblem'
 import { ResponsivePreview } from '../../../shared/components/ResponsivePreview'
 import { MapPreview } from '../components/MapPreview'
 import { ControllerSelect, controllerInput, resolveSelection, type ModelSelection } from '../components/ControllerSelect'
+import { BattleAllowanceSummary, allowanceBlocker } from '../components/BattleAllowanceSummary'
 
 type LoadState = 'loading' | 'ready' | 'empty' | 'error'
 const defaultScenarioID = 'frontier-siege'
@@ -40,6 +41,8 @@ export function CreateBattlePage() {
   const [tickCount, setTickCount] = useState<number | ''>(500)
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'error'>('idle')
   const [submitMessage, setSubmitMessage] = useState('')
+  const [allowance, setAllowance] = useState<BattleAllowance>()
+  const [allowanceVersion, setAllowanceVersion] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -80,6 +83,15 @@ export function CreateBattlePage() {
     return () => controller.abort()
   }, [loadVersion])
 
+  // A failed read shows nothing: admission still enforces the allowance and answers 429.
+  useEffect(() => {
+    const controller = new AbortController()
+    getBattleAllowance(controller.signal)
+      .then(setAllowance)
+      .catch(() => { if (!controller.signal.aborted) setAllowance(undefined) })
+    return () => controller.abort()
+  }, [allowanceVersion])
+
   const selectedScenario = useMemo(
     () => scenarios.find((scenario) => scenario.id === scenarioID),
     [scenarioID, scenarios],
@@ -96,6 +108,7 @@ export function CreateBattlePage() {
     && scenarioID !== ''
     && validTicks
     && submitState !== 'submitting'
+    && allowanceBlocker(allowance) === undefined
 
   useEffect(() => {
     if (!selectedScenario) return
@@ -109,6 +122,7 @@ export function CreateBattlePage() {
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (allowanceBlocker(allowance)) return
     if (!canSubmit) {
       setSubmitState('error')
       setSubmitMessage(`Select two different factions and a tick limit between 1 and ${maximumTicks}.`)
@@ -132,6 +146,7 @@ export function CreateBattlePage() {
     } catch (error) {
       setSubmitState('error')
       setSubmitMessage(error instanceof BattleApiError ? error.message : 'The battle could not be queued.')
+      if (error instanceof BattleApiError && error.status === 429) setAllowanceVersion((value) => value + 1)
     }
   }
 
@@ -236,6 +251,7 @@ export function CreateBattlePage() {
                 {!validTicks && <p className="field-error" role="alert">Enter a whole number from 1 to {maximumTicks}.</p>}
               </div>
 
+              <BattleAllowanceSummary allowance={allowance} onRefresh={() => setAllowanceVersion((value) => value + 1)} />
               <button className="submit-button" type="submit" disabled={!canSubmit}>
                 <span>{submitState === 'submitting' ? 'QUEUING BATTLE…' : 'DEPLOY COMBATANTS'}</span>
                 <span aria-hidden="true">→</span>

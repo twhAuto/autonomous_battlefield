@@ -1,11 +1,12 @@
-// Checks battle API request encoding, response decoding, control actions, perspectives,
-// pagination, and error mapping.
+// Checks battle API request encoding, response decoding, the battle allowance, control actions,
+// perspectives, pagination, and error mapping.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   BattleApiError,
   createBattle,
   getBattle,
+  getBattleAllowance,
   getBattleReplay,
   listBattleEvents,
   listBattles,
@@ -49,6 +50,16 @@ describe('battle API', () => {
 
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 503 }))
     await expect(listModelProfiles()).rejects.toEqual(new BattleApiError('Model profiles could not be loaded.', 503))
+  })
+
+  it('reads the battle allowance of the caller and maps failures', async () => {
+    const allowance = { limited: true, startedToday: 1, dailyLimit: 5, unfinished: 0, unfinishedLimit: 1, serviceUnfinished: 2, serviceUnfinishedLimit: 4, resetAt: '2026-11-03T00:00:00Z' }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(allowance))
+    await expect(getBattleAllowance()).resolves.toEqual(allowance)
+    expect(fetch).toHaveBeenCalledWith('/v1/battles/allowance', { signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 500 }))
+    await expect(getBattleAllowance()).rejects.toEqual(new BattleApiError('Battle allowance could not be loaded.', 500))
   })
 
   it('maps scenario HTTP and network failures', async () => {
