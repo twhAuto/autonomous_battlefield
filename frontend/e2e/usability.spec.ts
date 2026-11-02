@@ -406,7 +406,7 @@ test('shows the complete failure reason for a failed battle', async ({ page }) =
 })
 
 test('a Player who owns a faction is told why creation is unavailable', async ({ page }) => {
-  await page.route('**/v1/auth/session', route => route.fulfill({ json: { enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'viewer', role: 'player' } } }))
+  await page.route('**/v1/auth/session', route => route.fulfill({ json: { enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'viewer', role: 'player', displayName: 'Viewer' } } }))
   await page.route('**/v1/factions', route => route.fulfill({ json: { factions: [{ ...factions[0], ownerId: 'viewer' }, factions[1]] } }))
   const reason = 'Players can own one faction at a time. Delete your faction to create a new one.'
   await page.goto('/factions')
