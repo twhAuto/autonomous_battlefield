@@ -34,6 +34,8 @@
 .faction-prose { white-space: pre-wrap; }
 .background-generator button { color: var(--lime); border: 1px solid var(--line); background: var(--ink); padding: 8px 12px; }
 .registry-card a { color: var(--lime); }
+.directory-title .faction-limit, .faction-limit { max-width: 340px; margin: 0; padding: 10px 14px; border-left: 2px solid var(--lime); color: #b8c0b1; font-size: 14px; line-height: 1.55; }
+.faction-limit p { margin: 0 0 6px; }
 .danger-zone { border-top: 1px solid #b17768; margin-top: 32px; padding-top: 16px; }
 .danger-zone button { background: #211714; border: 1px solid #b17768; color: #ffb3a5; padding: 12px 20px; }
 

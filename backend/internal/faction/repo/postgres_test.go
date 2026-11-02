@@ -1,5 +1,5 @@
-// Checks faction SQL reads and writes, row decoding, missing records, and duplicate
-// identifiers.
+// Checks faction SQL reads and writes, row decoding, missing records, duplicate
+// identifiers, and the transaction of an owner-limited create.
 
 package repo
 
@@ -68,8 +68,11 @@ func TestCreateFaction(t *testing.T) {
 	repo := NewPostgres(db)
 	stored := faction.Faction{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", OwnerID: "player-7"}
 
-	if err := repo.CreateFaction(context.Background(), stored); err != nil {
+	if err := repo.CreateFaction(context.Background(), stored, 0); err != nil {
 		t.Fatalf("CreateFaction() returned an error: %v", err)
+	}
+	if db.began {
+		t.Fatal("an unlimited create opened a transaction")
 	}
 
 	wantArguments := []any{stored.ID, stored.Name, stored.Doctrine, stored.Background, "player-7", stored.Emblem}
@@ -85,9 +88,49 @@ func TestCreateFactionReturnsAlreadyExists(t *testing.T) {
 	err := repo.CreateFaction(context.Background(), faction.Faction{
 		ID:   "7f22e693-bacd-46bb-b942-64fa613cd388",
 		Name: "Northwind",
-	})
+	}, 0)
 	if !errors.Is(err, factionservice.ErrFactionAlreadyExists) {
 		t.Fatalf("CreateFaction() error = %v, want ErrFactionAlreadyExists", err)
+	}
+}
+
+func TestCreateFactionWithOwnerLimit(t *testing.T) {
+	stored := faction.Faction{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", OwnerID: "player-7"}
+	offline := errors.New("offline")
+	for name, test := range map[string]struct {
+		db                  *fakeDB
+		want                error
+		inserted, committed bool
+	}{
+		"admitted":      {db: &fakeDB{tx: &fakeTx{}}, inserted: true, committed: true},
+		"limit reached": {db: &fakeDB{tx: &fakeTx{limited: true}}, want: factionservice.ErrFactionLimitReached},
+		"reused ID":     {db: &fakeDB{tx: &fakeTx{insertErr: &pgconn.PgError{Code: "23505"}}}, want: factionservice.ErrFactionAlreadyExists, inserted: true},
+		"begin fails":   {db: &fakeDB{beginErr: offline}, want: offline},
+		"lock fails":    {db: &fakeDB{tx: &fakeTx{lockErr: offline}}, want: offline},
+		"count fails":   {db: &fakeDB{tx: &fakeTx{countErr: offline}}, want: offline},
+		"commit fails":  {db: &fakeDB{tx: &fakeTx{commitErr: offline}}, want: offline, inserted: true, committed: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := NewPostgres(test.db).CreateFaction(context.Background(), stored, 1)
+			if !errors.Is(err, test.want) || (test.want == nil) != (err == nil) {
+				t.Fatalf("CreateFaction() error = %v, want %v", err, test.want)
+			}
+			if test.db.tx != nil {
+				checkLimitedCreateTransaction(t, test.db.tx, test.inserted, test.committed)
+			}
+		})
+	}
+}
+
+// checkLimitedCreateTransaction requires the owner lock first, an insert only when
+// expected, and the deferred rollback that ends every transaction.
+func checkLimitedCreateTransaction(t *testing.T, tx *fakeTx, inserted, committed bool) {
+	t.Helper()
+	if !strings.Contains(tx.statements[0], "pg_advisory_xact_lock") || (len(tx.statements) == 2) != inserted {
+		t.Fatalf("statements = %q, want the owner lock first and an insert only when %v", tx.statements, inserted)
+	}
+	if tx.committed != committed || !tx.rolledBack {
+		t.Fatalf("committed = %v, rolled back = %v, want committed %v and a deferred rollback", tx.committed, tx.rolledBack, committed)
 	}
 }
 
@@ -112,6 +155,9 @@ func TestDeleteFaction(t *testing.T) {
 }
 
 type fakeDB struct {
+	tx            *fakeTx
+	beginErr      error
+	began         bool
 	row           pgx.Row
 	rows          pgx.Rows
 	querySQL      string
@@ -122,6 +168,59 @@ type fakeDB struct {
 
 func (db *fakeDB) QueryRow(context.Context, string, ...any) pgx.Row {
 	return db.row
+}
+
+func (db *fakeDB) Begin(context.Context) (pgx.Tx, error) {
+	db.began = true
+	if db.beginErr != nil {
+		return nil, db.beginErr
+	}
+	return db.tx, nil
+}
+
+// fakeTx records an owner-limited create; the embedded nil pgx.Tx panics on any
+// other method.
+type fakeTx struct {
+	pgx.Tx
+	limited                                 bool
+	lockErr, countErr, insertErr, commitErr error
+	statements                              []string
+	committed, rolledBack                   bool
+}
+
+func (tx *fakeTx) Exec(_ context.Context, sql string, _ ...any) (pgconn.CommandTag, error) {
+	tx.statements = append(tx.statements, sql)
+	if strings.Contains(sql, "pg_advisory_xact_lock") {
+		return pgconn.NewCommandTag("SELECT 1"), tx.lockErr
+	}
+	return pgconn.NewCommandTag("INSERT 0 1"), tx.insertErr
+}
+
+func (tx *fakeTx) QueryRow(context.Context, string, ...any) pgx.Row {
+	return boolRow{value: tx.limited, err: tx.countErr}
+}
+
+func (tx *fakeTx) Commit(context.Context) error {
+	tx.committed = true
+	return tx.commitErr
+}
+
+func (tx *fakeTx) Rollback(context.Context) error {
+	tx.rolledBack = true
+	return nil
+}
+
+type boolRow struct {
+	value bool
+	err   error
+}
+
+func (r boolRow) Scan(destinations ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	*destinations[0].(*bool) = r.value
+	return nil
 }
 
 func (db *fakeDB) Query(_ context.Context, sql string, _ ...any) (pgx.Rows, error) {

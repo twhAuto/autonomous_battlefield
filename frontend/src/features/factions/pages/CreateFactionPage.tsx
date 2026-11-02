@@ -1,10 +1,11 @@
 // Faction profile editor for both creation and editing, selected by the route's id.
 // Owns form state, validation, and the live preview; API calls live in ../api/factions.
-import { maxBackgroundLength, maxDoctrineLength } from '../limits'
+// A Player who owns a faction sees why they cannot create another instead of the form.
+import { factionLimitMessage, maxBackgroundLength, maxDoctrineLength } from '../limits'
 import { BackgroundGenerator } from '../components/BackgroundGenerator'
 import { useEffect, useState, type SubmitEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { createFaction, deleteFaction, listFactions, updateFaction } from '../api/factions'
+import { createFaction, deleteFaction, FactionApiError, listFactions, updateFaction } from '../api/factions'
 import { usePermissions } from '../../auth/SessionContext'
 import { factionEmblems, resolveEmblem, type FactionEmblem } from '../../../shared/domain/emblems'
 import { Emblem } from '../../../shared/components/Emblem'
@@ -30,8 +31,9 @@ function FactionEditor({ id }: Readonly<{ id?: string }>) {
  const [deleting, setDeleting] = useState(false)
  const [deleteError, setDeleteError] = useState('')
  const [savedName, setSavedName] = useState('')
- const { canManage } = usePermissions()
+ const { canManage, oneFaction, atFactionLimit } = usePermissions()
  const editing = Boolean(id)
+ const [limit, setLimit] = useState<'checking' | 'open' | 'reached'>(() => !editing && oneFaction ? 'checking' : 'open')
  const [factionId, setFactionId] = useState(() => crypto.randomUUID())
  const [name, setName] = useState('')
  const [emblem, setEmblem] = useState<FactionEmblem>('star')
@@ -59,6 +61,15 @@ function FactionEditor({ id }: Readonly<{ id?: string }>) {
  })
  return () => controller.abort()
  }, [id])
+ // A failed check shows the form: the API still refuses a Player's second faction.
+ useEffect(() => {
+ if (limit !== 'checking') return
+ const controller = new AbortController()
+ listFactions(controller.signal).then(factions => {
+ if (!controller.signal.aborted) setLimit(atFactionLimit(factions) ? 'reached' : 'open')
+ }).catch(() => { if (!controller.signal.aborted) setLimit('open') })
+ return () => controller.abort()
+ }, [limit])
  // Array.from counts Unicode code points, matching the API's rune-based text limits.
  const count = Array.from(doctrine.trim()).length
  const backgroundCount = Array.from(background.trim()).length
@@ -73,8 +84,11 @@ function FactionEditor({ id }: Readonly<{ id?: string }>) {
  await (editing ? updateFaction(faction) : createFaction(faction))
  if (editing) setSavedName(faction.name)
  setStatus('success'); setMessage(editing ? `${faction.name} has been updated. Changes apply to future battles.` : `${faction.name} has entered the battlefield.`)
- if (!editing) { setEmblem('star'); setName(''); setBackground(''); setFactionId(crypto.randomUUID()) }
- } catch (error) { setStatus('error'); setMessage(error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.') }
+ if (!editing) { setEmblem('star'); setName(''); setBackground(''); setFactionId(crypto.randomUUID()); if (oneFaction) setLimit('reached') }
+ } catch (error) {
+ if (!editing && error instanceof FactionApiError && error.code === 'conflict') { setLimit('reached'); setStatus('idle'); return }
+ setStatus('error'); setMessage(error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.')
+ }
  }
  const saveLabel = editing ? 'SAVE FACTION' : 'CREATE FACTION'
  async function removeFaction() {
@@ -95,7 +109,9 @@ function FactionEditor({ id }: Readonly<{ id?: string }>) {
  <div className="form-panel">
  <div className="section-label"><span>STRATEGIC DOCTRINE</span></div>
  <h2 id="creation-heading">Faction identity</h2>
- {loading ? <p>Loading faction…</p> : !loadFailed && <form onSubmit={handleSubmit} noValidate>
+ {limit === 'checking' && <p>Checking your factions…</p>}
+ {limit === 'reached' && <div className="faction-limit" role="note"><p>{factionLimitMessage}</p>{status !== 'success' && <Link className="text-link" to="/factions">View faction registry →</Link>}</div>}
+ {limit === 'open' && (loading ? <p>Loading faction…</p> : !loadFailed && <form onSubmit={handleSubmit} noValidate>
  <label htmlFor="faction-name">Faction name</label>
  <div className="name-field"><input id="faction-name" value={name} onChange={event => {setName(event.target.value); setStatus('idle')}} placeholder="e.g. The Verdant Accord" autoComplete="off" /><span>{name.length}</span></div>
  <fieldset className="emblem-picker" aria-describedby="emblem-hint" disabled={status === 'submitting' || deleting}>
@@ -117,7 +133,7 @@ function FactionEditor({ id }: Readonly<{ id?: string }>) {
  {backgroundCount > maxBackgroundLength && <p role="alert">Background must be at most {maxBackgroundLength.toLocaleString('en-US')} characters.</p>}
  <BackgroundGenerator key={id ?? factionId} input={{name:name.trim(),doctrine:doctrine.trim(),background:background.trim()}} valid={valid && status !== 'submitting'} onUse={value => {setBackground(value);setStatus('idle');setMessage('')}} />
  <button className="submit-button" type="submit" disabled={!valid || status === 'submitting' || deleting}>{status === 'submitting' ? 'SAVING…' : saveLabel}</button>
- </form>}
+ </form>)}
  <div className="form-message" aria-live="polite">{message && <p className={`form-message--${status}`}>{message}</p>}{status === 'success' && <Link className="text-link" to="/factions">View faction registry →</Link>}</div>
  {editing && !loading && !loadFailed && <section className="danger-zone" aria-label="Danger zone"><h2>Danger zone</h2><p>Delete this faction from the active registry. Saved battle history is retained.</p><button type="button" disabled={deleting || status === 'submitting'} onClick={() => void removeFaction()}>{deleting ? 'DELETING…' : `DELETE ${savedName}`}</button>{deleteError && <p role="alert">{deleteError}</p>}</section>}
  </div>

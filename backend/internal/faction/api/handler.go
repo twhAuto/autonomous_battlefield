@@ -89,6 +89,10 @@ func (h *Handler) CreateFaction(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteCode(w, r, http.StatusConflict, apierror.CodeAlreadyExists, "faction already exists")
 		return
 	}
+	if errors.Is(err, factionservice.ErrFactionLimitReached) {
+		apierror.Write(w, r, http.StatusConflict, "players can own only one faction at a time")
+		return
+	}
 	if err != nil {
 		slog.ErrorContext(r.Context(), "faction_create_failed", "request_id", httpapi.RequestID(r.Context()), "faction_id", request.ID, "error", err)
 		apierror.Write(w, r, http.StatusInternalServerError, "could not create faction")

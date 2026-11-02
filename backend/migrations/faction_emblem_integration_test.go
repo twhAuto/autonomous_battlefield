@@ -72,7 +72,7 @@ func checkEmblemPersistence(t *testing.T, repo *factionrepo.Postgres, id string)
 		t.Fatalf("legacy edit: %#v %v", saved, err)
 	}
 	next := faction.Faction{ID: randomUUID(t), Name: "Moonwatch", Doctrine: "Defend", Emblem: "moon", OwnerID: "owner"}
-	if err := repo.CreateFaction(ctx, next); err != nil {
+	if err := repo.CreateFaction(ctx, next, 0); err != nil {
 		t.Fatal(err)
 	}
 	listed, err := repo.ListFactions(ctx)

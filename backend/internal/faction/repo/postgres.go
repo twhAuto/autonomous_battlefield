@@ -17,12 +17,19 @@ import (
 )
 
 type Postgres struct {
-	db postgres.DBTX
+	db postgres.Pool
 }
 
-func NewPostgres(db postgres.DBTX) *Postgres {
+// NewPostgres accepts a pool or a transaction; limited creates open a transaction
+// on it, nested as a savepoint inside a transaction.
+func NewPostgres(db postgres.Pool) *Postgres {
 	return &Postgres{db: db}
 }
+
+// factionOwnerLock is the first key of the transaction advisory lock that serializes
+// limited creates per owner; the second is hashtext(owner_id). A hash collision only
+// makes two owners wait for each other.
+const factionOwnerLock = 741928330
 
 const selectFaction = `SELECT id, name, COALESCE(ruleset_id, ''), blueprint, doctrine, background, owner_id, emblem FROM factions`
 
@@ -73,8 +80,43 @@ func (r *Postgres) ListFactions(ctx context.Context) ([]faction.Faction, error) 
 	return factions, nil
 }
 
-func (r *Postgres) CreateFaction(ctx context.Context, stored faction.Faction) error {
-	_, err := r.db.Exec(ctx, `
+func (r *Postgres) CreateFaction(ctx context.Context, stored faction.Faction, ownerLimit int) error {
+	if ownerLimit <= 0 {
+		return insertFaction(ctx, r.db, stored)
+	}
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("create faction %q: %w", stored.ID, err)
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	// Each statement reads after the lock is granted, so a concurrent create by the
+	// same owner that committed first is counted.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, hashtext($2))`, factionOwnerLock, stored.OwnerID); err != nil {
+		return fmt.Errorf("lock faction owner: %w", err)
+	}
+	// An ID already in use reaches the unique constraint instead, so a retried
+	// request is answered as a retry rather than refused.
+	var limited bool
+	if err := tx.QueryRow(ctx, `
+        SELECT NOT EXISTS (SELECT 1 FROM factions WHERE id = $1)
+           AND (SELECT count(*) FROM factions WHERE owner_id = $2) >= $3
+    `, stored.ID, stored.OwnerID, ownerLimit).Scan(&limited); err != nil {
+		return fmt.Errorf("count owner factions: %w", err)
+	}
+	if limited {
+		return factionservice.ErrFactionLimitReached
+	}
+	if err := insertFaction(ctx, tx, stored); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("create faction %q: %w", stored.ID, err)
+	}
+	return nil
+}
+
+func insertFaction(ctx context.Context, db postgres.DBTX, stored faction.Faction) error {
+	_, err := db.Exec(ctx, `
         INSERT INTO factions (id, name, doctrine, background, owner_id, emblem) VALUES ($1, $2, $3, $4, $5, COALESCE(NULLIF($6, ''), 'star'))
     `, stored.ID, stored.Name, stored.Doctrine, stored.Background, stored.OwnerID, stored.Emblem)
 	if err != nil {
@@ -84,7 +126,6 @@ func (r *Postgres) CreateFaction(ctx context.Context, stored faction.Faction) er
 		}
 		return fmt.Errorf("create faction %q: %w", stored.ID, err)
 	}
-
 	return nil
 }
 

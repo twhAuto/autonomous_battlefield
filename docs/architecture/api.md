@@ -79,6 +79,7 @@ people's battles are admitted. Paused battles are unfinished. A
 retry that reuses a request's identifier with the same inputs and identity
 returns the work already admitted rather than consuming another allowance. League
 battles are Admin battles and also skip the per-battle model decision budget.
+Faction ownership has its own [Player limit](#factions).
 
 `GET /v1/battles/allowance` reports the caller's battle counts and limits from the
 same counts admission uses, without reserving anything, so a start can still
@@ -140,9 +141,19 @@ and `/metrics` are outside the OpenAPI contract.
 
 The client chooses the faction `id`, so creation is safe to retry: the same `id`,
 caller and trimmed content returns `201` again without another write, while a
-different caller or content returns `409`. Names, doctrines and backgrounds are
-trimmed before storage. Doctrine is limited to 4,000 and background to 1,000
-Unicode characters, not UTF-8 bytes; a missing background means empty.
+different caller or content returns `409 already_exists`.
+
+A Player can own one faction at a time. While they own any, creating one with a new
+`id` returns `409 conflict` with the message `players can own only one faction at a
+time`; deleting their faction lets them create another. The limit only blocks
+creation: a Player who owns several factions, such as a Tester whose role became
+Player, keeps them all but cannot create another until they own none. Testers and
+Admins have no faction limit. Concurrent creates by one Player cannot both succeed;
+the [database guide](database.md#admission-triggers) describes the lock.
+
+Names, doctrines and backgrounds are trimmed before storage. Doctrine is limited to
+4,000 and background to 1,000 Unicode characters, not UTF-8 bytes; a missing
+background means empty.
 
 The cosmetic `emblem` field accepts `star`, `crown`, `shield`, `swords`, `wolf`,
 `raven`, `serpent`, `tree`, `leaf`, `flame`, `sun`, or `moon`. Omitted or empty

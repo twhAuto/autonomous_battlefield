@@ -9,5 +9,12 @@ export function usePermissions() {
  const role = session.actor?.role ?? (session.mode === 'cloudflare' ? 'player' : 'admin')
  // Guests only view: they start, create and manage nothing.
  const play = role !== 'guest'
- return { inspect: role === 'admin' || role === 'tester', play, canManage: (owner?: string) => !preview.role && play && (role === 'admin' || (!!owner && owner === session.actor?.id)) }
+ const actorId = session.actor?.id
+ // A Player may create a faction only while owning none; the API enforces the same rule.
+ const oneFaction = role === 'player'
+ return {
+  inspect: role === 'admin' || role === 'tester', play, oneFaction,
+  canManage: (owner?: string) => !preview.role && play && (role === 'admin' || (!!owner && owner === actorId)),
+  atFactionLimit: (factions: readonly { ownerId?: string }[]) => oneFaction && !!actorId && factions.some(faction => faction.ownerId === actorId),
+ }
 }

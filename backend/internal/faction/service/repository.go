@@ -13,7 +13,10 @@ import (
 type Repository interface {
 	GetFaction(context.Context, string) (*faction.Faction, error)
 	ListFactions(context.Context) ([]faction.Faction, error)
-	CreateFaction(context.Context, faction.Faction) error
+	// CreateFaction stores a new faction. A positive ownerLimit refuses it with
+	// ErrFactionLimitReached while its owner already owns that many factions; the
+	// count and insert are serialized per owner, so concurrent creates cannot both pass.
+	CreateFaction(ctx context.Context, stored faction.Faction, ownerLimit int) error
 	UpdateFaction(context.Context, faction.Faction) error
 	DeleteFaction(context.Context, string) error
 }

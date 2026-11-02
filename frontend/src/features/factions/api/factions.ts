@@ -2,7 +2,8 @@
 // specific error messages.
 
 import type { UnitCapabilities } from '../../../shared/domain/units'
-import { createApiClient, errorMessage } from '../../../shared/api/request'
+import { createApiClient, errorDetail, errorMessage } from '../../../shared/api/request'
+import { factionLimitMessage } from '../limits'
 
 export interface CreateFactionInput {
   id: string
@@ -47,6 +48,8 @@ export class FactionApiError extends Error {
   constructor(
     message: string,
     public readonly status?: number,
+    /** The API error code, set where callers branch on it. */
+    public readonly code?: string,
   ) {
     super(message)
     this.name = 'FactionApiError'
@@ -81,9 +84,13 @@ export async function createFaction(
   if (response.ok) return
 
   if (response.status === 409) {
+    // `conflict` is the Player faction limit; `already_exists` a reused identifier.
+    const { code } = await errorDetail(response)
+    if (code === 'conflict') throw new FactionApiError(factionLimitMessage, response.status, code)
     throw new FactionApiError(
       'That faction identifier is already in use. Generate a new one and try again.',
       response.status,
+      code || undefined,
     )
   }
 

@@ -1,4 +1,4 @@
-import { test, expect, battleId, factionId, battleFixture } from './fixtures'
+import { test, expect, battleId, factionId, battleFixture, factions } from './fixtures'
 
 test('navigation, focus, responsive forms and logout', async ({ page, isMobile }) => {
   await page.goto('/')
@@ -402,5 +402,19 @@ test('shows the complete failure reason for a failed battle', async ({ page }) =
   const message = page.getByRole('complementary', { name: 'Battle result' }).getByText(reason)
   await expect(message).toBeVisible()
   expect(await message.evaluate(node => node.scrollHeight <= node.clientHeight)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
+
+test('a Player who owns a faction is told why creation is unavailable', async ({ page }) => {
+  await page.route('**/v1/auth/session', route => route.fulfill({ json: { enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'viewer', role: 'player' } } }))
+  await page.route('**/v1/factions', route => route.fulfill({ json: { factions: [{ ...factions[0], ownerId: 'viewer' }, factions[1]] } }))
+  const reason = 'Players can own one faction at a time. Delete your faction to create a new one.'
+  await page.goto('/factions')
+  await expect(page.getByRole('note')).toHaveText(reason)
+  await expect(page.getByRole('link', { name: '+ CREATE FACTION' })).toHaveCount(0)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.goto('/factions/new')
+  await expect(page.getByRole('note')).toContainText(reason)
+  await expect(page.getByLabel('Faction name', { exact: true })).toHaveCount(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })

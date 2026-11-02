@@ -2,7 +2,7 @@
 // and preservation of cancellation errors.
 
 import { describe, expect, it, vi } from 'vitest'
-import { apiFetch, authenticationRequiredEvent, errorMessage } from './request'
+import { apiFetch, authenticationRequiredEvent, errorDetail, errorMessage } from './request'
 
 describe('apiFetch', () => {
   it('announces unauthorized API responses without changing the response', async () => {
@@ -77,5 +77,18 @@ describe('errorMessage', () => {
     await expect(errorMessage(new Response(JSON.stringify({ unexpected: true }), { status: 500 }))).resolves.toBe('')
     await expect(errorMessage(new Response(JSON.stringify({ error: { message: 42 } }), { status: 500 }))).resolves.toBe('')
     await expect(errorMessage(new Response('null', { status: 500 }))).resolves.toBe('')
+  })
+})
+
+describe('errorDetail', () => {
+  it('reads the stable code beside the message', async () => {
+    const response = new Response(JSON.stringify({ error: { code: 'conflict', message: ' limit reached ' } }), { status: 409 })
+    await expect(errorDetail(response)).resolves.toEqual({ code: 'conflict', message: 'limit reached' })
+  })
+
+  it('has no code for plain-text, empty or unrecognised bodies', async () => {
+    await expect(errorDetail(new Response('busy', { status: 409 }))).resolves.toEqual({ code: '', message: 'busy' })
+    await expect(errorDetail(new Response(null, { status: 409 }))).resolves.toEqual({ code: '', message: '' })
+    await expect(errorDetail(new Response(JSON.stringify({ error: { code: 7 } }), { status: 409 }))).resolves.toEqual({ code: '', message: '' })
   })
 })
