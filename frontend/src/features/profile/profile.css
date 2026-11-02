@@ -1,0 +1,6 @@
+/* First-sign-in display-name prompt and the profile page. */
+.display-name-form .name-field input { padding-right: 0; }
+.display-name-form .form-message--error { margin: -18px 0 18px; font-size: 12px; }
+.display-name-prompt h1 { font-size: clamp(34px, 6vw, 48px); }
+.display-name-prompt__logout { display: block; margin: 22px auto 0; }
+.profile-panel { max-width: 640px; margin: 48px 0 96px; border: 1px solid var(--line); }

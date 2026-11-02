@@ -8,7 +8,8 @@ export interface AuthSession {
   authenticated: boolean
   mode?: string
   capabilities?: { inspect: boolean; admin: boolean; members?: boolean }
-  actor?: { id: string; email?: string; role?: 'guest' | 'player' | 'tester' | 'admin' }
+  /** `displayName` is absent until a Player or Tester chooses one, and always for Guests. */
+  actor?: { id: string; email?: string; role?: 'guest' | 'player' | 'tester' | 'admin'; displayName?: string }
 }
 
 export interface AuthenticationClient {

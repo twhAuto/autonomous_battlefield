@@ -6,6 +6,7 @@
 @import './app/shell.css';
 @import './pages/HomePage.css';
 @import './features/auth/auth.css';
+@import './features/profile/profile.css';
 @import './features/admin/admin.css';
 @import './features/factions/factions.css';
 @import './features/battles/battles.css';

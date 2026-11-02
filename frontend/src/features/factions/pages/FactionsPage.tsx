@@ -95,6 +95,7 @@ export function FactionsPage() {
                 <div className="registry-card__body">
                   <span>REGISTERED FACTION</span>
                   <h2>{faction.name}</h2>
+                  {faction.ownerName && <p className="registry-card__owner">Created by {faction.ownerName}</p>}
                   <p style={{ whiteSpace: 'pre-wrap' }}>{faction.doctrine}</p>
                   {faction.background && <p style={{ whiteSpace: 'pre-wrap' }}>{faction.background}</p>}
                   {permissions.canManage(faction.ownerId) && <Link to={`/factions/${faction.id}/edit`}>Edit faction</Link>}

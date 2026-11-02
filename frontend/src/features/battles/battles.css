@@ -175,6 +175,7 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .history-table th, .history-table td { padding: 1rem .75rem; border-bottom: 1px solid var(--line); }
 .history-table th { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; }
 .history-table small, .history-table code { display: block; margin-top: .35rem; }
+.history-table .history-owner { color: var(--muted); }
 .history-table code { font-size: .65rem; overflow-wrap: anywhere; }
 .history-pagination button:disabled, .history-toolbar button:disabled { opacity: .45; cursor: default; }
 @media (max-width: 800px) {
@@ -280,6 +281,8 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .battle-meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .1em; }
 .battle-meta-row span { white-space: nowrap; }
 .battle-meta-row strong { margin-left: 6px; color: #adb5a7; font-weight: 500; text-transform: uppercase; }
+.battle-meta-row .battle-owner { text-transform: uppercase; }
+.battle-meta-row .battle-owner strong { text-transform: none; }
 .connection-badge { display: inline-flex; align-items: center; gap: 8px; padding: 4px 9px; color: #9ca595; border: 1px solid var(--line); font: 11px 'DM Mono', monospace; letter-spacing: .12em; }
 .connection-badge--reconnecting, .connection-badge--error { color: #ff9e85; border-color: rgba(255,158,133,.35); }
 .connection-badge--reconnecting .status-dot, .connection-badge--error .status-dot { background: #ff9e85; box-shadow: 0 0 10px #ff9e85; }
