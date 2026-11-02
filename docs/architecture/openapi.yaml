@@ -399,6 +399,36 @@ paths:
         '429': {$ref: '#/components/responses/RateLimited'}
         '500': {$ref: '#/components/responses/Internal'}
 
+  /v1/battles/allowance:
+    get:
+      tags: [Battles]
+      operationId: getBattleAllowance
+      summary: Get the caller's battle allowance
+      description: |
+        Reports the counts and limits `POST /v1/battles` admits against, for the
+        caller's role. The values can change before the next battle is created, so a
+        start can still return `429`.
+      responses:
+        '200':
+          description: The allowance when it was read.
+          headers:
+            Cache-Control: {$ref: '#/components/headers/NoStore'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BattleAllowance'}
+              example:
+                limited: true
+                startedToday: 2
+                dailyLimit: 5
+                unfinished: 0
+                unfinishedLimit: 1
+                serviceUnfinished: 3
+                serviceUnfinishedLimit: 4
+                resetAt: '2026-11-03T00:00:00Z'
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '500': {$ref: '#/components/responses/Internal'}
+
   /v1/battles/{id}:
     parameters:
       - {$ref: '#/components/parameters/BattleId'}
@@ -2316,6 +2346,34 @@ components:
                 winnerFactionId: {type: [string, 'null']}
                 reason: {type: string}
             - {type: 'null'}
+
+    BattleAllowance:
+      description: |
+        `limited` is false for an Admin, whose battles skip the allowances; the limit
+        fields are then omitted. Unfinished battles are queued, running or paused.
+      type: object
+      required: [limited, startedToday, unfinished, serviceUnfinished, resetAt]
+      properties:
+        limited: {type: boolean}
+        startedToday:
+          description: Battles the caller started since 00:00 UTC.
+          type: integer
+          minimum: 0
+        dailyLimit: {type: integer, minimum: 1}
+        unfinished:
+          description: The caller's unfinished battles.
+          type: integer
+          minimum: 0
+        unfinishedLimit: {type: integer, minimum: 1}
+        serviceUnfinished:
+          description: Unfinished battles of every owner, including Admin battles.
+          type: integer
+          minimum: 0
+        serviceUnfinishedLimit: {type: integer, minimum: 1}
+        resetAt:
+          description: The next 00:00 UTC, when `startedToday` restarts.
+          type: string
+          format: date-time
 
     BattleHistoryPage:
       type: object

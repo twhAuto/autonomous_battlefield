@@ -518,11 +518,20 @@ type fakeBattleRepo struct {
 	frames       []StoredReplayFrame
 	frameErr     error
 	frameAttempt int
+	allowance    Allowance
+	allowanceErr error
+	// allowanceOwner and allowanceTester record the last BattleAllowance call.
+	allowanceOwner  string
+	allowanceTester bool
 }
 
 func (r *fakeBattleRepo) CreateBattle(_ context.Context, params CreateBattleParams) error {
 	r.created = params
 	return r.createErr
+}
+func (r *fakeBattleRepo) BattleAllowance(_ context.Context, owner string, tester bool) (Allowance, error) {
+	r.allowanceOwner, r.allowanceTester = owner, tester
+	return r.allowance, r.allowanceErr
 }
 func (r *fakeBattleRepo) GetBattle(context.Context, string) (*BattleRun, error) {
 	if r.getErr != nil {

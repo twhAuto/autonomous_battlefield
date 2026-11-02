@@ -269,6 +269,24 @@ export async function listModelProfiles(signal?: AbortSignal): Promise<ModelProf
   return body.profiles
 }
 
+// BattleAllowance is the caller's battle allowance; Admins are not limited and carry no limits.
+export interface BattleAllowance {
+  limited: boolean
+  startedToday: number
+  dailyLimit?: number
+  unfinished: number
+  unfinishedLimit?: number
+  serviceUnfinished: number
+  serviceUnfinishedLimit?: number
+  resetAt: string
+}
+
+export async function getBattleAllowance(signal?: AbortSignal): Promise<BattleAllowance> {
+  const response = await battlefieldFetch('/v1/battles/allowance', { signal })
+  if (!response.ok) throw new BattleApiError('Battle allowance could not be loaded.', response.status)
+  return (await response.json()) as BattleAllowance
+}
+
 export async function createBattle(input: CreateBattleInput): Promise<{ id: string; status: BattleStatus }> {
   const response = await battlefieldFetch('/v1/battles', {
     method: 'POST',

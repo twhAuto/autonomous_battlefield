@@ -16,6 +16,30 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
+// BattleAllowance reads the role's allowances and the owner's counts with the queries
+// the admission trigger uses, without its row lock, so the result can be stale by the
+// time a battle is created.
+func (r *Postgres) BattleAllowance(ctx context.Context, owner string, tester bool) (battleservice.Allowance, error) {
+	ctx, span := tracing.StartDatabaseSpan(ctx, "battle_allowance")
+	defer span.End()
+	allowance := battleservice.Allowance{Limited: true}
+	err := r.db.QueryRow(ctx, `
+		SELECT CASE WHEN $2 THEN p.tester_daily_battles ELSE p.player_daily_battles END,
+		       CASE WHEN $2 THEN p.tester_unfinished ELSE p.player_unfinished END,
+		       p.global_unfinished,
+		       (SELECT count(*) FROM battle_runs WHERE owner_id=$1 AND created_at >= date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),
+		       (SELECT count(*) FROM battle_runs WHERE owner_id=$1 AND status IN ('queued','running')),
+		       (SELECT count(*) FROM battle_runs WHERE status IN ('queued','running')),
+		       (date_trunc('day',now() AT TIME ZONE 'UTC') + interval '1 day') AT TIME ZONE 'UTC'
+		FROM runtime_policy p WHERE p.id
+	`, owner, tester).Scan(&allowance.DailyLimit, &allowance.UnfinishedLimit, &allowance.ServiceUnfinishedLimit,
+		&allowance.StartedToday, &allowance.Unfinished, &allowance.ServiceUnfinished, &allowance.ResetAt)
+	if err != nil {
+		return battleservice.Allowance{}, fmt.Errorf("read battle allowance: %w", err)
+	}
+	return allowance, nil
+}
+
 func (r *Postgres) CreateBattle(ctx context.Context, params battleservice.CreateBattleParams) error {
 	ctx, span := tracing.StartDatabaseSpan(ctx, "create_battle")
 	defer span.End()
