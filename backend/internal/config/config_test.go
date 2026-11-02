@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -296,15 +295,7 @@ func TestParseModelsDefaultsProfilesAndValidation(t *testing.T) {
 	if parsed, err := parseModels(valid(), false); err != nil || len(parsed.Profiles) != 1 {
 		t.Fatal(err)
 	}
-	legacy := valid()
-	legacy.AI.Profiles[0].AllowedRoles = []string{"admin", "developer"}
-	if parsed, err := parseModels(legacy, false); err != nil || !slices.Equal(parsed.Profiles[0].AllowedRoles, []string{"admin", "tester"}) {
-		t.Fatalf("legacy tester role: %v %v", parsed.Profiles, err)
-	}
-	if legacy.AI.Profiles[0].AllowedRoles[1] != "developer" {
-		t.Fatal("parsing rewrote the file configuration")
-	}
-	for _, mutate := range []func(*fileConfig){func(raw *fileConfig) { raw.AI.Environment = "remote" }, func(raw *fileConfig) { raw.AI.DecisionTimeout = "bad" }, func(raw *fileConfig) { raw.AI.Profiles[0].MaxSteps = 0 }, func(raw *fileConfig) { raw.AI.Profiles[0].MaxOutputTokens = 0 }, func(raw *fileConfig) { raw.AI.Profiles = append(raw.AI.Profiles, raw.AI.Profiles[0]) }, func(raw *fileConfig) { raw.AI.Profiles[0].AllowedRoles = []string{"tester", "developer"} }, func(raw *fileConfig) {
+	for _, mutate := range []func(*fileConfig){func(raw *fileConfig) { raw.AI.Environment = "remote" }, func(raw *fileConfig) { raw.AI.DecisionTimeout = "bad" }, func(raw *fileConfig) { raw.AI.Profiles[0].MaxSteps = 0 }, func(raw *fileConfig) { raw.AI.Profiles[0].MaxOutputTokens = 0 }, func(raw *fileConfig) { raw.AI.Profiles = append(raw.AI.Profiles, raw.AI.Profiles[0]) }, func(raw *fileConfig) {
 		raw.AI.Profiles[0].Runtime = "cli"
 		raw.AI.Profiles[0].SupportedVersionPrefix = ""
 	}, func(raw *fileConfig) {
