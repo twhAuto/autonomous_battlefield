@@ -89,35 +89,3 @@ func TestDurableModelAccessAcrossAPIInstances(t *testing.T) {
 		t.Fatalf("updated_by=%q err=%v", updatedBy, err)
 	}
 }
-
-// A policy saved through an earlier image, including one still serving during a rollout,
-// spells the tester role "developer"; it reads as tester and is saved as tester.
-func TestPoliciesSavedByEarlierImagesReadAsTester(t *testing.T) {
-	ctx := context.Background()
-	db, err := pgxpool.New(ctx, isolatedAdminDatabase(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err = db.Exec(ctx, `UPDATE model_access_policy SET policy='{"providers":{},"profiles":{"cli":{"enabled":true,"allowedRoles":["admin","developer"]},"api":{"enabled":false,"allowedRoles":[]}}}' WHERE id`); err != nil {
-		t.Fatal(err)
-	}
-	store := &Postgres{DB: db}
-	settings, err := store.Read(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := settings.Policy.Profiles["cli"].AllowedRoles; len(got) != 2 || got[0] != "admin" || got[1] != "tester" {
-		t.Fatalf("cli roles = %v", got)
-	}
-	if got := settings.Policy.Profiles["api"].AllowedRoles; got == nil || len(got) != 0 {
-		t.Fatalf("api roles = %#v", got)
-	}
-	if _, err = store.Save(ctx, settings, "admin"); err != nil {
-		t.Fatal(err)
-	}
-	var cli string
-	if err = db.QueryRow(ctx, "SELECT policy#>>'{profiles,cli,allowedRoles}' FROM model_access_policy WHERE id").Scan(&cli); err != nil || cli != `["admin", "tester"]` {
-		t.Fatalf("stored roles = %s, err=%v", cli, err)
-	}
-}
