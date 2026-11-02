@@ -17,7 +17,7 @@ how delivery works; the linked guides own each procedure.
 
 PostgreSQL remains the durable queue in every environment; see the
 [system context](../architecture/system-architecture.md#2-system-context).
-Production migrations create and inspect a database backup before applying SQL,
+Production migrations create, inspect and encrypt a database backup before applying SQL,
 production smoke checks authenticate with the
 [CI service identity](access.md#ci-service-identity), and rollback records include
 the applied migration versions, so a changed ledger requires reviewed database

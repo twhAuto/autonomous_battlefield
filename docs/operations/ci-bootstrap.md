@@ -98,7 +98,7 @@ human-readable maintenance scope.
 | Controller | Native Jenkins Debian service, `/var/lib/jenkins`, Java 21; checksum-pinned core and complete plugin dependency closure in `infra/jenkins/controller-lock.json` |
 | Configuration as Code | Built-in executors set to zero and the registered root URL; no replacement lists for users, security realms, nodes, jobs or credentials |
 | Agent | Existing `battlefield-local` identity, four executors, `battlefield-production`/`local-kind` labels, operator user service and persistent workspace; enrollment is automatic |
-| Toolchain | Pinned Go, Node, kubectl and SonarScanner under `/opt/battlefield-ci/tools`; Docker/Buildx/Compose, Java and Chromium OS libraries; Playwright's browser version remains owned by the frontend lockfile |
+| Toolchain | Pinned Go, Node, kubectl and SonarScanner under `/opt/battlefield-ci/tools`; Docker/Buildx/Compose, Java, `age` for encrypted migration dumps and Chromium OS libraries; Playwright's browser version remains owned by the frontend lockfile |
 | Jenkins integration | Scoped Sonar server and scanner configuration; preserve other installations; reuse `seed-platform.py` and its owned `host`, `vm` and `k3s` definitions |
 | Sonar | Digest-pinned Compose images, existing `sonarqube` project and named volumes, private database credentials, loopback port 9000, API initialization and project-scoped Sonar way gate; preserve the instance-wide default |
 | Certificates | Inventory's public CA certificates enter Ubuntu/Java trust; no global TLS-verification bypass |
