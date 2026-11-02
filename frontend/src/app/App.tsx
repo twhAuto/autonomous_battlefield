@@ -116,6 +116,7 @@ export default function App({ authentication = authenticationClient, initialSess
   useEffect(() => () => setRequestPreviewRole(null), [])
   const [sessionError, setSessionError] = useState('')
   const [logoutError, setLogoutError] = useState('')
+  const [signingOut, setSigningOut] = useState(false)
   const [sessionAttempt, setSessionAttempt] = useState(0)
 
   useEffect(() => {
@@ -139,9 +140,16 @@ export default function App({ authentication = authenticationClient, initialSess
     changePreviewRole(null)
     setLogoutError('')
     try {
-      await authentication.logout()
+      // Access logout navigates away; showing the signed-out card meanwhile would offer
+      // a Sign in that races that navigation.
+      if (await authentication.logout()) {
+        setSigningOut(true)
+        return
+      }
+      setSigningOut(false)
       setSession(previous => ({ enabled: true, authenticated: false, mode: previous?.mode }))
     } catch {
+      setSigningOut(false)
       setLogoutError('Logout could not be confirmed. Try Log out again.')
     }
   }
@@ -168,11 +176,16 @@ export default function App({ authentication = authenticationClient, initialSess
       </main>
     )
   }
+  if (signingOut) {
+    // The browser can stay, for example when a page's unsaved-changes prompt is
+    // cancelled, so the screen offers the Access logout again.
+    return <main className="login-page"><section className="login-card" aria-labelledby="signing-out-title"><h1 id="signing-out-title">Signing out…</h1><p>Ending your Cloudflare Access session. If this page stays open, sign out again.</p><button className="submit-button" type="button" onClick={() => { void logout() }}><span>SIGN OUT AGAIN</span><span>→</span></button></section></main>
+  }
   if (!session) {
     return <main className="login-page"><div className="loader" aria-label="Checking authentication" /></main>
   }
   if (!session.authenticated) {
-    if (session.mode === 'cloudflare') return <main className="login-page"><section className="login-card"><h1>Sign in to Battlefield</h1><p>Your session has expired or access is unavailable.</p><button type="button" onClick={() => window.location.assign('/')}>Sign in</button></section></main>
+    if (session.mode === 'cloudflare') return <main className="login-page"><section className="login-card"><h1>Sign in to Battlefield</h1><p>Your session has expired or access is unavailable.</p><button className="submit-button" type="button" onClick={() => window.location.assign('/')}><span>SIGN IN</span><span>→</span></button></section></main>
     return <LoginPage authentication={authentication} onAuthenticated={setSession} />
   }
 

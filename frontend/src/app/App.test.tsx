@@ -128,6 +128,35 @@ describe('App', () => {
     expect(authentication.logout).toHaveBeenCalledTimes(2)
   })
 
+  it('shows a signing-out screen while the browser leaves for the Access logout page', async () => {
+    const authentication: AuthenticationClient = { session: vi.fn(), login: vi.fn(), logout: vi.fn().mockResolvedValue(true) }
+    const user = userEvent.setup()
+    render(<MemoryRouter><App authentication={authentication} initialSession={{
+      enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'test-admin', role: 'admin' },
+    }} /></MemoryRouter>)
+
+    await user.click(screen.getByRole('button', { name: 'Log out test-admin' }))
+    expect(await screen.findByRole('heading', { name: 'Signing out…' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Sign in to Battlefield' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button').map(button => button.textContent)).toEqual(['SIGN OUT AGAIN→'])
+  })
+
+  it('offers the Access logout again when the browser stayed, and returns to the app if it fails', async () => {
+    const authentication: AuthenticationClient = { session: vi.fn(), login: vi.fn(), logout: vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockRejectedValueOnce(new Error('offline')) }
+    const user = userEvent.setup()
+    render(<MemoryRouter><App authentication={authentication} initialSession={{
+      enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'test-admin', role: 'admin' },
+    }} /></MemoryRouter>)
+
+    await user.click(screen.getByRole('button', { name: 'Log out test-admin' }))
+    await user.click(await screen.findByRole('button', { name: /sign out again/i }))
+    expect(authentication.logout).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('heading', { name: 'Signing out…' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /sign out again/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Logout could not be confirmed. Try Log out again.')
+    expect(screen.getByRole('heading', { name: 'Main menu' })).toBeInTheDocument()
+  })
+
   it.each(['local-password', 'cloudflare'])('signs out an expired %s session when logout returns 401', async (mode) => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 401 }))
     const user = userEvent.setup()
