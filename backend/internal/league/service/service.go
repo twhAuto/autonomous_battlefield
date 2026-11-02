@@ -212,7 +212,7 @@ func requestDigest(input CreateInput) (string, error) {
 }
 
 func (s *Service) GetLeague(ctx context.Context, id string) (*league.League, error) {
-	if err := requireInspect(ctx); err != nil {
+	if err := requireView(ctx); err != nil {
 		return nil, err
 	}
 	if !uuidPattern.MatchString(id) {
@@ -223,7 +223,7 @@ func (s *Service) GetLeague(ctx context.Context, id string) (*league.League, err
 
 // ListLeagues returns the newest leagues first. A limit of zero selects the default.
 func (s *Service) ListLeagues(ctx context.Context, limit int) ([]league.Summary, error) {
-	if err := requireInspect(ctx); err != nil {
+	if err := requireView(ctx); err != nil {
 		return nil, err
 	}
 	if limit == 0 {
@@ -237,7 +237,7 @@ func (s *Service) ListLeagues(ctx context.Context, limit int) ([]league.Summary,
 
 // Scheduling reports the capacity league battles run in.
 func (s *Service) Scheduling(ctx context.Context) (league.Scheduling, error) {
-	if err := requireInspect(ctx); err != nil {
+	if err := requireView(ctx); err != nil {
 		return league.Scheduling{}, err
 	}
 	cliSlots, err := s.repo.CLISlots(ctx)
@@ -376,8 +376,8 @@ func requireAdmin(ctx context.Context) error {
 	return nil
 }
 
-func requireInspect(ctx context.Context) error {
-	if actor, ok := authn.ActorFromContext(ctx); !ok || !actor.CanInspect() {
+func requireView(ctx context.Context) error {
+	if actor, ok := authn.ActorFromContext(ctx); !ok || !actor.CanView() {
 		return authn.ErrForbidden
 	}
 	return nil

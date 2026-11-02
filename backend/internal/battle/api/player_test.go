@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -17,19 +18,21 @@ import (
 
 func TestPlayerProjectionAfterSharedCachedRead(t *testing.T) {
 	secret := "internal-secret-diagnostic"
-	run := &battleservice.BattleRun{ID: "battle", OwnerID: "owner", Status: "failed", ErrorMessage: &secret, ErrorCode: &secret, ScenarioDigest: secret, ScenarioSnapshot: game.Scenario{Factions: []game.FactionSetup{{ID: "a", Name: "A", Controller: game.ControllerConfig{Type: "model", ProfileID: secret}}}}}
+	model := game.ControllerConfig{Type: "model", ProfileID: "frontier", Provider: "openai", Runtime: "api", ModelIdentifier: "gpt-test", ReasoningEffort: "high"}
+	league := &battleservice.BattleLeague{ID: "league", Name: "Autumn Cup", FixtureID: "fixture", Stage: "final", Round: 1, Tie: 1}
+	run := &battleservice.BattleRun{ID: "battle", OwnerID: "owner", Status: "failed", ErrorMessage: &secret, ErrorCode: &secret, ScenarioDigest: secret, League: league, ScenarioSnapshot: game.Scenario{Factions: []game.FactionSetup{{ID: "a", Name: "A", Controller: model}}}}
 	player := httptest.NewRequest("GET", "/v1/battles/battle", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "friend", Role: authn.Player}))
-	raw, e := json.Marshal(battleResponseFor(player, run))
-	if e != nil || strings.Contains(string(raw), secret) {
-		t.Fatal(string(raw), e)
-	}
 	guest := player.WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "guest", Role: authn.Guest}))
-	raw, e = json.Marshal(battleResponseFor(guest, run))
-	if e != nil || strings.Contains(string(raw), secret) {
-		t.Fatal("guest response exposes diagnostics", string(raw), e)
+	// Players and Guests see which model played each side and the battle's league, but
+	// no diagnostics.
+	for _, request := range []*http.Request{player, guest} {
+		raw, e := json.Marshal(battleResponseFor(request, run))
+		if e != nil || strings.Contains(string(raw), secret) || !strings.Contains(string(raw), `"modelIdentifier":"gpt-test"`) || !strings.Contains(string(raw), `"reasoningEffort":"high"`) || !strings.Contains(string(raw), `"name":"Autumn Cup"`) {
+			t.Fatal(string(raw), e)
+		}
 	}
 	tester := player.WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "tester", Role: authn.Tester}))
-	raw, e = json.Marshal(battleResponseFor(tester, run))
+	raw, e := json.Marshal(battleResponseFor(tester, run))
 	if e != nil || !strings.Contains(string(raw), secret) {
 		t.Fatal("shared cache was mutated", string(raw), e)
 	}

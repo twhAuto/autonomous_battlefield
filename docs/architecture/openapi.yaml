@@ -790,7 +790,6 @@ paths:
       tags: [Leagues]
       operationId: listLeagues
       summary: List leagues, newest first
-      description: Testers and Admins only.
       parameters:
         - name: limit
           in: query
@@ -874,7 +873,6 @@ paths:
       tags: [Leagues]
       operationId: getLeague
       summary: Read a league with its tables, knockout and fixtures
-      description: Testers and Admins only.
       responses:
         '200':
           description: The league.
@@ -963,7 +961,7 @@ paths:
       operationId: getAnalytics
       summary: Summarize completed battles
       description: |
-        Testers and Admins only. Covers completed battles, newest first, at most
+        Covers completed battles, newest first, at most
         5000 (`truncated` reports a cut). Every list is sorted, so equal data gives an
         equal report. Unit and upgrade figures use only results that carry per-type
         statistics; older results count for outcomes alone.
@@ -1874,8 +1872,8 @@ components:
 
     Battle:
       description: |
-        Players receive the same shape without `scenarioDigest` and `errorCode`, and
-        their participant `controller` contains only `type`.
+        Players and Guests receive the same shape without `scenarioDigest` and
+        `errorCode`.
       type: object
       required: [id, ownerId, scenarioId, requestedTicks, currentTick, production, status, paused, attempt, participants, result, map, state]
       properties:
@@ -1931,7 +1929,7 @@ components:
         errorCode: {type: string}
         errorMessage: {type: string}
         league:
-          description: Present only for a league battle; omitted for players.
+          description: Present only for a league battle.
           $ref: '#/components/schemas/BattleLeague'
 
     BattleLeague:

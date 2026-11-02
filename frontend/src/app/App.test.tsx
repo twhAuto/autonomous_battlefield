@@ -150,13 +150,9 @@ describe('App', () => {
     expect(within(menu).getByRole('heading', { name: 'Factions' }).closest('a')).toHaveAttribute('href', '/factions')
     expect(within(menu).getByRole('link', { name: /stage battle/i })).toHaveAttribute('href', '/battles/new')
     expect(within(menu).getByRole('link', { name: /battle history/i })).toHaveAttribute('href', '/battles')
-    expect(within(menu).getAllByRole('link')).toHaveLength(role === 'player' ? 3 : 5)
+    expect(within(menu).getAllByRole('link')).toHaveLength(5)
     for (const [name, href] of [['Leagues', '/leagues'], ['Statistics', '/analytics']]) {
-      if (role === 'player') {
-        expect(within(menu).queryByRole('link', { name })).not.toBeInTheDocument()
-      } else {
-        expect(within(menu).getByRole('link', { name })).toHaveAttribute('href', href)
-      }
+      expect(within(menu).getByRole('link', { name })).toHaveAttribute('href', href)
     }
   })
 

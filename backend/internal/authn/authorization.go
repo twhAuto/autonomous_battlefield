@@ -43,6 +43,9 @@ func WithActorObserver(ctx context.Context, observe func(Actor)) context.Context
 	return context.WithValue(ctx, actorObserverKey{}, observe)
 }
 func (a Actor) CanInspect() bool { return a.Role == Admin || a.Role == Tester }
+
+// CanView reports a signed-in person, Guests included; service identities read nothing.
+func (a Actor) CanView() bool { return a.Role == Guest || a.Role == Player || a.CanInspect() }
 func (a Actor) CanManage(owner string) bool {
 	return a.Role != CI && a.Role != Guest && a.ID != "" && (a.Role == Admin || a.ID == owner)
 }
@@ -106,7 +109,7 @@ const (
 func permits(permission Permission, a Actor) bool {
 	switch permission {
 	case PermissionView:
-		return a.Role == Guest || a.Role == Player || a.CanInspect()
+		return a.CanView()
 	case PermissionPlay:
 		return a.Role == Player || a.CanInspect()
 	case PermissionInspect:
@@ -180,10 +183,10 @@ var routeRules = []routeRule{
 	{pattern: "GET /v1/faction-background-generations/{id}", permission: PermissionPlay},
 
 	{pattern: "GET /v1/battles/{id}/decisions/{requestId}/context", permission: PermissionInspect},
-	{pattern: "GET /v1/leagues", permission: PermissionInspect},
-	{pattern: "GET /v1/analytics", permission: PermissionInspect},
-	{pattern: "GET /v1/leagues/{id}", permission: PermissionInspect},
 
+	{pattern: "GET /v1/leagues", permission: PermissionView},
+	{pattern: "GET /v1/leagues/{id}", permission: PermissionView},
+	{pattern: "GET /v1/analytics", permission: PermissionView},
 	{pattern: "POST /v1/leagues", permission: PermissionAdmin},
 	{pattern: "POST /v1/leagues/{id}/cancel", permission: PermissionAdmin},
 	{pattern: "POST /v1/leagues/{id}/entrants/{entrant}/disqualify", permission: PermissionAdmin},

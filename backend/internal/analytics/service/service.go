@@ -57,7 +57,7 @@ func New(repo Repository, currentRules string) *Service {
 }
 
 func (s *Service) Report(ctx context.Context, q Query) (analytics.Report, error) {
-	if actor, ok := authn.ActorFromContext(ctx); !ok || !actor.CanInspect() {
+	if actor, ok := authn.ActorFromContext(ctx); !ok || !actor.CanView() {
 		return analytics.Report{}, authn.ErrForbidden
 	}
 	if q.LeagueID != "" && !uuidPattern.MatchString(q.LeagueID) {

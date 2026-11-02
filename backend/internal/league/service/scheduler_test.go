@@ -350,8 +350,8 @@ func TestSchedulePassAndSchedulingSurfaceCapacityErrors(t *testing.T) {
 	if got, err := h.service.Scheduling(actorContext(authn.Tester)); err != nil || got != (league.Scheduling{BattleSlots: 4, CLISlots: 4}) {
 		t.Fatalf("scheduling = %+v, %v", got, err)
 	}
-	if _, err := h.service.Scheduling(actorContext(authn.Player)); !errors.Is(err, authn.ErrForbidden) {
-		t.Fatalf("player scheduling err = %v", err)
+	if _, err := h.service.Scheduling(actorContext(authn.CI)); !errors.Is(err, authn.ErrForbidden) {
+		t.Fatalf("service identity scheduling err = %v", err)
 	}
 	if got := newHarness().service.battleSlots; got != 1 {
 		t.Fatalf("default battle slots = %d, want 1", got)

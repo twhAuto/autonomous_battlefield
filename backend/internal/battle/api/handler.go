@@ -413,7 +413,7 @@ func battleResponseFor(r *http.Request, run *battleservice.BattleRun) any {
 	}
 	participants := []map[string]any{}
 	for _, f := range run.ScenarioSnapshot.Factions {
-		participants = append(participants, map[string]any{"id": f.ID, "name": f.Name, "background": f.Background, "doctrine": f.Doctrine, "controller": map[string]string{"type": f.Controller.Type}})
+		participants = append(participants, map[string]any{"id": f.ID, "name": f.Name, "background": f.Background, "doctrine": f.Doctrine, "controller": f.Controller})
 	}
 	response := map[string]any{"id": run.ID, "ownerId": run.OwnerID, "scenarioId": run.ScenarioID, "requestedTicks": run.RequestedTicks, "currentTick": run.CurrentTick, "production": productionFor(run), "status": run.Status, "paused": run.Paused, "attempt": run.Attempt, "participants": participants, "result": run.Result, "map": run.ScenarioSnapshot.Map, "state": run.CurrentState}
 	if limit := run.ScenarioSnapshot.Ruleset.MaximumUnitCount; limit > 0 {
@@ -424,6 +424,9 @@ func battleResponseFor(r *http.Request, run *battleservice.BattleRun) any {
 	}
 	if run.Status == "failed" {
 		response["errorMessage"] = "The battle could not complete."
+	}
+	if run.League != nil {
+		response["league"] = leagueFor(run)
 	}
 	return response
 }

@@ -1,5 +1,5 @@
-// Checks the Guest experience: a view-only label, no routes or links that start, create
-// or manage anything, and the Admin preview of it.
+// Checks the Guest experience: a view-only label, leagues and statistics to browse, no
+// routes or links that start, create or manage anything, and the Admin preview of it.
 
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -20,6 +20,7 @@ beforeEach(() => {
     const url = String(input)
     if (url.startsWith('/v1/factions')) return json({ factions: [{ id: 'mine', name: 'Northwind', doctrine: 'Hold.', background: '', ownerId: 'visitor' }] })
     if (url.startsWith('/v1/battles')) return json({ battles: [], nextCursor: null })
+    if (url.startsWith('/v1/leagues')) return json({ leagues: [] })
     throw new Error(`Unexpected fetch: ${url}`)
   }))
 })
@@ -29,13 +30,13 @@ it('labels a Guest session view-only and offers only viewing destinations', () =
   expect(screen.getByText(/Guest access · View only/)).toBeInTheDocument()
   const menu = screen.getByRole('region', { name: 'Main menu' })
   expect(within(menu).queryByRole('link', { name: /stage battle/i })).not.toBeInTheDocument()
-  expect(within(menu).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/factions', '/battles'])
+  expect(within(menu).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/factions', '/battles', '/leagues', '/analytics'])
   expect(within(menu).getByText('Browse the factions and their doctrines.')).toBeInTheDocument()
   const navigation = screen.getByRole('navigation', { name: 'Primary navigation' })
   expect(within(navigation).queryByRole('link', { name: 'Stage battle' })).not.toBeInTheDocument()
 })
 
-it.each(['/battles/new', '/factions/new', '/factions/mine/edit'])('does not serve %s to a Guest', (path) => {
+it.each(['/battles/new', '/factions/new', '/factions/mine/edit', '/leagues/new'])('does not serve %s to a Guest', (path) => {
   renderApp(path)
   expect(screen.getByRole('heading', { name: 'This route is outside the mapped frontier.' })).toBeInTheDocument()
 })
@@ -45,6 +46,12 @@ it('shows a Guest factions without create or edit links, even its own', async ()
   expect(await screen.findByText('Northwind')).toBeInTheDocument()
   expect(screen.queryByRole('link', { name: /create faction/i })).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: 'Edit faction' })).not.toBeInTheDocument()
+})
+
+it('shows a Guest the leagues without a way to start one', async () => {
+  renderApp('/leagues')
+  expect(await screen.findByText('An administrator can start a league.')).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: /start league/i })).not.toBeInTheDocument()
 })
 
 it('shows a Guest an empty battle history without staging links', async () => {
