@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
@@ -165,4 +166,20 @@ func storedRole(t *testing.T, store *Store, actorID string) string {
 		t.Fatal(err)
 	}
 	return role
+}
+
+// stalledDB blocks every query until its context ends, like an exhausted pool.
+type stalledDB struct{ postgres.DBTX }
+
+func (stalledDB) Query(ctx context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestLabelsGiveUpOnAStalledDatabase(t *testing.T) {
+	started := time.Now()
+	_, err := NewStore(stalledDB{}).Labels(context.Background(), []string{"issuer|ada"})
+	if elapsed := time.Since(started); !errors.Is(err, context.DeadlineExceeded) || elapsed > 3*labelTimeout {
+		t.Fatalf("err = %v after %v", err, elapsed)
+	}
 }

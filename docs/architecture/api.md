@@ -66,14 +66,13 @@ approval for each API and CLI profile.
 
 ### Display names
 
-`PUT /v1/profile` with `{"displayName": "Iron Duke"}` sets the caller's own display
-name and returns the stored name. Players, Testers and Admins may call it; Guests
-receive `403`. The name is trimmed, must be 3 to 24 letters, digits, spaces,
-hyphens or underscores (`400` otherwise), and must not match another person's name
-ignoring case (`409 conflict`); saving one's own name again in another case
-succeeds. Names can be changed at any time. The web app asks a Player or Tester
-without a name to choose one before anything else; Admins and Guests are never
-asked.
+`PUT /v1/profile` sets the caller's own display name. Players, Testers and Admins
+may call it; Guests receive `403`. The name is trimmed, must be 3 to 24 letters,
+digits, spaces, hyphens or underscores (`400` otherwise), and must not match
+another person's name ignoring case (`409 conflict`); saving one's own name again in
+another case succeeds. Names can be changed at any time. The
+[frontend guide](../developer/frontend-guide.md#routes-and-session) describes when the
+web app asks for one.
 
 Factions from `GET /v1/factions`, battle history rows, and the battle returned by
 `GET /v1/battles/{id}` and by stop, pause and resume carry `ownerName` for every
@@ -81,8 +80,8 @@ role, Guests included: `Admin` for anything an Admin owns, league battles and
 `legacy-admin` rows included; otherwise the owner's display name, or
 `Unnamed commander` before they choose one. The label follows the owner's role as
 last recorded by their session, so an Admin's items say `Admin` whatever name they
-hold. No response names another person by email. When names cannot be read,
-responses omit `ownerName` instead of failing.
+hold. No response names another person by email. When names cannot be read
+promptly, responses omit `ownerName` instead of waiting or failing.
 
 ### Admission limits
 

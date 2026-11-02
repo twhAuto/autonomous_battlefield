@@ -35,6 +35,10 @@ const (
 	UnnamedLabel = "Unnamed commander"
 )
 
+// labelTimeout bounds the optional owner lookup, so a stalled database delays a read
+// by at most this long before the response leaves the names out.
+const labelTimeout = time.Second
+
 // namePattern matches the people_display_name check: no leading or trailing space.
 var namePattern = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9 _-]{1,22}[A-Za-z0-9_-]$`)
 
@@ -130,6 +134,8 @@ func (s *Store) Labels(ctx context.Context, ownerIDs []string) (map[string]strin
 	for _, id := range ids {
 		labels[id] = Label(id, "", "")
 	}
+	ctx, cancel := context.WithTimeout(ctx, labelTimeout)
+	defer cancel()
 	rows, err := s.DB.Query(ctx, `SELECT actor_id, role, display_name FROM people WHERE actor_id = ANY($1)`, ids)
 	if err != nil {
 		return nil, fmt.Errorf("read owner names: %w", err)
