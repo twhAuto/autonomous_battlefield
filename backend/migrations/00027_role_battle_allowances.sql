@@ -10,7 +10,10 @@ ALTER TABLE runtime_policy
  ALTER COLUMN player_unfinished SET DEFAULT 1,
  ADD COLUMN tester_daily_battles integer NOT NULL DEFAULT 10 CHECK(tester_daily_battles>0),
  ADD COLUMN tester_unfinished integer NOT NULL DEFAULT 2 CHECK(tester_unfinished>0);
-UPDATE runtime_policy SET player_daily_battles=5, player_unfinished=1;
+-- Only allowances still at the previous defaults move; operator-set values stay.
+UPDATE runtime_policy SET
+ player_daily_battles = CASE WHEN player_daily_battles=20 THEN 5 ELSE player_daily_battles END,
+ player_unfinished = CASE WHEN player_unfinished=2 THEN 1 ELSE player_unfinished END;
 ALTER TABLE battle_runs ADD COLUMN tester_allowance boolean NOT NULL DEFAULT false;
 -- +goose StatementBegin
 CREATE OR REPLACE FUNCTION admit_friend_battle() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -55,4 +58,6 @@ ALTER TABLE runtime_policy DROP COLUMN tester_daily_battles, DROP COLUMN tester_
 ALTER TABLE runtime_policy RENAME COLUMN player_daily_battles TO daily_battles;
 ALTER TABLE runtime_policy RENAME COLUMN player_unfinished TO user_unfinished;
 ALTER TABLE runtime_policy ALTER COLUMN daily_battles SET DEFAULT 20, ALTER COLUMN user_unfinished SET DEFAULT 2;
-UPDATE runtime_policy SET daily_battles=20, user_unfinished=2;
+UPDATE runtime_policy SET
+ daily_battles = CASE WHEN daily_battles=5 THEN 20 ELSE daily_battles END,
+ user_unfinished = CASE WHEN user_unfinished=1 THEN 2 ELSE user_unfinished END;

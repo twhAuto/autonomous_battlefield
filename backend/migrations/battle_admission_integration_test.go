@@ -6,8 +6,10 @@ package migrations_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 
@@ -164,26 +166,40 @@ func TestRoleBattleAllowancesMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.UpTo(ctx, 26); err != nil {
+	step := func(_ any, err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	const upgraded = `SELECT player_daily_battles,player_unfinished,tester_daily_battles,tester_unfinished FROM runtime_policy WHERE id`
+	const previous = `SELECT daily_battles,user_unfinished FROM runtime_policy WHERE id`
+	// Allowances at the previous defaults move to the new Player defaults and back.
+	step(provider.UpTo(ctx, 26))
+	step(provider.UpTo(ctx, 27))
+	wantAllowances(t, db, upgraded, 5, 1, 10, 2)
+	step(provider.DownTo(ctx, 26))
+	wantAllowances(t, db, previous, 20, 2)
+	// An operator-set value is kept in both directions; a default beside it still moves.
+	step(db.ExecContext(ctx, `UPDATE runtime_policy SET daily_battles=3`))
+	step(provider.UpTo(ctx, 27))
+	wantAllowances(t, db, upgraded, 3, 1, 10, 2)
+	step(provider.DownTo(ctx, 26))
+	wantAllowances(t, db, previous, 3, 2)
+}
+
+// wantAllowances scans one runtime_policy row and compares its integer columns.
+func wantAllowances(t *testing.T, db *sql.DB, query string, want ...int) {
+	t.Helper()
+	got := make([]int, len(want))
+	dest := make([]any, len(want))
+	for i := range got {
+		dest[i] = &got[i]
+	}
+	if err := db.QueryRowContext(context.Background(), query).Scan(dest...); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.UpTo(ctx, 27); err != nil {
-		t.Fatal(err)
-	}
-	var player, playerUnfinished, tester, testerUnfinished int
-	if err = db.QueryRowContext(ctx, `SELECT player_daily_battles,player_unfinished,tester_daily_battles,tester_unfinished FROM runtime_policy WHERE id`).Scan(&player, &playerUnfinished, &tester, &testerUnfinished); err != nil {
-		t.Fatal(err)
-	}
-	if player != 5 || playerUnfinished != 1 || tester != 10 || testerUnfinished != 2 {
-		t.Fatalf("allowances = %d/%d Player, %d/%d Tester", player, playerUnfinished, tester, testerUnfinished)
-	}
-	if _, err = provider.DownTo(ctx, 26); err != nil {
-		t.Fatal(err)
-	}
-	if err = db.QueryRowContext(ctx, `SELECT daily_battles,user_unfinished FROM runtime_policy WHERE id`).Scan(&player, &playerUnfinished); err != nil {
-		t.Fatal(err)
-	}
-	if player != 20 || playerUnfinished != 2 {
-		t.Fatalf("rolled-back allowances = %d/%d", player, playerUnfinished)
+	if !slices.Equal(got, want) {
+		t.Fatalf("%s = %v; want %v", query, got, want)
 	}
 }
