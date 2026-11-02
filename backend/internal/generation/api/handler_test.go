@@ -204,3 +204,33 @@ func TestCreateAdmitsWithTheConfiguredProfile(t *testing.T) {
 		t.Fatalf("status %d, admission %+v, want %+v", w.Code, r.model, want)
 	}
 }
+
+func TestGenerationRequiresTheConfiguredModelForTheRole(t *testing.T) {
+	t.Setenv("CLI_AVAILABLE", "true")
+	base := profile.NewCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Runtime: "cli", Provider: "claude-cli", Scope: "local", Enabled: true, Model: "opus",
+		AvailabilityEnvironmentVariable: "CLI_AVAILABLE", SupportedVersionPrefix: "2.", ModelOptions: []ai.ModelOption{{ID: "haiku"}, {ID: "opus"}}}})
+	policy := profile.AccessPolicy{Profiles: map[string]profile.Access{"cli": {Enabled: true, AllowedRoles: []string{"admin", "tester", "player"}, Models: map[string]profile.ModelAccess{
+		"opus": {AllowedRoles: []string{"admin", "tester"}},
+	}}}}
+	repo := &httpRepo{}
+	c := generation.DefaultConfig()
+	c.ProfileID = "cli"
+	mux := http.NewServeMux()
+	NewHandler(repo, c, base.WithAccessPolicy(func() (profile.AccessPolicy, error) { return policy, nil })).RegisterRoutes(mux)
+	serve := func(role authn.Role, method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body)).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: string(role), Role: role}))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		return w
+	}
+	create := `{"name":"A","doctrine":"d","idempotencyKey":"one"}`
+	if w := serve(authn.Player, "POST", "/v1/faction-background-generations", create); w.Code != 503 || repo.calls != 0 {
+		t.Fatalf("player admitted on a disallowed model: %d %s", w.Code, w.Body.String())
+	}
+	if w := serve(authn.Player, "GET", "/v1/faction-background-generations/options", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"available":false`) {
+		t.Fatalf("player options: %d %s", w.Code, w.Body.String())
+	}
+	if w := serve(authn.Tester, "POST", "/v1/faction-background-generations", create); w.Code != 202 || repo.calls != 1 || repo.model.ModelLabel != "opus" {
+		t.Fatalf("tester not admitted: %d %s %+v", w.Code, w.Body.String(), repo.model)
+	}
+}

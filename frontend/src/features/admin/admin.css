@@ -3,6 +3,9 @@
 .admin-heading { padding: 54px 0 44px; border-bottom: 1px solid var(--line); }
 .admin-heading h1 { margin: 14px 0 10px; font-size: clamp(46px, 6vw, 76px); line-height: 1; letter-spacing: -.055em; font-weight: 500; }
 .admin-heading p, .admin-section-heading p, .admin-model p, .admin-note { color: var(--muted); line-height: 1.6; }
+.admin-heading nav { color: var(--muted); font: 500 12px 'DM Mono', monospace; letter-spacing: .12em; text-transform: uppercase; }
+.admin-heading nav a { color: var(--muted); text-decoration: none; }
+.admin-heading nav a:hover, .admin-heading nav a[aria-current='page'] { color: var(--lime); }
 .admin-models { padding-top: 36px; }
 .admin-status { display: block; margin: 1em 0; }
 .admin-section-heading, .admin-model-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
@@ -30,7 +33,14 @@
 .admin-roles { display: flex; flex-wrap: wrap; gap: 16px; border: 1px solid var(--line); padding: 14px; }
 .admin-roles legend { color: var(--muted); padding: 0 6px; }
 .admin-roles label { display: flex; align-items: center; gap: 8px; }
-.admin-roles input { width: 18px; height: 18px; accent-color: var(--lime); }
+.admin-roles input, .admin-model-role input { width: 18px; height: 18px; accent-color: var(--lime); }
+.admin-model-roles { display: grid; gap: 10px; margin: 14px 0 0; border: 1px solid var(--line); padding: 14px; }
+.admin-model-roles > legend { color: var(--muted); padding: 0 6px; }
+.admin-model-roles .admin-note { margin: 0; }
+.admin-model-role { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 0; padding: 10px 0 0; border: 0; border-top: 1px solid var(--line); }
+.admin-model-role legend { float: left; min-width: 160px; padding: 0; color: #ecf0e5; font: 12px 'DM Mono', monospace; overflow-wrap: anywhere; }
+.admin-model-role label { display: flex; align-items: center; gap: 8px; }
+.admin-model-role label:has(input:disabled) { opacity: .5; }
 .admin-savebar, .admin-preview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 24px; }
 .admin-savebar span { flex: 1; min-width: 180px; }
 .admin-savebar button, .admin-preview-actions button { padding: 8px 16px; background: #151a14; color: var(--lime); border: 1px solid var(--line); }

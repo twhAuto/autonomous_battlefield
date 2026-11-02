@@ -4,6 +4,7 @@ package admin
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -59,6 +60,7 @@ func (s *Service) Get(ctx context.Context) (SettingsView, error) {
 			settings.Policy.Providers[p.Provider] = true
 		}
 		if value, ok := stored.Profiles[p.ID]; ok {
+			value.Models = configuredModels(p, value.Models)
 			settings.Policy.Profiles[p.ID] = value
 		} else {
 			settings.Policy.Profiles[p.ID] = defaultProfileAccess(p)
@@ -72,6 +74,21 @@ func (s *Service) Save(ctx context.Context, settings Settings, actorID string) (
 		return Settings{}, ErrInvalid
 	}
 	return s.Repository.Save(ctx, settings, actorID)
+}
+
+// configuredModels drops entries for models the profile does not offer, so a saved
+// policy keeps validating after a configuration change.
+func configuredModels(p ai.ModelProfile, models map[string]profile.ModelAccess) map[string]profile.ModelAccess {
+	result := map[string]profile.ModelAccess{}
+	for _, option := range p.ModelOptions {
+		if access, ok := models[option.ID]; ok {
+			result[option.ID] = access
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func defaultProfileAccess(p ai.ModelProfile) profile.Access {
@@ -94,6 +111,23 @@ func validRoles(roles []string) bool {
 	}
 	return true
 }
+
+// validModels accepts entries only for the profile's model options, each with roles
+// the profile itself allows.
+func validModels(p ai.ModelProfile, rule profile.Access) bool {
+	for id, access := range rule.Models {
+		offered := slices.ContainsFunc(p.ModelOptions, func(option ai.ModelOption) bool { return option.ID == id })
+		if !offered || !validRoles(access.AllowedRoles) {
+			return false
+		}
+		for _, role := range access.AllowedRoles {
+			if !slices.Contains(rule.AllowedRoles, role) {
+				return false
+			}
+		}
+	}
+	return true
+}
 func (s *Service) valid(settings Settings) bool {
 	models := s.Profiles.List()
 	providers := map[string]bool{}
@@ -103,7 +137,7 @@ func (s *Service) valid(settings Settings) bool {
 	for _, p := range models {
 		providers[p.Provider] = true
 		rule, ok := settings.Policy.Profiles[p.ID]
-		if !ok || !validRoles(rule.AllowedRoles) {
+		if !ok || !validRoles(rule.AllowedRoles) || !validModels(p, rule) {
 			return false
 		}
 		if _, ok := settings.Policy.Providers[p.Provider]; !ok {

@@ -310,7 +310,9 @@ paths:
       description: |
         Never returns credential values or credential environment-variable names.
         Players see only available profiles they are approved for, with a reduced set
-        of fields.
+        of fields. Each profile lists only the `modelOptions` the caller's role may
+        use, and `modelLabel` names the model an omitted `modelIdentifier` selects for
+        that role; a profile whose models the role may use none of is omitted.
       responses:
         '200':
           description: Profiles visible to the caller.
@@ -364,7 +366,8 @@ paths:
         - {$ref: '#/components/parameters/Origin'}
       description: |
         Both factions must exist. The API snapshots faction names, backgrounds and
-        doctrines, the map, ruleset, and controller plans.
+        doctrines, the map, ruleset, and controller plans. A model controller whose
+        profile or model the caller's role may not use returns `403`.
 
         **Idempotency:** the client supplies the battle `id`, which makes retries safe.
         Repeating a request with the same `id` returns `202` and the **existing**
@@ -736,7 +739,8 @@ paths:
         **Idempotency:** a repeated `idempotencyKey` with the same normalized input
         returns the original job without another charge. The same key with different
         input returns `409 conflict`. Validation failures (`400`) and unavailable
-        profiles (`503`) do not reserve quota.
+        profiles (`503`), including a profile or configured model the caller's role
+        may not use, do not reserve quota.
       requestBody:
         required: true
         content:
@@ -1031,7 +1035,9 @@ paths:
       parameters:
         - {$ref: '#/components/parameters/Origin'}
       description: |
-        Must include every configured provider and profile with no extras. A stale
+        Must include every configured provider and profile with no extras. Per-model
+        entries are optional; each must name one of the profile's model options and
+        allow only roles the profile allows, or the request returns `400`. A stale
         `version` returns `409`. The policy restricts only new selections; it cannot
         enable a profile whose credentials or runtime are unavailable.
       requestBody:
@@ -1552,7 +1558,7 @@ components:
                     description: Required when `type` is `model`.
                     type: string
                   modelIdentifier:
-                    description: Operator-allowlisted model; omission uses the profile default.
+                    description: Operator-allowlisted model; omission selects the model the model-profile list names in `modelLabel` for the caller's role.
                     type: string
                   reasoningEffort:
                     description: Supported effort for the selected model; omission uses the configured option default or provider default.
@@ -2715,6 +2721,21 @@ components:
                 type: array
                 uniqueItems: true
                 items: {$ref: '#/components/schemas/Role'}
+              models:
+                description: |
+                  Roles for individual model options, keyed by option `id`. Each list is
+                  a subset of the profile's `allowedRoles`, and an empty list denies
+                  everyone. A model without an entry allows every role the profile
+                  allows.
+                type: object
+                additionalProperties:
+                  type: object
+                  required: [allowedRoles]
+                  properties:
+                    allowedRoles:
+                      type: array
+                      uniqueItems: true
+                      items: {$ref: '#/components/schemas/Role'}
 
     ModelAccessSettings:
       type: object

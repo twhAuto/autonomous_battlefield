@@ -42,12 +42,16 @@ func actor(w http.ResponseWriter, r *http.Request) (string, bool) {
 	}
 	return a.ID, true
 }
-func (h *Handler) availability() (ai.ModelProfile, bool) {
+
+// availability reports the generation profile and whether the caller may use it.
+// Generation runs the profile's configured model, so the caller's role must be allowed
+// that model as well as the profile.
+func (h *Handler) availability(r *http.Request) (ai.ModelProfile, bool) {
 	if !h.config.Enabled || h.profiles == nil {
 		return ai.ModelProfile{}, false
 	}
 	p, err := h.profiles.Require(h.config.ProfileID)
-	return p, err == nil && (p.Runtime == "api" || p.Runtime == "cli")
+	return p, err == nil && (p.Runtime == "api" || p.Runtime == "cli") && profile.ModelAllowed(r.Context(), p, ai.ConfiguredModel(p))
 }
 func (h *Handler) options(w http.ResponseWriter, r *http.Request) {
 	id, ok := actor(w, r)
@@ -60,8 +64,7 @@ func (h *Handler) options(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, r, http.StatusInternalServerError, "could not load generation allowance")
 		return
 	}
-	p, available := h.availability()
-	available = available && profile.Allowed(r.Context(), p)
+	p, available := h.availability(r)
 	o.Available = available
 	o.ModelLabel = p.ModelLabel
 	if o.ModelLabel == "" {
@@ -91,8 +94,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, r, http.StatusBadRequest, "invalid name, doctrine, or background")
 		return
 	}
-	p, available := h.availability()
-	available = available && profile.Allowed(r.Context(), p)
+	p, available := h.availability(r)
 	if !available {
 		apierror.Write(w, r, http.StatusServiceUnavailable, "background generation is unavailable")
 		return
