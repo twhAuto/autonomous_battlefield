@@ -1,11 +1,12 @@
 // Checks session, login, and logout requests and maps authentication and network failures
 // to user-facing errors.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { authenticationClient, AuthenticationError } from './auth'
 
 describe('authenticationClient', () => {
   beforeEach(() => vi.stubGlobal('fetch', vi.fn()))
+  afterEach(() => vi.unstubAllGlobals())
 
   it('reads authenticated and unauthenticated sessions', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
@@ -57,10 +58,24 @@ describe('authenticationClient', () => {
 
   it('logs out and reports logout failures', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 204 }))
-    await expect(authenticationClient.logout()).resolves.toBeUndefined()
+    await expect(authenticationClient.logout()).resolves.toBe(false)
     expect(fetch).toHaveBeenCalledWith('/v1/auth/logout', { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
 
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 500 }))
     await expect(authenticationClient.logout()).rejects.toEqual(expect.objectContaining({ status: 500 }))
+  })
+
+  it('reports leaving for the Access logout page only for the Access logout URL', async () => {
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    vi.mocked(fetch).mockResolvedValueOnce(json({ logoutUrl: '/cdn-cgi/access/logout' }))
+    await expect(authenticationClient.logout()).resolves.toBe(true)
+    expect(assign).toHaveBeenCalledWith('/cdn-cgi/access/logout')
+    vi.mocked(fetch).mockResolvedValueOnce(json({ logoutUrl: 'https://elsewhere.example/logout' }))
+    await expect(authenticationClient.logout()).resolves.toBe(false)
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 401 }))
+    await expect(authenticationClient.logout()).resolves.toBe(false)
+    expect(assign).toHaveBeenCalledOnce()
   })
 })

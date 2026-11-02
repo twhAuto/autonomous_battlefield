@@ -59,7 +59,9 @@ battle destination or creation links, the not-found page at `/battles/new`,
 `usePermissions().play` gates these, and `canManage` is false for them.
 
 The shell shows the signed-out screen after a successful logout or an HTTP 401
-confirming that the session is no longer authenticated. If the request otherwise
+confirming that the session is no longer authenticated. An Access logout instead
+shows a signing-out screen without actions while the browser leaves for
+`/cdn-cgi/access/logout`. If the request otherwise
 fails, it retains the current screen and shows an accessible retry message; it cannot confirm that the server session ended. Component tests
 cover local-password and Access sessions, and browser tests cover retry on desktop
 and mobile. The footer displays the product name without a hardcoded build number.

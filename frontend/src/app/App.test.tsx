@@ -128,6 +128,19 @@ describe('App', () => {
     expect(authentication.logout).toHaveBeenCalledTimes(2)
   })
 
+  it('shows only a signing-out screen while the browser leaves for the Access logout page', async () => {
+    const authentication: AuthenticationClient = { session: vi.fn(), login: vi.fn(), logout: vi.fn().mockResolvedValue(true) }
+    const user = userEvent.setup()
+    render(<MemoryRouter><App authentication={authentication} initialSession={{
+      enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'test-admin', role: 'admin' },
+    }} /></MemoryRouter>)
+
+    await user.click(screen.getByRole('button', { name: 'Log out test-admin' }))
+    expect(await screen.findByRole('heading', { name: 'Signing out…' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Sign in to Battlefield' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
   it.each(['local-password', 'cloudflare'])('signs out an expired %s session when logout returns 401', async (mode) => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 401 }))
     const user = userEvent.setup()
