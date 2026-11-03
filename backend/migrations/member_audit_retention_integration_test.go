@@ -23,14 +23,14 @@ func TestMemberAuditRetentionMigration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	step(provider.UpTo(ctx, 29))
+	step(provider.UpTo(ctx, 30))
 	var id string
 	if err = db.QueryRowContext(ctx, `INSERT INTO player_members(email,desired_access) VALUES('friend@example.com',false) RETURNING id`).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
 	step(db.ExecContext(ctx, `INSERT INTO player_membership_audit(member_id,actor_id,action) VALUES($1,'admin','grant'),($1,'admin','remove')`, id))
 	step(db.ExecContext(ctx, `DELETE FROM player_members WHERE id=$1`, id))
-	step(provider.DownTo(ctx, 28))
+	step(provider.DownTo(ctx, 29))
 	var unlinked int
 	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM player_membership_audit WHERE member_id IS NULL AND action IN ('grant','remove')`).Scan(&unlinked); err != nil || unlinked != 2 {
 		t.Fatalf("unlinked audit rows after rollback = %d, %v", unlinked, err)
