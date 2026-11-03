@@ -26,7 +26,8 @@ export interface AnalyticsReport {
   rulesVersion: string | null; truncated: boolean; excludedForFallback: number; battles: number; battlesWithFallback: number; sidesWithUnitStats: number
   models: ModelStats[]; factions: FactionStats[]; headToHead: Matchup[]; units: UnitStats[]; unitsByModel: ModelUnit[]; upgrades: UpgradeStats[]; maps: MapStats[]
 }
-export interface AnalyticsQuery { leagueId?: string; allRules?: boolean; excludeFallback?: boolean }
+// rulesVersion is omitted for the current rules, 'all' for every version, or one version.
+export interface AnalyticsQuery { leagueId?: string; rulesVersion?: string; excludeFallback?: boolean }
 
 export class AnalyticsApiError extends Error {
   constructor(message: string, public readonly status?: number) {
@@ -40,7 +41,7 @@ const analyticsFetch = createApiClient(AnalyticsApiError)
 export async function getAnalytics(query: AnalyticsQuery, signal?: AbortSignal): Promise<AnalyticsReport> {
   const params = new URLSearchParams()
   if (query.leagueId) params.set('leagueId', query.leagueId)
-  if (query.allRules) params.set('rulesVersion', 'all')
+  if (query.rulesVersion) params.set('rulesVersion', query.rulesVersion)
   if (query.excludeFallback) params.set('excludeFallback', 'true')
   const suffix = params.size ? `?${params}` : ''
   const response = await analyticsFetch(`/v1/analytics${suffix}`, { signal })
