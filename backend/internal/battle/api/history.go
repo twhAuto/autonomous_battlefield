@@ -1,5 +1,5 @@
 // Parses battle-history filters and pagination parameters for the service and returns
-// summary pages over HTTP.
+// summary pages, and the rules versions those pages can be filtered by, over HTTP.
 
 package api
 
@@ -24,13 +24,21 @@ func (h *Handler) ListBattles(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = parsed
 	}
-	page, err := h.battles.ListBattles(r.Context(), battleservice.BattleHistoryInput{Status: query.Get("status"), Cursor: query.Get("cursor"), Limit: limit})
+	page, err := h.battles.ListBattles(r.Context(), battleservice.BattleHistoryInput{Status: query.Get("status"), RulesVersion: query.Get("rulesVersion"), Cursor: query.Get("cursor"), Limit: limit})
 	if writeError(w, r, err, []errorCase{invalidError("invalid battle history query")},
 		failure{event: "battle_history_read_failed", message: "could not list battles"}) {
 		return
 	}
 	h.labelOwners(r, page.Battles)
 	_ = httpapi.WriteJSON(w, http.StatusOK, page)
+}
+
+func (h *Handler) ListRulesVersions(w http.ResponseWriter, r *http.Request) {
+	versions, err := h.battles.ListRulesVersions(r.Context())
+	if writeError(w, r, err, nil, failure{event: "rules_versions_read_failed", message: "could not list rules versions"}) {
+		return
+	}
+	_ = httpapi.WriteJSON(w, http.StatusOK, versions)
 }
 
 // labelOwners names every row's owner with one lookup for the page.

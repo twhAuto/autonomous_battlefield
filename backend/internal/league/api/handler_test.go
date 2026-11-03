@@ -133,9 +133,13 @@ func TestGetLeagueRouteShowsRunningBattleProgress(t *testing.T) {
 	stored := h.repo.leagues[testLeagueID]
 	battleID := "11111111-1111-4111-8111-111111111111"
 	stored.Fixtures[0].Status, stored.Fixtures[0].BattleID = league.FixtureRunning, &battleID
-	stored.Fixtures[0].Battle = &league.BattleOutcome{Status: "running", CurrentTick: 120, RequestedTicks: 500}
+	stored.Fixtures[0].Battle = &league.BattleOutcome{RulesVersion: "13", Status: "running", CurrentTick: 120, RequestedTicks: 500}
 	read := h.do(authn.Tester, http.MethodGet, "/v1/leagues/"+testLeagueID, "")
-	fixtures := decode(t, read)["fixtures"].([]any)
+	body := decode(t, read)
+	if versions := body["rulesVersions"].([]any); len(versions) != 1 || versions[0] != "13" {
+		t.Fatalf("rules versions = %v", versions)
+	}
+	fixtures := body["fixtures"].([]any)
 	progress, ok := fixtures[0].(map[string]any)["battleProgress"].(map[string]any)
 	if read.Code != http.StatusOK || !ok || progress["currentTick"] != 120.0 || progress["requestedTicks"] != 500.0 {
 		t.Fatalf("read = %d, fixture %v", read.Code, fixtures[0])
@@ -150,11 +154,14 @@ func TestListLeaguesRouteShowsChampions(t *testing.T) {
 	champion := 3
 	stored := h.repo.leagues[testLeagueID]
 	stored.Status, stored.Champion = league.StatusCompleted, &champion
-	list := h.do(authn.Tester, http.MethodGet, "/v1/leagues?limit=5", "")
+	list := h.do(authn.Tester, http.MethodGet, "/v1/leagues?limit=5&rulesVersion=13", "")
 	body := decode(t, list)
 	item := body["leagues"].([]any)[0].(map[string]any)
-	if list.Code != http.StatusOK || item["entrantCount"] != 8.0 || item["champion"].(map[string]any)["factionName"] != "Faction" || h.repo.listLimit != 5 {
+	if list.Code != http.StatusOK || item["entrantCount"] != 8.0 || item["champion"].(map[string]any)["factionName"] != "Faction" || h.repo.listQuery != (leagueservice.ListQuery{Limit: 5, RulesVersion: "13"}) {
 		t.Fatalf("list = %d %s", list.Code, list.Body.String())
+	}
+	if versions, ok := item["rulesVersions"].([]any); !ok || len(versions) != 0 {
+		t.Fatalf("league without battles lists versions %v", item["rulesVersions"])
 	}
 	if scheduling := body["scheduling"].(map[string]any); scheduling["battleSlots"] != 4.0 || scheduling["cliSlots"] != 3.0 {
 		t.Fatalf("scheduling = %v", scheduling)
@@ -273,7 +280,7 @@ type memoryRepo struct {
 	leagues   map[string]*league.League
 	err       error
 	slotsErr  error
-	listLimit int
+	listQuery leagueservice.ListQuery
 }
 
 func (r *memoryRepo) CLISlots(context.Context) (int, error) { return 3, r.slotsErr }
@@ -298,8 +305,8 @@ func (r *memoryRepo) GetLeague(_ context.Context, id string) (*league.League, er
 	return nil, leagueservice.ErrLeagueNotFound
 }
 
-func (r *memoryRepo) ListLeagues(_ context.Context, limit int) ([]league.Summary, error) {
-	r.listLimit = limit
+func (r *memoryRepo) ListLeagues(_ context.Context, query leagueservice.ListQuery) ([]league.Summary, error) {
+	r.listQuery = query
 	if r.err != nil {
 		return nil, r.err
 	}

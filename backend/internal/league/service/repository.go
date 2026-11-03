@@ -16,7 +16,7 @@ import (
 type Repository interface {
 	CreateLeague(context.Context, league.League) error
 	GetLeague(context.Context, string) (*league.League, error)
-	ListLeagues(context.Context, int) ([]league.Summary, error)
+	ListLeagues(context.Context, ListQuery) ([]league.Summary, error)
 	// CancelLeague cancels a running league and its unfinished fixtures, serialized with
 	// scheduling. It reports whether this call cancelled the league, and returns the
 	// league's battles still queued or running, also on a repeated cancellation.

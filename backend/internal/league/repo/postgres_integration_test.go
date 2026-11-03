@@ -1,7 +1,7 @@
 // Exercises league storage against PostgreSQL in a private schema, so the engine-idle
 // check sees only this test's battles: creation and reads, fixture outcomes joined from
-// battles, the scheduler lock, cancellation, disqualification, and the league shown on a
-// battle read.
+// battles with their rules versions, the scheduler lock, cancellation, disqualification,
+// and the league shown on a battle read.
 
 package repo
 
@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -89,7 +90,7 @@ func insertBattle(t *testing.T, db *pgxpool.Pool, id string, factionIDs ...strin
 	for _, factionID := range factionIDs {
 		factions = append(factions, map[string]string{"id": factionID})
 	}
-	snapshot, _ := json.Marshal(map[string]any{"factions": factions})
+	snapshot, _ := json.Marshal(map[string]any{"factions": factions, "rulesVersion": "13"})
 	if _, err := db.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state,admission_exempt,decision_budget_exempt)
 		VALUES($1,'frontier-siege','d',$2,500,'admin','{}','{}',true,true)`, id, snapshot); err != nil {
 		t.Fatal(err)
@@ -168,7 +169,7 @@ func TestSchedulerStoreAgainstPostgres(t *testing.T) {
 	if err != nil || len(got.Fixtures) != 5 || got.Fixtures[4].Group != nil || got.Status != league.StatusCompleted || *got.Champion != 3 || got.CompletedAt == nil {
 		t.Fatalf("completed league = %+v, %v", got, err)
 	}
-	summaries, err := repo.ListLeagues(ctx, 10)
+	summaries, err := repo.ListLeagues(ctx, leagueservice.ListQuery{Limit: 10})
 	if err != nil || len(summaries) != 1 || *summaries[0].ChampionName != "Faction 3" || summaries[0].Settled != 0 || summaries[0].GroupCount != 2 {
 		t.Fatalf("summaries = %+v, %v", summaries, err)
 	}
@@ -216,7 +217,7 @@ func TestCapacityCountsUnfinishedBattlesAndTheirCLISides(t *testing.T) {
 		for i, controller := range controllers {
 			factions = append(factions, map[string]any{"id": fmt.Sprintf("faction-%d", i), "controller": controller})
 		}
-		snapshot, _ := json.Marshal(map[string]any{"factions": factions})
+		snapshot, _ := json.Marshal(map[string]any{"factions": factions, "rulesVersion": "13"})
 		if _, err := db.Exec(ctx, `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state,status,admission_exempt)
 			VALUES($1,'frontier-siege','d',$2,500,'admin','{}','{}',$3,true)`, uuid(t), snapshot, status); err != nil {
 			t.Fatal(err)
@@ -343,14 +344,30 @@ func TestDisqualificationAgainstPostgres(t *testing.T) {
 		walkover.Forfeit == "" || walkover.BattleID != nil || got.Fixtures[4].Forfeit != "" {
 		t.Fatalf("fixtures = %+v", got.Fixtures)
 	}
-	if summaries, err := repo.ListLeagues(ctx, 5); err != nil || summaries[0].Settled != 3 {
+	if summaries, err := repo.ListLeagues(ctx, leagueservice.ListQuery{Limit: 5}); err != nil || summaries[0].Settled != 3 || !slices.Equal(summaries[0].RulesVersions, []string{"13"}) {
 		t.Fatalf("summaries = %+v, %v", summaries, err)
 	}
+	requireRulesVersionFilter(t, repo, got)
 	requireStranded(t, repo, leagueservice.StrandedBattle{LeagueID: l.ID, BattleID: battleID, OwnerID: "admin"})
 	if _, err := db.Exec(ctx, `UPDATE battle_runs SET status='stopped', completed_at=now() WHERE id=$1`, battleID); err != nil {
 		t.Fatal(err)
 	}
 	requireStranded(t, repo)
+}
+
+// requireRulesVersionFilter checks that a league with one battle on rules version 13
+// reports that version and is listed only under it.
+func requireRulesVersionFilter(t *testing.T, repo *Postgres, got *league.League) {
+	t.Helper()
+	if versions := got.RulesVersions(); !slices.Equal(versions, []string{"13"}) {
+		t.Fatalf("league rules versions = %v", versions)
+	}
+	for version, want := range map[string]int{"13": 1, "12": 0} {
+		summaries, err := repo.ListLeagues(context.Background(), leagueservice.ListQuery{Limit: 5, RulesVersion: version})
+		if err != nil || len(summaries) != want {
+			t.Fatalf("version %s summaries = %+v, %v", version, summaries, err)
+		}
+	}
 }
 
 // disqualifyFirstHome disqualifies the first fixture's home entrant while no scheduling

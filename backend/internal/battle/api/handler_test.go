@@ -405,6 +405,7 @@ func TestListEventsMapsServiceErrorsAndDefaults(t *testing.T) {
 type fakeBattleService struct {
 	historyInput  battleservice.BattleHistoryInput
 	historyPage   battleservice.BattleHistoryPage
+	rulesVersions battleservice.RulesVersions
 	run           *battleservice.BattleRun
 	page          battleservice.BattleEventPage
 	err           error
@@ -487,6 +488,10 @@ func (s *fakeBattleService) GetBattleReplay(_ context.Context, _ string, tick ui
 func (s *fakeBattleService) ListBattles(_ context.Context, input battleservice.BattleHistoryInput) (battleservice.BattleHistoryPage, error) {
 	s.historyInput = input
 	return s.historyPage, s.err
+}
+
+func (s *fakeBattleService) ListRulesVersions(context.Context) (battleservice.RulesVersions, error) {
+	return s.rulesVersions, s.err
 }
 
 func TestGetAllowanceReturnsTheCallersAllowance(t *testing.T) {

@@ -1,5 +1,5 @@
-// Checks battle-history HTTP filters, pagination, service error responses, and that
-// every reader sees each side's controller.
+// Checks battle-history HTTP filters, pagination, service error responses, that every
+// reader sees each side's controller, and the rules-version listing.
 
 package api
 
@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
@@ -23,7 +24,7 @@ func TestListBattleHistoryHTTP(t *testing.T) {
 		status, limit int
 	}{
 		{"default", "", nil, 200, 25},
-		{"filter and cursor", "?status=paused&cursor=abc&limit=1", nil, 200, 1},
+		{"filter and cursor", "?status=paused&rulesVersion=13&cursor=abc&limit=1", nil, 200, 1},
 		{"malformed limit", "?limit=no", nil, 400, 0},
 		{"empty limit", "?limit=", nil, 400, 0},
 		{"invalid query", "?status=other", battleservice.ErrInvalidBattle, 400, 25},
@@ -41,10 +42,27 @@ func TestListBattleHistoryHTTP(t *testing.T) {
 			if test.status == 200 {
 				checkEmptyHistoryPage(t, response)
 			}
-			if test.name == "filter and cursor" && (service.historyInput.Status != "paused" || service.historyInput.Cursor != "abc") {
+			if test.name == "filter and cursor" && (service.historyInput.Status != "paused" || service.historyInput.RulesVersion != "13" || service.historyInput.Cursor != "abc") {
 				t.Fatal(service.historyInput)
 			}
 		})
+	}
+}
+
+func TestListRulesVersionsHTTP(t *testing.T) {
+	service := &fakeBattleService{rulesVersions: battleservice.RulesVersions{Current: "13", Versions: []string{"13", "12"}}}
+	mux := http.NewServeMux()
+	NewHandler(service).RegisterRoutes(mux)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest("GET", "/v1/battles/rules-versions", nil))
+	if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != `{"current":"13","versions":["13","12"]}` {
+		t.Fatalf("code=%d body=%s", response.Code, response.Body)
+	}
+	service.err = errors.New("private database details")
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest("GET", "/v1/battles/rules-versions", nil))
+	if response.Code != http.StatusInternalServerError || strings.Contains(response.Body.String(), "private") {
+		t.Fatalf("code=%d body=%s", response.Code, response.Body)
 	}
 }
 

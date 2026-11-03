@@ -171,6 +171,7 @@ var routeRules = []routeRule{
 	{pattern: "POST /v1/battles", permission: PermissionPlay},
 	{pattern: "GET /v1/battles/allowance", permission: PermissionPlay},
 	{pattern: "GET /v1/battles", permission: PermissionView},
+	{pattern: "GET /v1/battles/rules-versions", permission: PermissionView},
 	{pattern: "GET /v1/battles/{id}", permission: PermissionView},
 	{pattern: "POST /v1/battles/{id}/stop", permission: PermissionPlay},
 	{pattern: "POST /v1/battles/{id}/pause", permission: PermissionPlay},

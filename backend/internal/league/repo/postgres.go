@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -140,7 +141,7 @@ func loadEntrants(ctx context.Context, db postgres.DBTX, id string) ([]league.En
 func loadFixtures(ctx context.Context, db postgres.DBTX, id string) ([]league.Fixture, error) {
 	rows, err := db.Query(ctx, `
 		SELECT f.id, f.sequence, f.stage, f.group_index, f.round, f.tie, f.home_entrant, f.away_entrant, f.scenario_id,
-		       f.status, f.attempts, f.battle_id, COALESCE(f.forfeit, ''), b.status, b.current_tick, b.requested_ticks, b.result
+		       f.status, f.attempts, f.battle_id, COALESCE(f.forfeit, ''), b.status, COALESCE(b.rules_version, ''), b.current_tick, b.requested_ticks, b.result
 		FROM league_fixtures f
 		LEFT JOIN battle_runs b ON b.id = f.battle_id
 		WHERE f.league_id = $1 ORDER BY f.sequence`, id)
@@ -162,17 +163,18 @@ func loadFixtures(ctx context.Context, db postgres.DBTX, id string) ([]league.Fi
 func scanFixture(rows pgx.Rows) (league.Fixture, error) {
 	var f league.Fixture
 	var battleStatus *string
+	var rulesVersion string
 	var currentTick, requestedTicks *int64
 	var result []byte
 	if err := rows.Scan(&f.ID, &f.Sequence, &f.Stage, &f.Group, &f.Round, &f.Tie, &f.Home, &f.Away, &f.ScenarioID,
-		&f.Status, &f.Attempts, &f.BattleID, &f.Forfeit, &battleStatus, &currentTick, &requestedTicks, &result); err != nil {
+		&f.Status, &f.Attempts, &f.BattleID, &f.Forfeit, &battleStatus, &rulesVersion, &currentTick, &requestedTicks, &result); err != nil {
 		return f, err
 	}
 	// The battle columns are null together when the fixture has no battle.
 	if battleStatus == nil {
 		return f, nil
 	}
-	f.Battle = &league.BattleOutcome{Status: *battleStatus, CurrentTick: *currentTick, RequestedTicks: *requestedTicks}
+	f.Battle = &league.BattleOutcome{RulesVersion: rulesVersion, Status: *battleStatus, CurrentTick: *currentTick, RequestedTicks: *requestedTicks}
 	if len(result) == 0 || string(result) == "null" {
 		return f, nil
 	}
@@ -188,15 +190,21 @@ func scanFixture(rows pgx.Rows) (league.Fixture, error) {
 	return f, nil
 }
 
-func (r *Postgres) ListLeagues(ctx context.Context, limit int) ([]league.Summary, error) {
+// ListLeagues reads a page of leagues newest first, each with the rules versions of its
+// fixtures' battles; a non-empty RulesVersion keeps only leagues with a battle on it.
+func (r *Postgres) ListLeagues(ctx context.Context, query leagueservice.ListQuery) ([]league.Summary, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT l.id, l.owner_id, l.name, l.status, l.group_count, l.champion_entrant, e.faction_name,
 		       (SELECT count(*) FROM league_fixtures f WHERE f.league_id = l.id AND f.status IN ('completed', 'void', 'cancelled', 'forfeited')),
+		       ARRAY(SELECT DISTINCT b.rules_version FROM league_fixtures f JOIN battle_runs b ON b.id = f.battle_id
+		             WHERE f.league_id = l.id AND b.rules_version IS NOT NULL),
 		       l.created_at, l.completed_at
 		FROM leagues l
 		LEFT JOIN league_entrants e ON e.league_id = l.id AND e.entrant_index = l.champion_entrant
+		WHERE $2 = '' OR EXISTS (SELECT 1 FROM league_fixtures f JOIN battle_runs b ON b.id = f.battle_id
+		                         WHERE f.league_id = l.id AND b.rules_version = $2)
 		ORDER BY l.created_at DESC, l.id DESC
-		LIMIT $1`, limit)
+		LIMIT $1`, query.Limit, query.RulesVersion)
 	if err != nil {
 		return nil, fmt.Errorf("list leagues: %w", err)
 	}
@@ -204,9 +212,10 @@ func (r *Postgres) ListLeagues(ctx context.Context, limit int) ([]league.Summary
 	summaries := []league.Summary{}
 	for rows.Next() {
 		var s league.Summary
-		if err := rows.Scan(&s.ID, &s.OwnerID, &s.Name, &s.Status, &s.GroupCount, &s.Champion, &s.ChampionName, &s.Settled, &s.CreatedAt, &s.CompletedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.OwnerID, &s.Name, &s.Status, &s.GroupCount, &s.Champion, &s.ChampionName, &s.Settled, &s.RulesVersions, &s.CreatedAt, &s.CompletedAt); err != nil {
 			return nil, fmt.Errorf("scan league: %w", err)
 		}
+		slices.SortFunc(s.RulesVersions, game.CompareRulesVersions)
 		summaries = append(summaries, s)
 	}
 	return summaries, rows.Err()

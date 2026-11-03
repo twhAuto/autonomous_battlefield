@@ -1,12 +1,13 @@
 // Checks the league rules: opening matches, the coin flip for spawn sides, each group's
 // dual tournament and placements, the match tiebreak, crossover seeding and progression
-// to a champion.
+// to a champion, and the rules versions its battles ran on.
 
 package league
 
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"testing"
 )
 
@@ -313,5 +314,18 @@ func TestScoreIgnoresUnfinishedAndUnknownWinners(t *testing.T) {
 	}
 	if GroupLetter(3) != "D" {
 		t.Fatal(GroupLetter(3))
+	}
+}
+
+func TestRulesVersionsListsEachBattleVersionNewestFirst(t *testing.T) {
+	l := testLeague(2)
+	if versions := l.RulesVersions(); versions == nil || len(versions) != 0 {
+		t.Fatalf("league without battles = %v", versions)
+	}
+	for i, version := range []string{"12", "13", "12", ""} {
+		l.Fixtures[i].Battle = &BattleOutcome{RulesVersion: version, Status: BattleCompleted}
+	}
+	if versions := l.RulesVersions(); !slices.Equal(versions, []string{"13", "12"}) {
+		t.Fatalf("versions = %v", versions)
 	}
 }
