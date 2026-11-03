@@ -101,9 +101,14 @@ provider:
 Each turn is one step. The shipped API profiles allow five: the context fetch, one
 unit-details lookup and the three submissions a decision accepts before it closes.
 
-Provider adapters send the decision policy as the provider's system instruction,
-separate from the untrusted battlefield data, and normalize tool calls, refusals and
-usage into common types.
+Provider adapters (OpenAI Responses, Gemini `generateContent`, and the Claude
+Messages API through Anthropic's official Go SDK) send the decision policy as the
+provider's system instruction, separate from the untrusted battlefield data, and
+normalize tool calls, refusals and usage into common types. A provider that needs
+its own turn content back, as Claude does for thinking blocks, receives each earlier
+turn unchanged. Adapters never retry: a provider error, rate limit or refusal fails
+the decision with that category, and no request moves to another model, so the
+recorded model is the one that decided.
 
 ### CLI runtime
 
@@ -506,42 +511,55 @@ markers remain subject to normal faction visibility.
 
 Battle creation accepts `modelIdentifier` and `reasoningEffort` per model-controlled
 faction. A profile's `modelOptions` allowlists models and their supported
-`reasoningEfforts`. An omitted model selects the profile model, or the first option
-the caller's role may use when [model access](api.md#model-access-administration)
-denies the role that model; an omitted effort keeps the model default (or the
-option's explicit `defaultReasoningEffort`). The backend validates both fields,
-freezes them in the scenario and decision row, and includes effort in retry-reuse
-matching. Workers validate against their own allowlist before execution;
-a removed option fails as `model_selection_unavailable`, rather than substituting
-another model. API profiles and Antigravity expose no effort controls.
+`reasoningEfforts`. An omitted model selects the profile model (an API profile's
+`*_MODEL` environment model), or the first option the caller's role may use when
+[model access](api.md#model-access-administration) denies the role that model; an
+omitted effort keeps the model default (or the option's explicit
+`defaultReasoningEffort`). The backend validates both fields, freezes them in the
+scenario and decision row, and includes effort in retry-reuse matching. Workers
+validate against their own allowlist before execution; a removed option fails as
+`model_selection_unavailable`, rather than substituting another model. The
+exception keeps API decisions running across `*_MODEL` rotation: an API decision
+with no frozen effort whose model is not a listed option, such as the previous
+environment model, runs the worker's current environment model. A listed option
+runs exactly as frozen, even when it was the environment model before a rotation.
+Antigravity exposes no effort controls.
 The setup page never leaves effort implicit: when the chosen model lists efforts
 it preselects `low` (or the first listed effort when `low` is absent) and submits
 it with the model identifier.
-API profile model labels remain informational: API runners use their current
-configured environment model, preserving behavior across secret rotation.
-Codex receives `model_reasoning_effort`; Claude receives `--effort`. The CLI model
-identifier is the requested identifier; aliases such as `sonnet` can resolve to a
-new provider version and are not an immutable model-version guarantee.
+Codex receives `model_reasoning_effort`, Claude CLI `--effort`, OpenAI
+`reasoning.effort`, Gemini `thinkingConfig.thinkingLevel` and the Claude API
+`output_config.effort`. The CLI model identifier is the requested identifier; aliases such as `sonnet` can resolve
+to a new provider version and are not an immutable model-version guarantee.
 
 The shipped CLI catalog offers every model the Codex subscription lists:
 `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`,
 `gpt-5.6-sol`, `gpt-5.6-terra` and `gpt-5.6-luna` (the published names are, for
 example, GPT-6 Luna). The GPT-6.1 models need Codex 0.159 or newer. Claude offers
 `haiku`, `sonnet`, `opus` and `fable`, and Antigravity `gemini-3.8-flash-low`,
-`-medium` and `-high`. Codex models, Sonnet, Opus and Fable offer low/medium/high
+`-medium` and `-high`. The API catalog offers the same `gpt-*` models through the
+OpenAI API, `gemini-3.8-flash` through the Gemini API, and `claude-haiku-5-5`,
+`claude-sonnet-5-5`, `claude-opus-5-5` and `claude-fable-5-1` through the Claude
+API. Codex models, Sonnet, Opus, Fable and every API model offer low/medium/high
 effort; higher efforts are left out so decisions finish within the decision
 timeout. Haiku uses model-default effort because the alias can resolve to a model
 without effort support on older supported CLIs. Antigravity's Flash variants encode
-reasoning in the model ID. Profile defaults are `gpt-5.6-luna`, `sonnet` and
+reasoning in the model ID. CLI profile defaults are `gpt-5.6-luna`, `sonnet` and
 `gemini-3.8-flash-medium`. Battle and league setup list model profiles under
 separate API and CLI headings.
 See the provider catalogs for [OpenAI](https://developers.openai.com/api/docs/models/gpt-6-luna),
-[Claude](https://code.claude.com/docs/en/model-config) and
-[Antigravity](https://antigravity.google/docs/models). Subscription availability
-and usage allowances depend on the account; these choices do not assert API prices.
+[Claude Code](https://code.claude.com/docs/en/model-config),
+[Claude API](https://platform.claude.com/docs/en/about-claude/models/overview),
+[Gemini API](https://ai.google.dev/gemini-api/docs/thinking) and
+[Antigravity](https://antigravity.google/docs/models). Subscription availability,
+API access and usage allowances depend on the account; these choices do not assert
+prices.
 
 The claim request carries `selectionVersion: 1`. An older worker receives HTTP 409
-before leasing a job, preventing it from silently ignoring frozen choices. See
+before leasing a job, preventing it from silently ignoring frozen choices. Workers
+that run API model options also send `apiModelSelection: true`; claims without it
+lease only CLI decisions, because such a worker would run an API decision on its
+environment model whatever the battle chose. See
 [worker rollout ordering](../operations/cli-worker.md#model-selection-rollout).
 
 Context timestamp recording is best-effort: a failed timing write is logged and

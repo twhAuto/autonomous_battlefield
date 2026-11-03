@@ -126,6 +126,17 @@ func TestCLIProductionGateReadsAvailabilityLikeTheCatalog(t *testing.T) {
 	}
 }
 
+func TestAPIProfilesTakeTheirModelFromTheEnvironment(t *testing.T) {
+	p := ai.ModelProfile{ID: "api", Runtime: "api", MaxSteps: 5, MaxOutputTokens: 100, ModelEnvironmentVariable: "MODEL"}
+	if err := validateAIProfile(p, false); err != nil {
+		t.Fatal(err)
+	}
+	p.Model = "pinned"
+	if err := validateAIProfile(p, false); err == nil || !strings.Contains(err.Error(), "modelEnvironmentVariable") {
+		t.Fatalf("API profile model accepted: %v", err)
+	}
+}
+
 func TestPrefetchContextOnlyForCLIProfiles(t *testing.T) {
 	enabled, disabled := true, false
 	p := ai.ModelProfile{ID: "cli", Runtime: "cli", MaxSteps: 3, Model: "pinned", SupportedVersionPrefix: "1.", PrefetchContext: &enabled}

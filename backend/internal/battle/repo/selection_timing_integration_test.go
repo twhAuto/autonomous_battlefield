@@ -21,7 +21,7 @@ func TestDecisionSelectionAndTimingLifecycle(t *testing.T) {
 	if err != nil || d.ReasoningEffort != "low" || d.ClaimedAt != nil {
 		t.Fatalf("create: %+v %v", d, err)
 	}
-	d, err = repo.ClaimModelDecision(ctx, "worker", []string{p.ProfileID}, time.Minute)
+	d, err = repo.ClaimModelDecision(ctx, "worker", []string{p.ProfileID}, true, time.Minute)
 	if err != nil || d.ClaimedAt == nil {
 		t.Fatalf("claim: %+v %v", d, err)
 	}
@@ -37,7 +37,7 @@ func TestDecisionSelectionAndTimingLifecycle(t *testing.T) {
 	}
 
 	// A lease reclaim starts a new execution breakdown and clears the old context.
-	claimed, err := repo.ClaimModelDecision(ctx, "worker", []string{p.ProfileID}, time.Minute)
+	claimed, err := repo.ClaimModelDecision(ctx, "worker", []string{p.ProfileID}, true, time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestDecisionSelectionAndTimingLifecycle(t *testing.T) {
 	if _, err = db.Exec(ctx, `UPDATE battle_decisions SET lease_expires_at=now()-interval '1 second' WHERE id=$1`, claimed.ID); err != nil {
 		t.Fatal(err)
 	}
-	reclaimed, err := repo.ClaimModelDecision(ctx, "replacement", []string{p.ProfileID}, time.Minute)
+	reclaimed, err := repo.ClaimModelDecision(ctx, "replacement", []string{p.ProfileID}, true, time.Minute)
 	if err != nil || reclaimed.ClaimedAt == nil || !reclaimed.ClaimedAt.After(*claimed.ClaimedAt) || reclaimed.ContextServedAt != nil {
 		t.Fatalf("reclaim: %+v %v", reclaimed, err)
 	}
@@ -58,6 +58,26 @@ func TestDecisionSelectionAndTimingLifecycle(t *testing.T) {
 	d, err = repo.CreateOrReuseDecision(ctx, p)
 	if err != nil || d.Status != "accepted" || d.ClaimedAt != nil {
 		t.Fatalf("retry: %+v %v", d, err)
+	}
+}
+
+// Workers that cannot run API model options must not lease API decisions.
+func TestDecisionClaimSkipsAPIDecisionsWhenExcluded(t *testing.T) {
+	ctx, db := integrationDatabase(t)
+	battleID := randomUUID(t)
+	t.Cleanup(func() { _, _ = db.Exec(context.Background(), `DELETE FROM battle_runs WHERE id=$1`, battleID) })
+	repo := NewPostgres(db)
+	createAndClaimBattle(t, ctx, repo, battleID)
+	p := ai.CreateDecisionParams{ID: randomUUID(t), BattleID: battleID, Attempt: 1, FactionID: randomUUID(t), TargetTick: 10, ControllerType: "model", ProfileID: "api-claim-test", Provider: "anthropic", Runtime: "api", ModelIdentifier: "claude-opus-5-5", ReasoningEffort: "high", PromptVersion: "test", ToolSchemaVersion: ai.ToolSchema, ObservationHash: "api", Observation: ai.DecisionContext{SchemaVersion: ai.ContextSchema}}
+	decision, err := repo.CreateOrReuseDecision(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = repo.ClaimModelDecision(ctx, "older-worker", []string{p.ProfileID}, false, time.Minute); !errors.Is(err, ai.ErrNoDecision) {
+		t.Fatalf("API decision leased to a worker without API model selection: %v", err)
+	}
+	if claimed, err := repo.ClaimModelDecision(ctx, "worker", []string{p.ProfileID}, true, time.Minute); err != nil || claimed.ID != decision.ID {
+		t.Fatalf("claim: %+v %v", claimed, err)
 	}
 }
 
@@ -85,7 +105,7 @@ func TestDecisionClaimEndsWithItsWindow(t *testing.T) {
 	if _, err = db.Exec(ctx, `UPDATE battle_decisions SET created_at=now()-interval '55 seconds' WHERE id=$1`, expiring.ID); err != nil {
 		t.Fatal(err)
 	}
-	claimed, err := repo.ClaimModelDecision(ctx, "worker", []string{p.ProfileID}, time.Minute)
+	claimed, err := repo.ClaimModelDecision(ctx, "worker", []string{p.ProfileID}, true, time.Minute)
 	if err != nil || claimed.ID != late.ID || claimed.LeaseExpiresAt == nil {
 		t.Fatalf("claim: %+v %v", claimed, err)
 	}
@@ -93,7 +113,7 @@ func TestDecisionClaimEndsWithItsWindow(t *testing.T) {
 		t.Fatalf("lease ends %v, want window end %v", claimed.LeaseExpiresAt, want)
 	}
 	// Five seconds left is under minClaimWindow, so the decision waits for its fallback.
-	if _, err = repo.ClaimModelDecision(ctx, "worker", []string{p.ProfileID}, time.Minute); !errors.Is(err, ai.ErrNoDecision) {
+	if _, err = repo.ClaimModelDecision(ctx, "worker", []string{p.ProfileID}, true, time.Minute); !errors.Is(err, ai.ErrNoDecision) {
 		t.Fatalf("claimed a decision with too little window left: %v", err)
 	}
 	if record, err := repo.GetDecision(ctx, expiring.ID); err != nil || record.Status != "pending" {
@@ -106,7 +126,7 @@ func TestDecisionClaimEndsWithItsWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claimed, err = repo.ClaimModelDecision(ctx, "worker", []string{p.ProfileID}, 7*time.Second); err != nil || claimed.ID != fresh.ID {
+	if claimed, err = repo.ClaimModelDecision(ctx, "worker", []string{p.ProfileID}, true, 7*time.Second); err != nil || claimed.ID != fresh.ID {
 		t.Fatalf("short lease claim: %+v %v", claimed, err)
 	}
 }

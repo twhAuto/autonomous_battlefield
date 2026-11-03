@@ -41,7 +41,7 @@ func ConfiguredModel(p ModelProfile) string {
 func ValidateModelOptions(p ModelProfile) error {
 	seen := map[string]bool{}
 	for _, option := range p.ModelOptions {
-		if p.Runtime != "cli" || option.ID == "" || strings.TrimSpace(option.ID) != option.ID || strings.HasPrefix(option.ID, "-") || seen[option.ID] {
+		if (p.Runtime != "cli" && p.Runtime != "api") || option.ID == "" || strings.TrimSpace(option.ID) != option.ID || strings.HasPrefix(option.ID, "-") || seen[option.ID] {
 			return fmt.Errorf("invalid model options for profile %q", p.ID)
 		}
 		seen[option.ID] = true
@@ -59,12 +59,21 @@ func ValidateModelOptions(p ModelProfile) error {
 	return nil
 }
 
+// HasModelOption reports whether model is one of the profile's operator-approved options.
+func HasModelOption(p ModelProfile, model string) bool {
+	return slices.ContainsFunc(p.ModelOptions, func(option ModelOption) bool { return option.ID == model })
+}
+
 func supportsReasoningEffort(provider, effort string) bool {
 	switch provider {
 	case "codex-cli":
 		return slices.Contains([]string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}, effort)
-	case "claude-cli":
+	case "claude-cli", "anthropic":
 		return slices.Contains([]string{"low", "medium", "high", "xhigh", "max"}, effort)
+	case "openai":
+		return slices.Contains([]string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}, effort)
+	case "gemini":
+		return slices.Contains([]string{"minimal", "low", "medium", "high"}, effort)
 	default:
 		return false
 	}

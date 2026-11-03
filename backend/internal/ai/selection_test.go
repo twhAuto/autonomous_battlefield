@@ -31,6 +31,10 @@ func TestModelSelectionAllowlistAndDefaults(t *testing.T) {
 	if _, _, err := ResolveModelSelection(p, "configured", "low"); err == nil {
 		t.Fatal("unsupported API effort accepted")
 	}
+	p.ModelOptions = []ModelOption{{ID: "deep", ReasoningEfforts: []string{"high"}}}
+	if m, e, err := ResolveModelSelection(p, "deep", "high"); err != nil || m != "deep" || e != "high" || !HasModelOption(p, "deep") || HasModelOption(p, "configured") {
+		t.Fatal("API model option not selectable", m, e, err)
+	}
 }
 
 func TestValidateModelOptions(t *testing.T) {
@@ -43,7 +47,13 @@ func TestValidateModelOptions(t *testing.T) {
 		{"claude-cli", "cli", []ModelOption{{ID: "a", ReasoningEfforts: []string{"low", "max"}}}, true},
 		{"antigravity-cli", "cli", []ModelOption{{ID: "a"}}, true},
 		{"antigravity-cli", "cli", []ModelOption{{ID: "a", ReasoningEfforts: []string{"low"}}}, false},
-		{"openai", "api", []ModelOption{{ID: "a"}}, false},
+		{"openai", "api", []ModelOption{{ID: "a", ReasoningEfforts: []string{"low", "xhigh"}}}, true},
+		{"openai", "api", []ModelOption{{ID: "a", ReasoningEfforts: []string{"ultra"}}}, false},
+		{"gemini", "api", []ModelOption{{ID: "a", ReasoningEfforts: []string{"low", "high"}}}, true},
+		{"gemini", "api", []ModelOption{{ID: "a", ReasoningEfforts: []string{"max"}}}, false},
+		{"anthropic", "api", []ModelOption{{ID: "a", ReasoningEfforts: []string{"low", "max"}}}, true},
+		{"anthropic", "api", []ModelOption{{ID: "a", ReasoningEfforts: []string{"none"}}}, false},
+		{"openai", "batch", []ModelOption{{ID: "a"}}, false},
 		{"codex-cli", "cli", []ModelOption{{ID: ""}}, false},
 		{"codex-cli", "cli", []ModelOption{{ID: "-flag"}}, false},
 		{"codex-cli", "cli", []ModelOption{{ID: " a "}}, false},

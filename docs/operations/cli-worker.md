@@ -245,7 +245,7 @@ The [shipped catalog](../architecture/ai-decisions.md#model-selection-and-latenc
 lists the choices and their efforts.
 Options are operator-approved capabilities, not account-access guarantees; validate
 provider/account access before advertising changes. The default model and default
-effort remain unchanged. Antigravity and API profiles have no separate effort selector.
+effort remain unchanged. Antigravity has no separate effort selector.
 
 `sync-worker-config` installs the managed model options after the worker upgrade
 and validates them with `agent -check-config`. Other profile settings, including

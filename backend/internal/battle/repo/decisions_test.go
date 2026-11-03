@@ -41,7 +41,7 @@ func TestDecisionReadsAndClaims(t *testing.T) {
 		t.Fatalf("record=%#v err=%v", record, err)
 	}
 	db.row = decisionTestRow("running", nil)
-	claimed, err := repository.ClaimModelDecision(context.Background(), "agent", []string{"profile"}, time.Second)
+	claimed, err := repository.ClaimModelDecision(context.Background(), "agent", []string{"profile"}, true, time.Second)
 	if err != nil || claimed.Status != "running" {
 		t.Fatalf("claimed=%#v err=%v", claimed, err)
 	}
@@ -52,10 +52,10 @@ func TestDecisionReadsAndClaims(t *testing.T) {
 		t.Fatalf("claim lease must end with the decision window: %s", db.queryRowSQL)
 	}
 	db.row = battleRow(func(...any) error { return pgx.ErrNoRows })
-	if _, err := repository.ClaimModelDecision(context.Background(), "agent", []string{"profile"}, time.Second); !errors.Is(err, ai.ErrNoDecision) {
+	if _, err := repository.ClaimModelDecision(context.Background(), "agent", []string{"profile"}, true, time.Second); !errors.Is(err, ai.ErrNoDecision) {
 		t.Fatal(err)
 	}
-	if _, err := repository.ClaimModelDecision(context.Background(), "agent", nil, time.Second); !errors.Is(err, ai.ErrNoDecision) {
+	if _, err := repository.ClaimModelDecision(context.Background(), "agent", nil, true, time.Second); !errors.Is(err, ai.ErrNoDecision) {
 		t.Fatal(err)
 	}
 	if _, err := repository.GetDecision(context.Background(), "missing"); !errors.Is(err, ai.ErrDecisionNotFound) {

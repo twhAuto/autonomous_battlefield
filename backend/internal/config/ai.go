@@ -156,13 +156,30 @@ func validateAIProfile(profile ai.ModelProfile, production bool) error {
 	if profile.MaxSteps < 1 || profile.MaxSteps > 10 {
 		return fmt.Errorf("ai profile %q maxSteps must be between 1 and 10", profile.ID)
 	}
-	if profile.Runtime == "api" && profile.MaxOutputTokens < 1 {
+	switch profile.Runtime {
+	case "api":
+		return validateAPIProfileLimits(profile)
+	case "cli":
+		return validateCLIProfilePins(profile)
+	}
+	return nil
+}
+
+func validateAPIProfileLimits(profile ai.ModelProfile) error {
+	if profile.MaxOutputTokens < 1 {
 		return fmt.Errorf("ai profile %q maxOutputTokens must be positive", profile.ID)
 	}
-	if profile.Runtime == "cli" && strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
+	if strings.TrimSpace(profile.Model) != "" {
+		return fmt.Errorf("ai profile %q model is for CLI profiles; API profiles read modelEnvironmentVariable", profile.ID)
+	}
+	return nil
+}
+
+func validateCLIProfilePins(profile ai.ModelProfile) error {
+	if strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
 		return fmt.Errorf("ai profile %q supportedVersionPrefix is required", profile.ID)
 	}
-	if profile.Runtime == "cli" && strings.TrimSpace(profile.Model) == "" {
+	if strings.TrimSpace(profile.Model) == "" {
 		return fmt.Errorf("ai profile %q model is required", profile.ID)
 	}
 	return nil

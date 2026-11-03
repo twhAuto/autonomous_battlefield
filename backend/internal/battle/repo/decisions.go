@@ -186,7 +186,7 @@ const minClaimWindow = 10 * time.Second
 // claim, so a run that waited for a slot gets only the window it has left. The lease
 // still includes the worker's grace; docs/architecture/ai-decisions.md gives how it
 // lines up with the engine's fallback.
-func (r *Postgres) ClaimModelDecision(ctx context.Context, owner string, profileIDs []string, lease time.Duration) (ai.DecisionRecord, error) {
+func (r *Postgres) ClaimModelDecision(ctx context.Context, owner string, profileIDs []string, includeAPI bool, lease time.Duration) (ai.DecisionRecord, error) {
 	ctx, span := tracing.StartDatabaseSpan(ctx, "claim_decision")
 	defer span.End()
 	if len(profileIDs) == 0 {
@@ -195,7 +195,7 @@ func (r *Postgres) ClaimModelDecision(ctx context.Context, owner string, profile
 	row := r.db.QueryRow(ctx, `
 		WITH candidate AS (
 			SELECT id FROM battle_decisions
-			WHERE controller_type='model' AND profile_id = ANY($3::text[])
+			WHERE controller_type='model' AND profile_id = ANY($3::text[]) AND ($5::boolean OR runtime <> 'api')
 			  AND (status='pending' OR (status='running' AND lease_expires_at <= now()))
 			  AND created_at + $2::interval >= now() + $4::interval
 			ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1
@@ -204,7 +204,7 @@ func (r *Postgres) ClaimModelDecision(ctx context.Context, owner string, profile
 			FROM candidate WHERE d.id=candidate.id RETURNING d.*
 		)
 		SELECT `+decisionColumns+` FROM claimed`,
-		owner, lease.String(), profileIDs, min(minClaimWindow, lease/2).String())
+		owner, lease.String(), profileIDs, min(minClaimWindow, lease/2).String(), includeAPI)
 	record, err := scanDecision(row)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && record.Status != "running") {
 		return ai.DecisionRecord{}, ai.ErrNoDecision

@@ -61,7 +61,7 @@ func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 			return ai.DecisionResult{ErrorCategory: "no_progress", Usage: usage}, fmt.Errorf("provider returned no tool call")
 		}
 		calls := withCallIDs(turn.ToolCalls, step)
-		messages = append(messages, ai.Message{Role: "assistant", Content: turn.Text, ToolCalls: calls})
+		messages = append(messages, ai.Message{Role: "assistant", Content: turn.Text, ToolCalls: calls, ProviderContent: turn.ProviderContent})
 		accepted, updatedMessages, err := executeToolCalls(ctx, clientSession, calls, messages, prompts.SessionToolNames(session))
 		if err != nil {
 			return ai.DecisionResult{ErrorCategory: toolErrorCategory(err), Usage: usage}, err

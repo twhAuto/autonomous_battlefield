@@ -194,7 +194,7 @@ lock (`scripts/infra/operation-lock.py`).
 4. [`backend/internal/ai/mcpserver/dispatch.go`](../../backend/internal/ai/mcpserver/dispatch.go) (claims), then [`server.go`](../../backend/internal/ai/mcpserver/server.go) (tools)
 5. [`backend/internal/ai/agent/executor.go`](../../backend/internal/ai/agent/executor.go)
 6. [`backend/internal/ai/runner/api.go`](../../backend/internal/ai/runner/api.go)
-7. [`backend/internal/ai/providers/openai.go`](../../backend/internal/ai/providers/openai.go) or [`gemini.go`](../../backend/internal/ai/providers/gemini.go)
+7. [`backend/internal/ai/providers/openai.go`](../../backend/internal/ai/providers/openai.go), [`gemini.go`](../../backend/internal/ai/providers/gemini.go) or [`anthropic.go`](../../backend/internal/ai/providers/anthropic.go)
 
 ### Learn application composition
 

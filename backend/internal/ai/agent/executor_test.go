@@ -21,6 +21,7 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
 )
 
@@ -61,10 +62,11 @@ func (transport usageReportingTransport) RoundTrip(request *http.Request) (*http
 
 func (transport usageReportingTransport) claimResponse(request *http.Request) *http.Response {
 	var claimRequest struct {
-		ProfileIDs  []string `json:"profileIds"`
-		WaitSeconds int      `json:"waitSeconds"`
+		ProfileIDs        []string `json:"profileIds"`
+		WaitSeconds       int      `json:"waitSeconds"`
+		APIModelSelection bool     `json:"apiModelSelection"`
 	}
-	if json.NewDecoder(request.Body).Decode(&claimRequest) != nil || len(claimRequest.ProfileIDs) != 1 || claimRequest.ProfileIDs[0] != "profile" || claimRequest.WaitSeconds < 1 {
+	if json.NewDecoder(request.Body).Decode(&claimRequest) != nil || len(claimRequest.ProfileIDs) != 1 || claimRequest.ProfileIDs[0] != "profile" || claimRequest.WaitSeconds < 1 || !claimRequest.APIModelSelection {
 		return agentResponse(http.StatusBadRequest, "")
 	}
 	if transport.claims.Add(1) != 1 {
@@ -108,9 +110,20 @@ func TestWorkerValidationAndDefaultProvider(t *testing.T) {
 	if _, err := defaultRunner(ai.ModelProfile{Runtime: "api", Provider: "unknown"}); err == nil {
 		t.Fatal("unknown provider accepted")
 	}
-	for _, profile := range []ai.ModelProfile{{Runtime: "cli", Provider: "claude-cli"}, {Runtime: "cli", Provider: "codex-cli"}, {Runtime: "api", Provider: "openai"}, {Runtime: "api", Provider: "gemini"}} {
+	for _, profile := range []ai.ModelProfile{{Runtime: "cli", Provider: "claude-cli"}, {Runtime: "cli", Provider: "codex-cli"}, {Runtime: "api", Provider: "openai"}, {Runtime: "api", Provider: "gemini"}, {Runtime: "api", Provider: "anthropic"}} {
 		if decisionRunner, err := defaultRunner(profile); err != nil || decisionRunner == nil {
 			t.Fatalf("profile=%#v err=%v", profile, err)
+		}
+	}
+	t.Setenv("RUNNER_KEY", "key")
+	t.Setenv("RUNNER_MODEL", "environment-model")
+	apiProfile := ai.ModelProfile{Runtime: "api", Provider: "anthropic", CredentialEnvironmentVariable: "RUNNER_KEY", ModelEnvironmentVariable: "RUNNER_MODEL"}
+	for model, want := range map[string]string{"": "environment-model", "claude-opus-5-5": "claude-opus-5-5"} {
+		apiProfile.Model, apiProfile.ReasoningEffort = model, "high"
+		decisionRunner, _ := defaultRunner(apiProfile)
+		provider := decisionRunner.(runner.APIRunner).Provider.(*providers.Anthropic)
+		if provider.APIKey != "key" || provider.Model != want || provider.ReasoningEffort != "high" {
+			t.Fatalf("API provider=%+v, want model %q", provider, want)
 		}
 	}
 	decisionRunner, err := defaultRunner(ai.ModelProfile{Runtime: "cli", Provider: "codex-cli", Model: "gpt-5.6-luna"})
@@ -551,6 +564,35 @@ func TestAPIWorkerUsesCurrentConfiguredModelAfterEnvironmentChange(t *testing.T)
 	worker.runJob(context.Background(), job{RequestID: "request", ProfileID: "api", CapabilityToken: "scoped", ModelIdentifier: "previous-model"})
 	if !invoked || reportPath != "/internal/agent/usage" {
 		t.Fatalf("invoked = %t, report = %q", invoked, reportPath)
+	}
+}
+
+func TestAPIWorkerExecutesFrozenModelOption(t *testing.T) {
+	t.Setenv("API_OPTION_MODEL", "current-model")
+	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "api", DisplayName: "API", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, ModelEnvironmentVariable: "API_OPTION_MODEL", ModelOptions: []ai.ModelOption{{ID: "deep", ReasoningEfforts: []string{"high"}}}}})
+	for _, test := range []struct {
+		model, effort, wantModel, reportPath string
+	}{
+		{"deep", "high", "deep", "/internal/agent/usage"},
+		{"deep", "", "deep", "/internal/agent/usage"},
+		{"current-model", "", "", "/internal/agent/usage"},
+		{"removed", "high", "", "/internal/agent/fail"},
+	} {
+		invoked, reportPath := false, ""
+		worker := &Executor{Profiles: profiles, DecisionTimeout: time.Second, MCPURL: "http://mcp/mcp", Client: &http.Client{Transport: agentRoundTrip(func(req *http.Request) (*http.Response, error) {
+			reportPath = req.URL.Path
+			return agentResponse(204, ""), nil
+		})}, RunnerFactory: func(p ai.ModelProfile) (ai.DecisionRunner, error) {
+			invoked = true
+			if p.Model != test.wantModel || p.ReasoningEffort != test.effort {
+				t.Fatalf("%+v: wrong selection %+v", test, p)
+			}
+			return fakeRunner{result: ai.DecisionResult{Accepted: true}}, nil
+		}}
+		worker.runJob(context.Background(), job{RequestID: "request", ProfileID: "api", CapabilityToken: "scoped", ModelIdentifier: test.model, ReasoningEffort: test.effort})
+		if invoked != (test.reportPath == "/internal/agent/usage") || reportPath != test.reportPath {
+			t.Fatalf("%+v: invoked = %t, report = %q", test, invoked, reportPath)
+		}
 	}
 }
 

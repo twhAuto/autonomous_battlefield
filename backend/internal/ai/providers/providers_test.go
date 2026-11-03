@@ -27,7 +27,7 @@ func clientWith(status int, body string, check func(*http.Request)) *http.Client
 		if check != nil {
 			check(request)
 		}
-		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{"Content-Type": {"application/json"}}}, nil
 	})}
 }
 
@@ -169,8 +169,9 @@ func (b *trackedBody) Close() error { b.closed = true; return nil }
 
 func TestProvidersCloseResponsesAndPreserveErrors(t *testing.T) {
 	for name, create := range map[string]func(*http.Client) ai.TurnProvider{
-		"OpenAI": func(client *http.Client) ai.TurnProvider { return &OpenAI{Client: client} },
-		"Gemini": func(client *http.Client) ai.TurnProvider { return &Gemini{Client: client} },
+		"OpenAI":    func(client *http.Client) ai.TurnProvider { return &OpenAI{Client: client} },
+		"Gemini":    func(client *http.Client) ai.TurnProvider { return &Gemini{Client: client} },
+		"Anthropic": func(client *http.Client) ai.TurnProvider { return &Anthropic{Client: client} },
 	} {
 		for _, test := range []struct {
 			name   string
@@ -203,7 +204,7 @@ func jsonPostClient(t *testing.T, status int, body io.ReadCloser) *http.Client {
 		if request.Method != http.MethodPost || request.Header.Get("Content-Type") != "application/json" {
 			t.Fatalf("unexpected request: %s %v", request.Method, request.Header)
 		}
-		return &http.Response{StatusCode: status, Body: body, Header: make(http.Header)}, nil
+		return &http.Response{StatusCode: status, Body: body, Header: http.Header{"Content-Type": {"application/json"}}}, nil
 	})}
 }
 
@@ -243,15 +244,18 @@ func TestProviderErrorsReportKindWithoutMessage(t *testing.T) {
 		body     string
 		want     string
 	}{
-		"OpenAI": {&OpenAI{}, `{"error":{"message":"echoed request content","type":"invalid_request_error","code":"invalid_value"}}`, "OpenAI response status 400 (invalid_request_error/invalid_value)"},
-		"Gemini": {&Gemini{}, `{"error":{"code":400,"message":"echoed request content","status":"INVALID_ARGUMENT"}}`, "Gemini response status 400 (INVALID_ARGUMENT/400)"},
-		"unsafe": {&OpenAI{}, `{"error":{"type":"has spaces and\nnewlines","code":"ok_code"}}`, "OpenAI response status 400 (ok_code)"},
+		"OpenAI":    {&OpenAI{}, `{"error":{"message":"echoed request content","type":"invalid_request_error","code":"invalid_value"}}`, "OpenAI response status 400 (invalid_request_error/invalid_value)"},
+		"Gemini":    {&Gemini{}, `{"error":{"code":400,"message":"echoed request content","status":"INVALID_ARGUMENT"}}`, "Gemini response status 400 (INVALID_ARGUMENT/400)"},
+		"Anthropic": {&Anthropic{}, `{"type":"error","error":{"type":"invalid_request_error","message":"echoed request content"}}`, "Anthropic response status 400 (invalid_request_error)"},
+		"unsafe":    {&OpenAI{}, `{"error":{"type":"has spaces and\nnewlines","code":"ok_code"}}`, "OpenAI response status 400 (ok_code)"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			switch provider := test.provider.(type) {
 			case *OpenAI:
 				provider.Client = clientWith(http.StatusBadRequest, test.body, nil)
 			case *Gemini:
+				provider.Client = clientWith(http.StatusBadRequest, test.body, nil)
+			case *Anthropic:
 				provider.Client = clientWith(http.StatusBadRequest, test.body, nil)
 			}
 			_, err := test.provider.NextTurn(context.Background(), providerRequest())
@@ -264,9 +268,13 @@ func TestProviderErrorsReportKindWithoutMessage(t *testing.T) {
 
 func TestProvidersRejectOversizedResponses(t *testing.T) {
 	huge := `{"output":[],"padding":"` + strings.Repeat("x", maxResponseBytes) + `"}`
-	_, err := (&OpenAI{Client: clientWith(http.StatusOK, huge, nil)}).NextTurn(context.Background(), providerRequest())
-	if err == nil || !strings.Contains(err.Error(), "exceeds") {
-		t.Fatalf("oversized response accepted: %v", err)
+	for name, provider := range map[string]ai.TurnProvider{
+		"OpenAI":    &OpenAI{Client: clientWith(http.StatusOK, huge, nil)},
+		"Anthropic": &Anthropic{Client: clientWith(http.StatusOK, huge, nil)},
+	} {
+		if _, err := provider.NextTurn(context.Background(), providerRequest()); err == nil || !strings.Contains(err.Error(), "exceeds") {
+			t.Fatalf("%s accepted an oversized response: %v", name, err)
+		}
 	}
 }
 
@@ -342,5 +350,25 @@ func TestGeminiKeepsThoughtSignatures(t *testing.T) {
 	result, err := (&Gemini{Client: client}).NextTurn(context.Background(), providerRequest())
 	if err != nil || len(result.ToolCalls) != 1 || result.ToolCalls[0].Signature != "opaque" {
 		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
+func TestProvidersSendReasoningEffortOnlyWhenSet(t *testing.T) {
+	for _, effort := range []string{"", "high"} {
+		var openAI, gemini map[string]any
+		capture := func(target *map[string]any) *http.Client {
+			return clientWith(http.StatusOK, `{}`, func(request *http.Request) { _ = json.NewDecoder(request.Body).Decode(target) })
+		}
+		_, _ = (&OpenAI{ReasoningEffort: effort, Client: capture(&openAI)}).NextTurn(context.Background(), providerRequest())
+		_, _ = (&Gemini{ReasoningEffort: effort, Client: capture(&gemini)}).NextTurn(context.Background(), providerRequest())
+		reasoning, _ := openAI["reasoning"].(map[string]any)
+		generation, _ := gemini["generationConfig"].(map[string]any)
+		thinking, _ := generation["thinkingConfig"].(map[string]any)
+		if effort == "" && (reasoning != nil || thinking != nil) {
+			t.Fatalf("effort sent without a choice: openai=%v gemini=%v", reasoning, thinking)
+		}
+		if effort != "" && (reasoning["effort"] != effort || thinking["thinkingLevel"] != effort || generation["maxOutputTokens"] != float64(100)) {
+			t.Fatalf("effort %q not sent: openai=%v gemini=%v", effort, reasoning, generation)
+		}
 	}
 }

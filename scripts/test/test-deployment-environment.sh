@@ -96,8 +96,8 @@ if [[ "$1 $2" == 'get kubeconfig' ]]; then echo fixture; fi
     provision=['bash',str(fixture/'scripts/cd/prepare-dev-secrets.sh')]
     run(provision)
     ai=dict(line.split('=',1) for line in (fixture/'.env').read_text().splitlines())
-    assert all(key in ai for key in ['OPENAI_API_KEY','OPENAI_MODEL','GEMINI_API_KEY','GEMINI_MODEL','BATTLEFIELD_MCP_CAPABILITY_SECRET'])
-    assert ai['OPENAI_PROFILE_AVAILABLE'] == 'false' and ai['GEMINI_PROFILE_AVAILABLE'] == 'false'
+    assert all(key in ai for key in ['OPENAI_API_KEY','OPENAI_MODEL','GEMINI_API_KEY','GEMINI_MODEL','ANTHROPIC_API_KEY','ANTHROPIC_MODEL','BATTLEFIELD_MCP_CAPABILITY_SECRET'])
+    assert ai['OPENAI_PROFILE_AVAILABLE'] == 'false' and ai['GEMINI_PROFILE_AVAILABLE'] == 'false' and ai['ANTHROPIC_PROFILE_AVAILABLE'] == 'false'
     before=(fixture/'.env').read_bytes()
     run(provision)
     assert (fixture/'.env').read_bytes() == before

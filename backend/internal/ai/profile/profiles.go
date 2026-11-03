@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -140,7 +141,7 @@ func evaluateExternalCLIProfile(profile ai.ModelProfile, purpose profileRegistry
 }
 
 func evaluateAPIProfile(environment string, profile ai.ModelProfile) ai.ModelProfile {
-	if profile.Provider != "openai" && profile.Provider != "gemini" {
+	if !slices.Contains([]string{"openai", "gemini", "anthropic"}, profile.Provider) {
 		profile.UnavailableReason = "unsupported API provider"
 		return profile
 	}
