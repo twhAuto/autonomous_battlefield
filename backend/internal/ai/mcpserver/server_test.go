@@ -27,6 +27,7 @@ type fakeRepository struct {
 	validations     int
 	claimErr        error
 	claimedProfiles []string
+	claimedAPI      bool
 	claimFn         func([]string) (ai.DecisionRecord, error)
 	err             error
 	failErr         error
@@ -56,8 +57,9 @@ func (r *fakeRepository) SubmitDecisionPlan(_ context.Context, value ai.PlanSubm
 func (r *fakeRepository) ResolveDecisionFallback(context.Context, string, int64, controller.PlanProposal, string, string) (bool, error) {
 	return true, nil
 }
-func (r *fakeRepository) ClaimModelDecision(_ context.Context, _ string, profiles []string, _ time.Duration) (ai.DecisionRecord, error) {
+func (r *fakeRepository) ClaimModelDecision(_ context.Context, _ string, profiles []string, includeAPI bool, _ time.Duration) (ai.DecisionRecord, error) {
 	r.claimedProfiles = append([]string(nil), profiles...)
+	r.claimedAPI = includeAPI
 	record, err := r.record, r.claimErr
 	if r.claimFn != nil {
 		record, err = r.claimFn(profiles)

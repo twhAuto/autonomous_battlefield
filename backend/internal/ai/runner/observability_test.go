@@ -41,6 +41,30 @@ func TestGenerationUsageDoesNotDoubleCountCache(t *testing.T) {
 	}
 }
 
+// Traces name the model a run used: a frozen API option, otherwise the environment model.
+func TestGenerationSpanNamesTheModelThatRan(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdk.NewTracerProvider(sdk.WithSpanProcessor(recorder))
+	old := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() { otel.SetTracerProvider(old); _ = provider.Shutdown(context.Background()) })
+	t.Setenv("TRACE_API_MODEL", "environment-model")
+	for index, test := range []struct{ model, want string }{{"chosen-option", "chosen-option"}, {"", "environment-model"}} {
+		profile := ai.ModelProfile{Runtime: "api", ModelEnvironmentVariable: "TRACE_API_MODEL", Model: test.model}
+		_, span := generationSpan(context.Background(), ai.DecisionSession{Profile: profile}, "api_turn")
+		span.End()
+		name := ""
+		for _, attr := range recorder.Ended()[index].Attributes() {
+			if attr.Key == "langfuse.observation.model.name" {
+				name = attr.Value.AsString()
+			}
+		}
+		if name != test.want {
+			t.Fatalf("model name = %q, want %q", name, test.want)
+		}
+	}
+}
+
 type failedUsageProvider struct{}
 
 func (failedUsageProvider) NextTurn(context.Context, ai.ModelTurnRequest) (ai.ModelTurnResult, error) {

@@ -24,12 +24,15 @@ import (
 const invalidRequestMessage = "invalid request"
 
 type agentClaimRequest struct {
-	SelectionVersion int      `json:"selectionVersion"`
-	JobTypes         []string `json:"jobTypes"`
-	WorkerID         string   `json:"workerId"`
-	LeaseSeconds     int      `json:"leaseSeconds"`
-	WaitSeconds      int      `json:"waitSeconds"`
-	ProfileIDs       []string `json:"profileIds"`
+	SelectionVersion int `json:"selectionVersion"`
+	// APIModelSelection marks a worker that runs frozen API model options. Older
+	// workers omit it and lease only CLI decisions, which they already run correctly.
+	APIModelSelection bool     `json:"apiModelSelection"`
+	JobTypes          []string `json:"jobTypes"`
+	WorkerID          string   `json:"workerId"`
+	LeaseSeconds      int      `json:"leaseSeconds"`
+	WaitSeconds       int      `json:"waitSeconds"`
+	ProfileIDs        []string `json:"profileIds"`
 }
 
 type agentFailureRequest struct {
@@ -185,7 +188,7 @@ func (s *Server) waitForDecisionClaim(ctx context.Context, repository ai.Decisio
 	for {
 		// Subscribe before querying so a racing notification cannot be missed.
 		wakeup := s.wakeups.wait()
-		record, err := repository.ClaimModelDecision(ctx, request.WorkerID, request.ProfileIDs, time.Duration(max(1, request.LeaseSeconds))*time.Second)
+		record, err := repository.ClaimModelDecision(ctx, request.WorkerID, request.ProfileIDs, request.APIModelSelection, time.Duration(max(1, request.LeaseSeconds))*time.Second)
 		if err == nil {
 			return record, true, nil
 		}

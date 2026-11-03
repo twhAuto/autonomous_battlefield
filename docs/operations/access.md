@@ -279,8 +279,8 @@ PostgreSQL serializes admission across replicas:
   by default (`runtime_policy.cli_concurrency`, 1–8). A slot is released when the worker
   reports completion or its bounded lease expires, not on submission. Each worker
   also caps its own jobs with `ai.agentConcurrency` (1 when omitted). The K3s API
-  worker sets 4; the managed CLI VM currently omits it and runs one job at a time
-  (see [CLI worker operations](cli-worker.md)).
+  worker and the managed CLI VM each set 4 (see
+  [concurrent decisions](cli-worker-verification.md#concurrent-decisions)).
 - Each battle allows at most 100 model decision executions across retries, then
   uses the normal fallback. API token and step limits, the 4 MiB CLI output cap and
   execution timeouts still apply. Subscription CLI token counts are reported when

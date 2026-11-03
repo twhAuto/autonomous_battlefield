@@ -10,6 +10,7 @@ import { DisqualifyEntrant } from '../components/DisqualifyEntrant'
 import { Disqualifications, FixtureList, GroupStage, KnockoutBracket, NowPlaying } from '../components/LeagueStandings'
 import { entrantName } from '../presentation/leagues'
 import { rulesVersionsLabel } from '../../battles/components/RulesVersionSelect'
+import type { StatisticsOrigin } from '../../analytics/pages/AnalyticsPage'
 
 export const leagueRefreshMs = 10_000
 
@@ -67,7 +68,7 @@ export function LeaguePage({ canManage }: Readonly<{ canManage: boolean }>) {
               {league.rulesVersions.length > 0 && ` · rules ${rulesVersionsLabel(league.rulesVersions)}`} · {league.progress.settled} of {league.progress.total} fixtures settled</p>
           </div>
           <div className="league-actions">
-            <Link className="compact-action" to={`/analytics?leagueId=${encodeURIComponent(league.id)}`}>STATISTICS →</Link>
+            <Link className="compact-action" to={`/analytics?leagueId=${encodeURIComponent(league.id)}`} state={{ backToLeague: league.id } satisfies StatisticsOrigin}>STATISTICS →</Link>
             {canManage && <Link className="compact-action" to={`/leagues/new?from=${encodeURIComponent(league.id)}`}>START AGAIN →</Link>}
             {canManage && running && <button className="compact-action" type="button" aria-expanded={disqualifying} aria-controls="league-disqualify"
               onClick={() => setDisqualifying(open => !open)}>DISQUALIFY ENTRANT</button>}

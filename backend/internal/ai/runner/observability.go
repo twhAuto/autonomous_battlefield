@@ -14,7 +14,8 @@ import (
 
 func generationSpan(ctx context.Context, session ai.DecisionSession, scope string) (context.Context, trace.Span) {
 	model := session.Profile.Model
-	if session.Profile.Runtime == "api" && session.Profile.ModelEnvironmentVariable != "" {
+	// An API run without a frozen model option runs its profile's environment model.
+	if model == "" && session.Profile.Runtime == "api" && session.Profile.ModelEnvironmentVariable != "" {
 		model = os.Getenv(session.Profile.ModelEnvironmentVariable)
 	}
 	promptVersion := prompts.Version

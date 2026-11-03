@@ -37,6 +37,22 @@ func TestAgentControlPlaneAuthorizationAndEmptyQueue(t *testing.T) {
 	}
 }
 
+// A worker that does not declare API model selection would ignore an API decision's
+// frozen model, so it leases only CLI decisions.
+func TestAgentClaimIncludesAPIDecisionsOnlyForDeclaringWorkers(t *testing.T) {
+	for body, includeAPI := range map[string]bool{
+		`{"selectionVersion":1,"workerId":"agent","profileIds":["profile"]}`:                          false,
+		`{"selectionVersion":1,"apiModelSelection":true,"workerId":"agent","profileIds":["profile"]}`: true,
+	} {
+		repository := &fakeRepository{claimErr: ai.ErrNoDecision}
+		response := httptest.NewRecorder()
+		New(repository, "secret", nil).WithAgentSecret("worker-secret").AgentHandler(repository).ServeHTTP(response, agentRequest(http.MethodPost, "/claim", body))
+		if response.Code != http.StatusNoContent || repository.claimedAPI != includeAPI {
+			t.Fatalf("%s: status %d, includeAPI %t", body, response.Code, repository.claimedAPI)
+		}
+	}
+}
+
 func TestAgentControlPlaneRejectsMalformedBodies(t *testing.T) {
 	handler := New(&fakeRepository{}, "secret", nil).WithAgentSecret("worker-secret").AgentHandler(&fakeRepository{})
 	for _, path := range []string{"/claim", "/fail", "/usage"} {

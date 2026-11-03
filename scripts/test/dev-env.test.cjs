@@ -28,6 +28,7 @@ test('migration preserves literal credentials and extraction isolates Secrets', 
       for(const [key,value] of read(original)) assert.equal(actual.get(key),value);
       for(const key of actual.keys()) assert.equal(require('../lib/application-env.cjs').group(key),group);
       if(group==='ai') assert.equal(actual.get('GEMINI_PROFILE_AVAILABLE'),'false');
+      if(group==='ai') assert.equal(actual.get('ANTHROPIC_PROFILE_AVAILABLE'),'false');
       main(['extract',target,output,group]);
       assert.equal(fs.statSync(output).mode & 0o777,0o600);
     }
@@ -77,6 +78,14 @@ test('shared schema enforces production authentication and separates deployment 
   values.set('BATTLEFIELD_ACCESS_CI_CLIENT_ID', 'owner@example.com');
   assert.throws(()=>validate(values,'production'),/CI client ID/);
   values.delete('BATTLEFIELD_ACCESS_CI_CLIENT_ID');
+  values.set('ANTHROPIC_PROFILE_AVAILABLE','true');
+  assert.throws(()=>validate(values,'production'),/ANTHROPIC_API_KEY requires/);
+  values.set('ANTHROPIC_API_KEY','key');
+  assert.throws(()=>validate(values,'production'),/ANTHROPIC_MODEL requires/);
+  values.set('ANTHROPIC_MODEL','claude-sonnet-5-5');
+  validate(values,'production');
+  assert.equal(group('ANTHROPIC_PROFILE_AVAILABLE'),'ai');
+  for (const key of ['ANTHROPIC_PROFILE_AVAILABLE','ANTHROPIC_API_KEY','ANTHROPIC_MODEL']) values.delete(key);
   values.set('BATTLEFIELD_ACCESS_ROLES','{"admin":["owner@example.com"],"tester":["qa@example.com"]}');
   validate(values,'production');
   for (const role of ['root','developer']) {

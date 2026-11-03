@@ -96,6 +96,18 @@ spec:
                 secretKeyRef:
                   name: battlefield-ai
                   key: GEMINI_PROFILE_AVAILABLE
+            - name: ANTHROPIC_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: battlefield-ai
+                  key: ANTHROPIC_MODEL
+                  optional: true
+            - name: ANTHROPIC_PROFILE_AVAILABLE
+              valueFrom:
+                secretKeyRef:
+                  name: battlefield-ai
+                  key: ANTHROPIC_PROFILE_AVAILABLE
+                  optional: true
             - name: CODEX_CLI_PROFILE_AVAILABLE
               valueFrom:
                 secretKeyRef:

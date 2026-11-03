@@ -281,19 +281,23 @@ for context delivery and accepted-plan enforcement.
 
 ### `internal/ai/providers`: external API adapters
 
-[`openai.go`](../../backend/internal/ai/providers/openai.go) translates neutral tools into OpenAI Responses function tools. [`gemini.go`](../../backend/internal/ai/providers/gemini.go) translates them into Gemini function declarations.
+[`openai.go`](../../backend/internal/ai/providers/openai.go) translates neutral tools into OpenAI Responses function tools. [`gemini.go`](../../backend/internal/ai/providers/gemini.go) translates them into Gemini function declarations. [`anthropic.go`](../../backend/internal/ai/providers/anthropic.go) builds Claude Messages API requests with Anthropic's official Go SDK.
 
 Each adapter converts the neutral history to its API's native roles and tool-call
-items (`openAIInput`, `geminiContents`). [`http.go`](../../backend/internal/ai/providers/http.go) owns
-the shared HTTP response lifecycle, status errors, and JSON decoding. Responses are
-capped at 4 MiB. Error statuses report only the provider's machine-readable error
+items (`openAIInput`, `geminiContents`, `anthropicMessages`). An adapter that needs its
+own turn content back sets `ModelTurnResult.ProviderContent`; the
+[API runtime](../architecture/ai-decisions.md#api-runtime) section gives the replay
+and no-retry contract. [`http.go`](../../backend/internal/ai/providers/http.go) owns
+the shared HTTP response lifecycle, status errors, and JSON decoding for the OpenAI
+and Gemini adapters; the Claude adapter applies the same rules to its SDK client.
+Responses are capped at 4 MiB. Error statuses report only the provider's machine-readable error
 class (for example `invalid_request_error` or `INVALID_ARGUMENT`), never its free-text
 message, which can echo request content. Provider adapters retain their
 authentication, request schemas, and named response types.
 
-Both adapters:
+All adapters:
 
-- accept a configurable HTTP client and endpoint for tests;
+- accept a configurable HTTP client for tests (OpenAI and Gemini also an endpoint);
 - normalize token usage and tool calls;
 - map safety/refusal results to a common error;
 - contain no battle or database logic.

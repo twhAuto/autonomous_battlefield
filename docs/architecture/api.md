@@ -423,10 +423,11 @@ purchase tick and win rate with and without it; and per map the draw rate, mean
 length and each spawn side's wins.
 
 `leagueId`, `since` and `excludeFallback=true` narrow the battles. `rulesVersion`
-defaults to the current rules, so balance changes do not mix; `all` includes every
-version. A report reads at most the 5000 most recent battles and says when it was
-truncated. Unit and upgrade figures use only results with per-type statistics, so
-battles completed before those were recorded count for outcomes alone. A model's
+defaults to the current rules, so balance changes do not mix; it can name another
+version, or `all` for every version. A report reads at most the 5000 most recent
+battles and says when it was truncated. Unit and upgrade figures use only results
+with per-type statistics, so battles completed before those were recorded count for
+outcomes alone. A model's
 decisions come from its battles' final attempts; a fallback plan a retry reused from
 an earlier attempt still counts as a fallback. A renamed faction is reported under
 its newest name.

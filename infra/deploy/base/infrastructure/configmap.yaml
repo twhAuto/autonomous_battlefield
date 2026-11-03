@@ -75,8 +75,27 @@ data:
           modelEnvironmentVariable: OPENAI_MODEL
           credentialEnvironmentVariable: OPENAI_API_KEY
           availabilityEnvironmentVariable: OPENAI_PROFILE_AVAILABLE
+          modelOptions:
+            - id: gpt-6.1-sol
+              reasoningEfforts: [low, medium, high]
+            - id: gpt-6.1-terra
+              reasoningEfforts: [low, medium, high]
+            - id: gpt-6-astra
+              reasoningEfforts: [low, medium, high]
+            - id: gpt-6-sol
+              reasoningEfforts: [low, medium, high]
+            - id: gpt-6-luna
+              reasoningEfforts: [low, medium, high]
+            - id: gpt-5.6-sol
+              reasoningEfforts: [low, medium, high]
+            - id: gpt-5.6-terra
+              reasoningEfforts: [low, medium, high]
+            - id: gpt-5.6-luna
+              reasoningEfforts: [low, medium, high]
           scope: cluster
-          maxOutputTokens: 1200
+          # Reasoning tokens count against this ceiling; higher efforts can exhaust
+          # 1200 before a required function call is emitted.
+          maxOutputTokens: 4096
           maxSteps: 5
           enabled: true
         - id: gemini-api-balanced
@@ -86,10 +105,34 @@ data:
           modelEnvironmentVariable: GEMINI_MODEL
           credentialEnvironmentVariable: GEMINI_API_KEY
           availabilityEnvironmentVariable: GEMINI_PROFILE_AVAILABLE
+          modelOptions:
+            - id: gemini-3.8-flash
+              reasoningEfforts: [low, medium, high]
           scope: cluster
           # Gemini reasoning tokens count against this ceiling; 1200 can be
           # exhausted before a required function call is emitted.
           maxOutputTokens: 4096
+          maxSteps: 5
+          enabled: true
+        - id: claude-api-balanced
+          displayName: Claude API
+          provider: anthropic
+          runtime: api
+          modelEnvironmentVariable: ANTHROPIC_MODEL
+          credentialEnvironmentVariable: ANTHROPIC_API_KEY
+          availabilityEnvironmentVariable: ANTHROPIC_PROFILE_AVAILABLE
+          modelOptions:
+            - id: claude-haiku-5-5
+              reasoningEfforts: [low, medium, high]
+            - id: claude-sonnet-5-5
+              reasoningEfforts: [low, medium, high]
+            - id: claude-opus-5-5
+              reasoningEfforts: [low, medium, high]
+            - id: claude-fable-5-1
+              reasoningEfforts: [low, medium, high]
+          scope: cluster
+          # Claude thinking cannot be turned off and counts against this ceiling.
+          maxOutputTokens: 16000
           maxSteps: 5
           enabled: true
         - id: codex-subscription-local

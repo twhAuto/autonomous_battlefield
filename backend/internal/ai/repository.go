@@ -46,7 +46,9 @@ type DecisionRepository interface {
 	ListWindowDecisions(context.Context, string, int, uint64) ([]DecisionRecord, error)
 	SubmitDecisionPlan(context.Context, PlanSubmission) (SubmissionResult, error)
 	ResolveDecisionFallback(context.Context, string, int64, controller.PlanProposal, string, string) (bool, error)
-	ClaimModelDecision(context.Context, string, []string, time.Duration) (DecisionRecord, error)
+	// ClaimModelDecision leases a decision for one of the profile IDs. Without includeAPI
+	// it skips API-runtime decisions, for workers that cannot run their model options.
+	ClaimModelDecision(ctx context.Context, owner string, profileIDs []string, includeAPI bool, lease time.Duration) (DecisionRecord, error)
 	FinishDecisionFailure(context.Context, string, string, Usage, map[string]any) error
 	// RecordDecisionValidation counts an invalid submission on an open decision and
 	// returns the updated count; a closed decision returns 0.

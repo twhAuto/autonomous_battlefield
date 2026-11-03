@@ -15,7 +15,9 @@ import (
 
 type OpenAI struct {
 	APIKey, Model, Endpoint string
-	Client                  *http.Client
+	// ReasoningEffort is sent as reasoning.effort; empty uses the model's default.
+	ReasoningEffort string
+	Client          *http.Client
 }
 
 type openAIOutput struct {
@@ -33,7 +35,11 @@ func (p *OpenAI) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	if err != nil {
 		return ai.ModelTurnResult{}, err
 	}
-	body, err := json.Marshal(map[string]any{"model": p.Model, "instructions": turn.SystemPrompt, "input": openAIInput(turn.Messages), "tools": tools, "tool_choice": "auto", "max_output_tokens": turn.MaxTokens})
+	payload := map[string]any{"model": p.Model, "instructions": turn.SystemPrompt, "input": openAIInput(turn.Messages), "tools": tools, "tool_choice": "auto", "max_output_tokens": turn.MaxTokens}
+	if p.ReasoningEffort != "" {
+		payload["reasoning"] = map[string]any{"effort": p.ReasoningEffort}
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return ai.ModelTurnResult{}, err
 	}

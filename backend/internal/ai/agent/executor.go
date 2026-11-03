@@ -277,7 +277,7 @@ func (run jobRun) logFailure(ctx context.Context, category, outcome string, runE
 
 func (e *Executor) claim(ctx context.Context, profileIDs []string) (job, bool, error) {
 	payload, _ := json.Marshal(map[string]any{
-		"selectionVersion": 1, "workerId": e.WorkerID, "leaseSeconds": int(e.DecisionTimeout.Seconds()) + 5,
+		"selectionVersion": 1, "apiModelSelection": true, "workerId": e.WorkerID, "leaseSeconds": int(e.DecisionTimeout.Seconds()) + 5,
 		"waitSeconds": max(1, min(20, int(e.ClaimWait.Seconds()))), "profileIds": profileIDs, "jobTypes": []string{"battle_decision", "faction_background"},
 	})
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, e.serviceURL("/internal/agent/claim"), bytes.NewReader(payload))
@@ -363,9 +363,14 @@ func (e *Executor) runJob(parent context.Context, job job) {
 	e.finishJob(parent, ctx, jobRun{logger: logger, started: started, requestID: job.RequestID, profile: profile}, result, err)
 }
 
-// resolveJobProfile preserves API environment models and frozen CLI choices.
+// resolveJobProfile applies frozen model options. An API job with no effort whose
+// model is not an option, such as the previous environment model after rotation,
+// runs the environment model the agent has now.
 func resolveJobProfile(profile ai.ModelProfile, job job) (ai.ModelProfile, error) {
-	if profile.Runtime != "cli" || (job.ModelIdentifier == "" && job.ReasoningEffort == "") {
+	if job.ModelIdentifier == "" && job.ReasoningEffort == "" {
+		return profile, nil
+	}
+	if profile.Runtime != "cli" && job.ReasoningEffort == "" && !ai.HasModelOption(profile, job.ModelIdentifier) {
 		return profile, nil
 	}
 	model, _, err := ai.ResolveModelSelection(profile, job.ModelIdentifier, job.ReasoningEffort)
@@ -449,12 +454,18 @@ func defaultRunner(profile ai.ModelProfile) (ai.DecisionRunner, error) {
 	if profile.Runtime == "cli" {
 		return runner.CLIRunner{Provider: profile.Provider, Model: profile.Model, ReasoningEffort: profile.ReasoningEffort, PrefetchContext: profile.PrefetchesContext()}, nil
 	}
+	key, model := os.Getenv(profile.CredentialEnvironmentVariable), profile.Model
+	if model == "" {
+		model = os.Getenv(profile.ModelEnvironmentVariable)
+	}
 	var provider ai.TurnProvider
 	switch profile.Provider {
 	case "openai":
-		provider = &providers.OpenAI{APIKey: os.Getenv(profile.CredentialEnvironmentVariable), Model: os.Getenv(profile.ModelEnvironmentVariable)}
+		provider = &providers.OpenAI{APIKey: key, Model: model, ReasoningEffort: profile.ReasoningEffort}
 	case "gemini":
-		provider = &providers.Gemini{APIKey: os.Getenv(profile.CredentialEnvironmentVariable), Model: os.Getenv(profile.ModelEnvironmentVariable)}
+		provider = &providers.Gemini{APIKey: key, Model: model, ReasoningEffort: profile.ReasoningEffort}
+	case "anthropic":
+		provider = &providers.Anthropic{APIKey: key, Model: model, ReasoningEffort: profile.ReasoningEffort}
 	default:
 		return nil, fmt.Errorf("unsupported provider %q", profile.Provider)
 	}

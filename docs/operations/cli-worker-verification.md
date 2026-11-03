@@ -91,9 +91,10 @@ for Jenkins smoke forwards on `127.0.0.1:18084`.
   children cannot read the parent's environment or memory. Children receive an
   explicit allowlist of transport and login settings plus their scoped capability.
 
-The VM's 2 vCPU / 4 GiB / 24 GiB allocation is a one-slot starting size, not
-validated four-CLI capacity. Leave CLI disabled if the host cannot sustain the
-game, database, observability and one CLI together.
+The VM's 2 vCPU / 4 GiB / 24 GiB allocation is a starting size;
+[concurrent decisions](#concurrent-decisions) covers checking it against the
+configured slots. Leave CLI disabled if the host cannot sustain the game, database,
+observability and one CLI together.
 
 ## Access the provisioned VM
 
@@ -292,7 +293,7 @@ with matching files and previously recorded isolation evidence.
 3. Run `./scripts/ops/prepare-limited-production.sh`, which changes nothing live,
    then deploy the configuration through `main` with `APPLY_CONFIGURATION=true`.
    Keep initial profile access limited to administrators.
-4. Run one Codex-versus-Scripted battle. Check that the opening and tick 10 both
+4. Run one Codex-versus-Scripted battle. Check that the opening and tick 20 both
    have accepted plans with no fallback or error, and that CLI usage is eventually
    populated (token usage can arrive after acceptance). Check execution separately
    in the battle event stream.
@@ -348,29 +349,27 @@ and the generator replace ad hoc unit-file editing, not the verification gates.
 
 `ai.agentConcurrency` sets how many independent jobs one worker runs, across all
 enabled CLI providers rather than per provider. The worker accepts 1–8 and an
-omitted value means one slot; the managed VM settings accept 1–4 until more slots
-are verified on the VM. The VM template sets 4, but the managed VM
-currently omits it ([`managed-settings.json`](../../infra/deploy/agent-vm/managed-settings.json)
-has `agentConcurrency: null`), so it runs one job at a time. The database caps CLI
-executions across all workers, decisions and background jobs at
-`runtime_policy.cli_concurrency` (default 4).
+omitted value means one slot; the managed VM settings accept 1–4. The managed VM
+runs four, as does the VM template
+([`managed-settings.json`](../../infra/deploy/agent-vm/managed-settings.json) sets
+`agentConcurrency: 4`). The database caps CLI executions across all workers,
+decisions and background jobs at `runtime_policy.cli_concurrency` (default 4).
 
-Before raising the managed value, exercise four concurrent CLI sessions on the VM
-and check memory and task headroom, that saved logins stay valid through concurrent
-refreshes, and that provider throttling does not cause repeated fallbacks. A
-successful single session does not establish this; increase VM resources
-separately if the current limits cannot sustain four.
+To change it, never copy a binary or edit the configuration by hand. Set
+`agentConcurrency` in `managed-settings.json`, merge and promote, and run `apply`
+on [`battlefield-platform/cli`](cli-worker.md); its `sync-worker-config` repair
+applies the value and drains running decisions before the restart. Lower the value
+the same way.
 
-To change it, never copy a binary or edit the configuration by hand. Run `apply`
-on [`battlefield-platform/cli`](cli-worker.md) so the worker runs the production
-release, set `agentConcurrency` in `managed-settings.json`, merge and promote, and
-run `apply` again; the job drains running decisions before each restart. Then
-check that the `agent_worker_ready` log reports the new concurrency and health
-returns 204. Use independent queued decisions to observe overlap: a single decision
-stays sequential, and a slot stays occupied until execution completes, even after
-its plan is accepted. While testing, watch
-`systemctl status battlefield-worker.service` and the journal for OOM failures.
-Lower the value the same way.
+After each change, check that the `agent_worker_ready` log reports the new
+concurrency and health returns 204. Then queue independent decisions, such as two
+battles with CLI models on both sides, to observe overlap: a single decision stays
+sequential, and a slot stays occupied until execution completes, even after its
+plan is accepted. While they run, watch `systemctl status battlefield-worker.service`
+and the journal for OOM failures, and check memory and task headroom, that saved
+logins stay valid through concurrent refreshes, and that provider throttling does
+not cause repeated fallbacks. A successful single session does not establish this.
+If the VM cannot sustain the value, lower it and increase VM resources separately.
 
 For a fleet-wide reduction, set the database limit with
 `scripts/ops/ai-policy.sh cli-slots 1` and restore it the same way; see
