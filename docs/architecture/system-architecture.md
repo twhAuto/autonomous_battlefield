@@ -236,7 +236,7 @@ workers use the stored timing without changing catalog defaults.
 ### 5.2 Strategy decision window
 
 A decision window occurs immediately before ticks configured by
-`decisionIntervalTicks`. The supplied map defaults use ticks 10, 20, 30, and
+`decisionIntervalTicks`. The supplied map defaults use ticks 20, 40, 60, and
 so on; a per-battle override changes that interval in the frozen scenario.
 
 ```mermaid
@@ -556,7 +556,7 @@ These contracts come from the
 ### Battle replay storage and cost
 
 A checkpoint is about one state's size (26 KB of JSON on average for a measured
-frontier battle), written once per decision interval (10 ticks by default) rather
+frontier battle), written once per decision interval (20 ticks by default) rather
 than every tick. A replay request re-simulates at most one interval, about 7 ms per
 tick in that battle, so a segment costs well under a second of API CPU; re-simulating
 from tick 0 would take minutes for a long battle. Segments are neither cached nor

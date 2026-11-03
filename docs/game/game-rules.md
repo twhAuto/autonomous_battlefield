@@ -119,7 +119,7 @@ unit per source; historical batch mode retains its FIFO queue.
   stored before doctrine snapshots (older `SnapshotVersion`) start without one. There is no income
   and no construction. Opening training begins at tick 1; a deployed troop first acts on the following tick.
 - **Regular windows** run on the transition into every tick that is a multiple of
-  `decisionIntervalTicks` (10: ticks 10, 20, 30, ...), as long as that tick does not
+  `decisionIntervalTicks` (20: ticks 20, 40, 60, ...), as long as that tick does not
   exceed the requested tick count. A window exactly at the limit still runs.
 - Windows change strategy, building production settings, construction and upgrades.
   Construction/upgrades follow `spendOrder`; automatic unit purchases happen afterward
@@ -246,8 +246,8 @@ first (`backend/internal/game/turn_order.go`). The lead changes every tick withi
 decision window and passes to the other participant from one window to the next: the
 second participant leads when the tick's offset within its window plus the window
 number (the tick divided by the decision interval) is even. With the default
-10-tick interval, the second participant leads the opening and tick 20, and the first
-leads tick 10 and tick 30. Within a faction, buildings and units keep ID order.
+20-tick interval, the second participant leads the opening and tick 40, and the first
+leads tick 20 and tick 60. Within a faction, buildings and units keep ID order.
 Ruleset v12 alternates on tick parity alone, the first participant on odd ticks and
 the second on even ones, so with an even interval the second participant leads every
 window. Rulesets before v12 have no alternating turns: the economy runs in
