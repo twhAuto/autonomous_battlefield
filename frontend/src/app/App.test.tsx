@@ -139,6 +139,7 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Signing out…' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Sign in to Battlefield' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByText(/If this page stays open, reload it\./)).toBeInTheDocument()
   })
 
   it.each(['local-password', 'cloudflare'])('signs out an expired %s session when logout returns 401', async (mode) => {

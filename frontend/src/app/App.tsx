@@ -182,7 +182,7 @@ export default function App({ authentication = authenticationClient, initialSess
   if (signingOut) {
     // The browser can stay, for example when a page's unsaved-changes prompt is
     // cancelled; the Access session is then intact, so reloading returns to the app.
-    return <main className="login-page"><section className="login-card" aria-labelledby="signing-out-title"><h1 id="signing-out-title">Signing out…</h1><p>Ending your Cloudflare Access session.</p></section></main>
+    return <main className="login-page"><section className="login-card" aria-labelledby="signing-out-title"><h1 id="signing-out-title">Signing out…</h1><p>Ending your Cloudflare Access session. If this page stays open, reload it.</p></section></main>
   }
   if (!session) {
     return <main className="login-page"><div className="loader" aria-label="Checking authentication" /></main>

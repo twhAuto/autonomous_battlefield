@@ -74,8 +74,8 @@ The shell shows the signed-out screen after a successful logout or an HTTP 401
 confirming that the session is no longer authenticated. An Access logout instead
 shows a signing-out screen, with no actions, while the browser leaves for
 `/cdn-cgi/access/logout`. If the browser stays, such as after a cancelled
-unsaved-changes prompt, the Access session is intact and reloading returns to the
-app. If the request otherwise
+unsaved-changes prompt, the Access session is intact, and the screen's advice to
+reload returns to the app. If the request otherwise
 fails, it retains the current screen and shows an accessible retry message; it cannot confirm that the server session ended. Component tests
 cover local-password and Access sessions, and browser tests cover retry on desktop
 and mobile. The footer displays the product name without a hardcoded build number.
