@@ -59,18 +59,23 @@ type ModelTurnResult struct {
 	Text      string
 	ToolCalls []ToolCall
 	Usage     Usage
+	// ProviderContent is the whole turn in the provider's own format, for providers
+	// whose later requests must repeat it unchanged, such as Claude thinking blocks.
+	ProviderContent json.RawMessage
 }
 
 // Message is one entry in a provider-neutral conversation. Role is "user",
 // "assistant" or "tool". An assistant message carries any text and the tool calls it
-// requested; a tool message answers one call, identified by ToolCallID and Name, with
-// the result in Content.
+// requested, plus the turn's ProviderContent when its provider returned one; a tool
+// message answers one call, identified by ToolCallID and Name, with the result in
+// Content.
 type Message struct {
-	Role       string     `json:"role"`
-	Content    string     `json:"content"`
-	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
-	ToolCallID string     `json:"toolCallId,omitempty"`
-	Name       string     `json:"name,omitempty"`
+	Role            string          `json:"role"`
+	Content         string          `json:"content"`
+	ToolCalls       []ToolCall      `json:"toolCalls,omitempty"`
+	ToolCallID      string          `json:"toolCallId,omitempty"`
+	Name            string          `json:"name,omitempty"`
+	ProviderContent json.RawMessage `json:"providerContent,omitempty"`
 }
 
 type ToolDefinition struct {

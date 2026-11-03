@@ -16,7 +16,10 @@ import (
 
 type Gemini struct {
 	APIKey, Model, Endpoint string
-	Client                  *http.Client
+	// ReasoningEffort is sent as thinkingConfig.thinkingLevel; empty uses the model's
+	// default.
+	ReasoningEffort string
+	Client          *http.Client
 }
 
 type geminiCandidate struct {
@@ -38,12 +41,16 @@ func (p *Gemini) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	if err != nil {
 		return ai.ModelTurnResult{}, err
 	}
+	generation := map[string]any{"maxOutputTokens": turn.MaxTokens}
+	if p.ReasoningEffort != "" {
+		generation["thinkingConfig"] = map[string]any{"thinkingLevel": p.ReasoningEffort}
+	}
 	body, err := json.Marshal(map[string]any{
 		"systemInstruction": map[string]any{"parts": []any{map[string]any{"text": turn.SystemPrompt}}},
 		"contents":          geminiContents(turn.Messages),
 		"tools":             []any{map[string]any{"functionDeclarations": declarations}},
 		"toolConfig":        map[string]any{"functionCallingConfig": map[string]any{"mode": "ANY"}},
-		"generationConfig":  map[string]any{"maxOutputTokens": turn.MaxTokens},
+		"generationConfig":  generation,
 	})
 	if err != nil {
 		return ai.ModelTurnResult{}, err

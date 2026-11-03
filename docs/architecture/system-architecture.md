@@ -48,7 +48,7 @@ flowchart TB
     Cache[(Optional Redis)]
     Gateway["AI gateway: cmd/aigateway"]
     Agent["Decision agent: cmd/agent"]
-    Provider["OpenAI or Gemini API, or Codex, Antigravity or Claude CLI"]
+    Provider["OpenAI, Gemini or Claude API, or Codex, Antigravity or Claude CLI"]
 
     User --> UI
     UI -->|HTTP /v1| API
@@ -758,6 +758,7 @@ A model profile specifies:
 - provider and API/CLI runtime;
 - cluster or local scope;
 - API credential/model environment variables or a pinned CLI model identifier;
+- optional `modelOptions`, the models and reasoning efforts a battle may choose;
 - optional external-agent availability environment variable;
 - token and step limits;
 - enabled state and supported CLI version prefix.

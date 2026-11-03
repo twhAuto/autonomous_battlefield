@@ -32,6 +32,9 @@ spec:
             - {name: GEMINI_API_KEY, valueFrom: {secretKeyRef: {name: battlefield-ai, key: GEMINI_API_KEY}}}
             - {name: GEMINI_MODEL, valueFrom: {secretKeyRef: {name: battlefield-ai, key: GEMINI_MODEL}}}
             - {name: GEMINI_PROFILE_AVAILABLE, valueFrom: {secretKeyRef: {name: battlefield-ai, key: GEMINI_PROFILE_AVAILABLE}}}
+            - {name: ANTHROPIC_API_KEY, valueFrom: {secretKeyRef: {name: battlefield-ai, key: ANTHROPIC_API_KEY, optional: true}}}
+            - {name: ANTHROPIC_MODEL, valueFrom: {secretKeyRef: {name: battlefield-ai, key: ANTHROPIC_MODEL, optional: true}}}
+            - {name: ANTHROPIC_PROFILE_AVAILABLE, valueFrom: {secretKeyRef: {name: battlefield-ai, key: ANTHROPIC_PROFILE_AVAILABLE, optional: true}}}
           ports: [{name: health, containerPort: 8083}]
           readinessProbe: {httpGet: {path: /healthz, port: health}, periodSeconds: 5}
           resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}

@@ -435,7 +435,7 @@ func (submitOnlyConnector) Connect(context.Context, string, string) (DecisionToo
 func (p *recordingTurnProvider) NextTurn(_ context.Context, request ai.ModelTurnRequest) (ai.ModelTurnResult, error) {
 	p.requests = append(p.requests, request)
 	if len(p.requests) == 1 {
-		return ai.ModelTurnResult{Text: "reading", ToolCalls: []ai.ToolCall{{Name: "get_decision_context", Arguments: []byte(`{"requestId":"request"}`)}, {ID: "provider-id", Name: "get_unit_details", Arguments: []byte(`{"requestId":"request","unitIds":["ranger"]}`)}}}, nil
+		return ai.ModelTurnResult{Text: "reading", ProviderContent: []byte(`[{"type":"thinking"}]`), ToolCalls: []ai.ToolCall{{Name: "get_decision_context", Arguments: []byte(`{"requestId":"request"}`)}, {ID: "provider-id", Name: "get_unit_details", Arguments: []byte(`{"requestId":"request","unitIds":["ranger"]}`)}}}, nil
 	}
 	return ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "submit_strategy_plan", Arguments: []byte(`{"requestId":"request"}`)}}}, nil
 }
@@ -451,7 +451,7 @@ func TestAPIRunnerKeepsToolCallsStructured(t *testing.T) {
 		t.Fatalf("messages=%+v", messages)
 	}
 	assistant, first, second := messages[1], messages[2], messages[3]
-	if assistant.Role != "assistant" || assistant.Content != "reading" || len(assistant.ToolCalls) != 2 ||
+	if assistant.Role != "assistant" || assistant.Content != "reading" || string(assistant.ProviderContent) != `[{"type":"thinking"}]` || len(assistant.ToolCalls) != 2 ||
 		assistant.ToolCalls[0].ID != "call_0_0" || assistant.ToolCalls[1].ID != "provider-id" {
 		t.Fatalf("assistant turn=%+v", assistant)
 	}

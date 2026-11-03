@@ -49,6 +49,17 @@ func TestLocalAPIProfileRequiresCredentials(t *testing.T) {
 	}
 }
 
+func TestAPIProfileProviders(t *testing.T) {
+	t.Setenv("TEST_AI_KEY", "key")
+	t.Setenv("TEST_AI_MODEL", "model-x")
+	for provider, available := range map[string]bool{"openai": true, "gemini": true, "anthropic": true, "mistral": false} {
+		base := ai.ModelProfile{ID: "api", DisplayName: "API", Provider: provider, Runtime: "api", Scope: "cluster", CredentialEnvironmentVariable: "TEST_AI_KEY", ModelEnvironmentVariable: "TEST_AI_MODEL", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}
+		if profile, _ := NewRegistry("local", []ai.ModelProfile{base}).Get(base.ID); profile.Available != available {
+			t.Fatalf("%s: profile=%#v", provider, profile)
+		}
+	}
+}
+
 func TestClusterAPIProfileUsesSafeAvailabilityFlag(t *testing.T) {
 	t.Setenv("TEST_PROFILE_AVAILABLE", "false")
 	t.Setenv("TEST_CLUSTER_MODEL", "model-x")
