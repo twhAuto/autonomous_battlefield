@@ -1,9 +1,10 @@
 -- Seed data for run-query-plans.sh: 10k battles with a realistic status mix spread
--- over ~90 days, 200 battles x 500 events, and one 20k-event battle.
+-- over ~90 days on ten consecutive rules versions (4 to 13, 1,000 battles each, newest
+-- on 13), 200 battles x 500 events, and one 20k-event battle.
 SET session_replication_role = replica;  -- bypass admission triggers for bulk seeding
 INSERT INTO battle_runs (id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks, current_tick, status, paused, attempt, result, created_at, started_at, completed_at, initial_state, current_state, owner_id)
 SELECT gen_random_uuid(), 'frontier-siege-v1', md5(g::text),
-  jsonb_build_object('id','frontier-siege-v1','decisionIntervalTicks',10,'factions', jsonb_build_array(
+  jsonb_build_object('id','frontier-siege-v1','rulesVersion',(13 - (g - 1) / 1000)::text,'decisionIntervalTicks',10,'factions', jsonb_build_array(
     jsonb_build_object('id','f'||(g%40),'name','Faction '||(g%40),'controller',jsonb_build_object('type','model','profileId','p1'),'background',repeat('lore ',150),'doctrine',repeat('hold ',60)),
     jsonb_build_object('id','f'||((g+7)%40),'name','Faction '||((g+7)%40),'controller',jsonb_build_object('type','scripted'),'background',repeat('lore ',150),'doctrine',repeat('push ',60)))),
   200, 200,
@@ -25,5 +26,6 @@ FROM (SELECT id FROM battle_runs ORDER BY created_at ASC LIMIT 1) b, generate_se
 SET session_replication_role = origin;
 ANALYZE battle_runs; ANALYZE battle_events;
 SELECT status, paused, count(*) FROM battle_runs GROUP BY 1,2 ORDER BY 1,2;
+SELECT rules_version, count(*) FROM battle_runs GROUP BY 1 ORDER BY 1::int;
 SELECT count(*) AS events FROM battle_events;
 SELECT pg_size_pretty(pg_relation_size('battle_events_pkey')) AS events_pkey;

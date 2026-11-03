@@ -546,18 +546,24 @@ commit private battle data. `compact_ids.go` is lossy by design, so
 
 ## Battle history query plans
 
-
 pgx caches prepared statements, and after five executions PostgreSQL may reuse a
 **generic plan** that cannot see parameter values. The history cursor is therefore
 one row comparison with first-page sentinels,
 `(created_at, id) < (COALESCE($2, 'infinity'), COALESCE($3, max-uuid))`, which
-stays an index condition in both plan types. The earlier
-`$2 IS NULL OR (created_at, id) < ($2, $3)` form became a filter in generic plans,
-so a deep page walked every newer row. `TestBattleHistoryCursorStaysIndexConditionInGenericPlans`
-guards this. Keep `listBattlesSQL` and the copy in
-`backend/test/performance/query-plans/explain.sql` in sync.
+stays an index condition in both plan types; a
+`$2 IS NULL OR (created_at, id) < ($2, $3)` cursor becomes a filter in generic
+plans, so a deep page walks every newer row. A rules-version filter is a separate
+statement, `listBattlesByVersionSQL`, with a plain `rules_version = $5` for the same
+reason: a `$5 = '' OR` form would also become a filter.
+`TestBattleHistoryCursorStaysIndexConditionInGenericPlans` and
+`TestBattleHistoryRulesVersionStaysIndexConditionInGenericPlans` guard both.
+`listRulesVersionsSQL` is a recursive skip scan, one index probe per version,
+instead of a `SELECT DISTINCT` that reads every battle. Keep `listBattlesSQL`,
+`listBattlesByVersionSQL` and `listRulesVersionsSQL` in sync with their copies in
+`backend/test/performance/query-plans/explain.sql`.
 
-Re-measure with the disposable database (10k battles over ~90 days, 120k events):
+Re-measure with the disposable database (10k battles over ~90 days on ten rules
+versions, 120k events):
 
 ```bash
 ./scripts/test/with-test-postgres.sh ./scripts/perf/run-query-plans.sh
@@ -567,22 +573,31 @@ The runner verifies the harness container ID, test-container name, exact loopbac
 URL shape, and published port before applying migrations or loading fixtures. It
 rejects standalone URLs and does not select another concurrent harness's database.
 
-Results on PostgreSQL 17.6, 2026-09-29, limit 26 (page size 25 plus one):
+Results on PostgreSQL 17.6, 2026-11-03, limit 26 (page size 25 plus one):
 
 | Query | Plan | Shared buffers | Time |
 | --- | --- | --- | --- |
-| History, all statuses, first page | `battle_runs_history_idx` scan | 5 | 0.27 ms |
-| History, all statuses, cursor at offset 5,000 (generic plan) | index cond on cursor | 5 (was 470, 5,001 rows filtered) | 0.23 ms (was 0.82 ms) |
-| History, `queued` (5% of rows), first page | index scan, status filter | 67 (669 rows filtered) | 0.50 ms |
-| History, `paused` (1.4%), first page | bitmap scan on `battle_runs_claim_idx` | — | 0.81 ms |
-| History, `paused`, cursor at offset 5,000 (generic plan) | index cond on cursor | 170 (was 635) | 0.61 ms (was 1.29 ms) |
-| Events after sequence 10,000 (20k-event battle) | events index range scan | 8 | 0.05 ms |
-| Latest 200 events (20k-event battle) | backward events index scan, then sort of 200 rows | 11 | 0.08 ms |
+| History, all statuses, first page | `battle_runs_history_idx` scan | 5 | 0.37 ms |
+| History, all statuses, cursor at offset 5,000 (generic plan) | index cond on cursor | 5 | 0.25 ms |
+| History, `queued` (5% of rows), first page | index scan, status filter | 69 (669 rows filtered) | 0.44 ms |
+| History, `paused` (1.4%), first page | bitmap scan on `battle_runs_claim_idx` | 197 | 0.85 ms |
+| History, `paused`, cursor at offset 5,000 (generic plan) | index cond on cursor, status filter | 172 (1,770 rows filtered) | 0.85 ms |
+| History, oldest rules version (behind 9,000 newer battles), first page | `battle_runs_rules_version_history_idx`, index cond on version and cursor | 6 | 0.37 ms |
+| History, one rules version, cursor at offset 500 (generic plan) | same | 5 | 0.36 ms |
+| History, oldest rules version and `queued`, first page | bitmap scan on `battle_runs_unpaused_claim_idx`, version filter | 126 | 0.50 ms |
+| Recorded rules versions | skip scan of `battle_runs_rules_version_history_idx` | 35 | 0.12 ms |
+| Events after sequence 10,000 (20k-event battle) | events index range scan | 8 | 0.06 ms |
+| Latest 200 events (20k-event battle) | backward events index scan, then sort of 200 rows | 11 | 0.09 ms |
 
 Rare status filters still scan the history index and discard non-matching rows,
 which grows with how far the matching rows are spread. At this scale it stays
 under 1 ms; add a `(status, created_at DESC, id DESC)` index only if measurements
-at a larger history show it matters. `battle_events_cursor_idx` duplicated the
+at a larger history show it matters. The planner picks the rules-version index by
+estimated selectivity, assuming a version's battles are spread evenly through the
+history. When one version holds a third or more of all battles, it can walk
+`battle_runs_history_idx` and filter instead, reading every newer battle before an
+old version's first page: 670 buffers and 2.7 ms behind 7,000 newer battles when the
+seed has three versions. `battle_events_cursor_idx` duplicated the
 `battle_events` primary key `(battle_id, attempt, sequence)` (9.8 MB each at 120k
 events); migration `00015_drop_duplicate_event_index.sql` removes it, and the event
 queries use `battle_events_pkey` with the same buffers and timings.

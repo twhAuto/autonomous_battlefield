@@ -52,7 +52,7 @@ must supply the restricted login
 | Table or view | Purpose | Key rules |
 | --- | --- | --- |
 | `factions` | Reusable faction identity: name, doctrine, background, emblem, owner | `emblem` is one of 12 identifiers (check constraint, default `star`) and is not part of battle snapshots. `ruleset_id` and `blueprint` are legacy-only. Battles snapshot faction data, so deleting a faction never changes a battle |
-| `battle_runs` | One battle: scenario snapshot, initial and current state, status, lease, attempt and graceful-requeue count, pause flag, result, owner, model-execution count, admission exemption, Tester allowance, decision-budget exemption, trace context | Status `queued`, `running`, `completed`, `failed` or `stopped`. A lease owner and expiry are both set or both null, and only while `running` |
+| `battle_runs` | One battle: scenario snapshot and its rules version, initial and current state, status, lease, attempt and graceful-requeue count, pause flag, result, owner, model-execution count, admission exemption, Tester allowance, decision-budget exemption, trace context | Status `queued`, `running`, `completed`, `failed` or `stopped`. A lease owner and expiry are both set or both null, and only while `running` |
 | `battle_events` | Ordered events per battle attempt | Primary key `(battle_id, attempt, sequence)` makes inserts idempotent and serves event paging |
 | `battle_replay_frames` | One engine checkpoint per decision window of a battle attempt (tick 0, then every `decisionIntervalTicks`), with that tick's events | Written in the same lease-guarded statement as the tick. Primary key `(battle_id, attempt, tick)` makes inserts idempotent and finds the nearest earlier checkpoint. `checkpoint` is a JSON object about the size of one `current_state`; `events` is a JSON array. Frames of every attempt stay until the battle is deleted |
 | `battle_decisions` | One strategy decision window: frozen observation and hash, controller, profile, model and `reasoning_effort` (empty for the model default), lease, lifecycle timestamps, resolved plan, fallback source, error category, usage, provider metadata, trace context | Unique per `(battle_id, attempt, faction_id, target_tick)`. Status `pending`, `running`, `accepted`, `fallback` or `failed`. `version` guards resolution; `idempotency_key` deduplicates submissions. `faction_id` is snapshot data, not a foreign key |
@@ -71,13 +71,15 @@ must supply the restricted login
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
 These diagrams show every column of every table, generated from the schema after
-migration `00030` with keys marked `PK` and `FK`. Update them with any schema
+migration `00031` with keys marked `PK` and `FK`. Update them with any schema
 change. Battles snapshot faction data instead of referencing `factions`, so
 deleting a faction never changes a battle. Gameplay content lives in the frozen
 scenario and state JSON of `battle_runs`, not in relational columns: each battle
 keeps the ruleset and map it started with, workers never re-resolve catalog IDs,
 and retired IDs stay readable in saved battles. Gameplay changes therefore need no
-schema migration.
+schema migration. The one relational copy, `rules_version`, is a stored column
+generated from the snapshot's `rulesVersion`, so battle history filters by version
+and lists the versions in use through an index.
 
 ### Battles
 
@@ -115,6 +117,7 @@ erDiagram
         int graceful_requeues
         bool decision_budget_exempt
         bool tester_allowance
+        text rules_version
     }
     BATTLE_EVENTS {
         uuid battle_id PK,FK
@@ -345,6 +348,7 @@ same migrated schema, are:
 | `battle_runs` | `battle_runs_unpaused_claim_idx` | `(status, lease_expires_at, created_at, id)` where `status` is `queued` or `running` and not `paused` | Engine battle claims |
 | `battle_runs` | `battle_runs_claim_idx` | Same columns where `status` is `queued` or `running`, paused or not | No current query; claims use `battle_runs_unpaused_claim_idx` |
 | `battle_runs` | `battle_runs_history_idx` | `(created_at DESC, id DESC)` | Battle history pages, newest first |
+| `battle_runs` | `battle_runs_rules_version_history_idx` | `(rules_version, created_at DESC, id DESC)` | Battle history pages of one rules version, and the list of recorded versions |
 | `battle_runs` | `battle_runs_owner_created` | `(owner_id, created_at)` | Per-owner admission counts |
 | `battle_events` | primary key | `(battle_id, attempt, sequence)` | Idempotent inserts and event paging |
 | `battle_replay_frames` | primary key | `(battle_id, attempt, tick)` | Idempotent inserts and the latest checkpoint at or before a replay tick |
