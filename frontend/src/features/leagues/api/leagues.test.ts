@@ -18,6 +18,9 @@ describe('league requests', () => {
     expect(vi.mocked(fetch).mock.calls[2][1]).toMatchObject({ method: 'POST', body: JSON.stringify(input) })
     expect((await cancelLeague('a')).status).toBe('cancelled')
     expect(String(vi.mocked(fetch).mock.calls[3][0])).toContain('/v1/leagues/a/cancel')
+    vi.mocked(fetch).mockResolvedValueOnce(reply(200, { leagues: [] }))
+    await listLeagues(undefined, { rulesVersion: '13' })
+    expect(String(vi.mocked(fetch).mock.calls[4][0])).toBe('/v1/leagues?rulesVersion=13')
   })
 
   it('explains failures', async () => {

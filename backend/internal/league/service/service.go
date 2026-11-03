@@ -221,18 +221,25 @@ func (s *Service) GetLeague(ctx context.Context, id string) (*league.League, err
 	return s.repo.GetLeague(ctx, strings.ToLower(id))
 }
 
+// ListQuery selects leagues to list: at most Limit, and with a non-empty RulesVersion
+// only leagues with a battle on that rules version.
+type ListQuery struct {
+	Limit        int
+	RulesVersion string
+}
+
 // ListLeagues returns the newest leagues first. A limit of zero selects the default.
-func (s *Service) ListLeagues(ctx context.Context, limit int) ([]league.Summary, error) {
+func (s *Service) ListLeagues(ctx context.Context, query ListQuery) ([]league.Summary, error) {
 	if err := requireView(ctx); err != nil {
 		return nil, err
 	}
-	if limit == 0 {
-		limit = defaultListMax
+	if query.Limit == 0 {
+		query.Limit = defaultListMax
 	}
-	if limit < 0 || limit > maxListLimit {
+	if query.Limit < 0 || query.Limit > maxListLimit || len(query.RulesVersion) > game.MaxRulesVersionLength {
 		return nil, ErrInvalidLeague
 	}
-	return s.repo.ListLeagues(ctx, limit)
+	return s.repo.ListLeagues(ctx, query)
 }
 
 // Scheduling reports the capacity league battles run in.

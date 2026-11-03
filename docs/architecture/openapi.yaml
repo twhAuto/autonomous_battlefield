@@ -387,6 +387,10 @@ paths:
           in: query
           description: Omit for all battles. `paused` means an active battle with its pause flag set.
           schema: {type: string, enum: [queued, running, paused, completed, failed, stopped]}
+        - name: rulesVersion
+          in: query
+          description: Omit for every rules version; otherwise only battles played on this one.
+          schema: {type: string, maxLength: 64}
         - name: limit
           in: query
           schema: {type: integer, minimum: 1, maximum: 100, default: 25}
@@ -488,6 +492,24 @@ paths:
                 serviceUnfinished: 3
                 serviceUnfinishedLimit: 4
                 resetAt: '2026-11-03T00:00:00Z'
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/battles/rules-versions:
+    get:
+      tags: [Battles]
+      operationId: listRulesVersions
+      summary: List the rules versions battles were played on
+      description: |
+        The values `rulesVersion` accepts on battle history and the league list.
+      responses:
+        '200':
+          description: Every recorded rules version and the current one.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RulesVersions'}
+              example: {current: '13', versions: ['13', '12', '11']}
         '401': {$ref: '#/components/responses/AuthenticationRequired'}
         '403': {$ref: '#/components/responses/PermissionDenied'}
         '500': {$ref: '#/components/responses/Internal'}
@@ -855,6 +877,10 @@ paths:
       operationId: listLeagues
       summary: List leagues, newest first
       parameters:
+        - name: rulesVersion
+          in: query
+          description: Omit for every league; otherwise only leagues with a battle on this rules version.
+          schema: {type: string, maxLength: 64}
         - name: limit
           in: query
           schema: {type: integer, minimum: 1, maximum: 100, default: 25}
@@ -2091,7 +2117,7 @@ components:
 
     LeagueSummary:
       type: object
-      required: [id, ownerId, name, status, groupCount, entrantCount, champion, progress, createdAt, completedAt]
+      required: [id, ownerId, name, status, groupCount, entrantCount, champion, progress, rulesVersions, createdAt, completedAt]
       properties:
         id: {type: string, format: uuid}
         ownerId: {type: string}
@@ -2108,13 +2134,21 @@ components:
                 factionName: {type: string}
             - {type: 'null'}
         progress: {$ref: '#/components/schemas/LeagueProgress'}
+        rulesVersions: {$ref: '#/components/schemas/LeagueRulesVersions'}
         createdAt: {type: string, format: date-time}
         completedAt: {type: [string, 'null'], format: date-time}
+
+    LeagueRulesVersions:
+      description: |
+        The rules versions of the fixtures' battles, newest first; empty before the
+        first battle starts.
+      type: array
+      items: {type: string}
 
     League:
       description: Entrants are referred to by their `index`.
       type: object
-      required: [id, ownerId, name, status, groupCount, settings, champion, progress, entrants, groups, knockout, fixtures, createdAt, completedAt]
+      required: [id, ownerId, name, status, groupCount, settings, champion, progress, rulesVersions, entrants, groups, knockout, fixtures, createdAt, completedAt]
       properties:
         id: {type: string, format: uuid}
         ownerId: {type: string}
@@ -2131,6 +2165,7 @@ components:
             decisionIntervalTicks: {type: integer}
         champion: {type: [integer, 'null'], description: The champion's entrant index once the final settles.}
         progress: {$ref: '#/components/schemas/LeagueProgress'}
+        rulesVersions: {$ref: '#/components/schemas/LeagueRulesVersions'}
         entrants:
           type: array
           items:
@@ -2411,11 +2446,12 @@ components:
 
     BattleSummary:
       type: object
-      required: [id, scenarioId, participants, status, paused, requestedTicks, currentTick, createdAt, startedAt, completedAt, outcome]
+      required: [id, scenarioId, rulesVersion, participants, status, paused, requestedTicks, currentTick, createdAt, startedAt, completedAt, outcome]
       properties:
         id: {type: string, format: uuid}
         ownerName: {$ref: '#/components/schemas/OwnerName'}
         scenarioId: {type: string}
+        rulesVersion: {type: string, description: The rules version the battle's scenario was frozen with.}
         participants:
           type: array
           items:
@@ -2469,6 +2505,18 @@ components:
           description: The next 00:00 UTC, when `startedToday` restarts.
           type: string
           format: date-time
+
+    RulesVersions:
+      type: object
+      required: [current, versions]
+      properties:
+        current:
+          description: The rules version new battles use; empty when no scenario is configured.
+          type: string
+        versions:
+          description: Every rules version a battle recorded, and `current`, newest first.
+          type: array
+          items: {type: string}
 
     BattleHistoryPage:
       type: object

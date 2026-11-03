@@ -235,7 +235,10 @@ fallback the engine chose. See the
 battles whose pause flag is set; the `queued` and `running` filters exclude them.
 Rows are ordered newest first, and a cursor page is stable: newer battles do not
 shift later pages, so restart without a cursor to see them. Status changes can
-move a battle in or out of a filtered list between requests.
+move a battle in or out of a status-filtered list between requests, but a battle's
+`rulesVersion` is frozen with its scenario, so a version filter keeps the same
+battles. `GET /v1/battles/rules-versions` lists the versions to filter by, as the
+[OpenAPI contract](openapi.yaml) defines.
 
 Summaries omit maps, states, events and detailed results; fetch those from the
 battle routes. Only a completed battle with an outcome and no winner is a draw.
@@ -385,7 +388,9 @@ records with placements once decided, `knockout` ties, and every fixture with it
 match, battle, progress, result and winner as the [`LeagueFixture`](openapi.yaml)
 schema describes. Each entrant reports whether it is `eliminated` (two group losses
 or a knockout loss) and its `disqualification`, if any.
-`GET /v1/leagues` lists summaries, newest first. `POST /v1/leagues/{id}/cancel`
+`GET /v1/leagues` lists summaries, newest first. Each fixture's battle takes the
+rules current when it starts, so a league that spans a gameplay release reports more
+than one entry in `rulesVersions`. `POST /v1/leagues/{id}/cancel`
 cancels unfinished fixtures and stops the running battle; repeating it returns `200`
 and stops any league battle still running. Cancelling a completed league returns
 `409`.

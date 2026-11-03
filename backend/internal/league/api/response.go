@@ -12,20 +12,22 @@ import (
 )
 
 type leagueJSON struct {
-	ID          string          `json:"id"`
-	OwnerID     string          `json:"ownerId"`
-	Name        string          `json:"name"`
-	Status      string          `json:"status"`
-	GroupCount  int             `json:"groupCount"`
-	Settings    league.Settings `json:"settings"`
-	Champion    *int            `json:"champion"`
-	Progress    progressJSON    `json:"progress"`
-	Entrants    []entrantJSON   `json:"entrants"`
-	Groups      []groupJSON     `json:"groups"`
-	Knockout    []tieJSON       `json:"knockout"`
-	Fixtures    []fixtureJSON   `json:"fixtures"`
-	CreatedAt   time.Time       `json:"createdAt"`
-	CompletedAt *time.Time      `json:"completedAt"`
+	ID         string          `json:"id"`
+	OwnerID    string          `json:"ownerId"`
+	Name       string          `json:"name"`
+	Status     string          `json:"status"`
+	GroupCount int             `json:"groupCount"`
+	Settings   league.Settings `json:"settings"`
+	Champion   *int            `json:"champion"`
+	Progress   progressJSON    `json:"progress"`
+	// RulesVersions lists the rules versions of the fixtures' battles, newest first.
+	RulesVersions []string      `json:"rulesVersions"`
+	Entrants      []entrantJSON `json:"entrants"`
+	Groups        []groupJSON   `json:"groups"`
+	Knockout      []tieJSON     `json:"knockout"`
+	Fixtures      []fixtureJSON `json:"fixtures"`
+	CreatedAt     time.Time     `json:"createdAt"`
+	CompletedAt   *time.Time    `json:"completedAt"`
 }
 
 // entrantJSON is an entrant; Eliminated once it can no longer win, Disqualification null
@@ -105,8 +107,9 @@ func leagueResponse(l *league.League) leagueJSON {
 	response := leagueJSON{
 		ID: l.ID, OwnerID: l.OwnerID, Name: l.Name, Status: l.Status, GroupCount: l.GroupCount, Settings: l.Settings, Champion: l.Champion,
 		Entrants: []entrantJSON{}, Groups: []groupJSON{}, Knockout: []tieJSON{}, Fixtures: []fixtureJSON{},
-		Progress:  progressJSON{Total: league.TotalFixtures(l.GroupCount)},
-		CreatedAt: l.CreatedAt, CompletedAt: l.CompletedAt,
+		Progress:      progressJSON{Total: league.TotalFixtures(l.GroupCount)},
+		RulesVersions: l.RulesVersions(),
+		CreatedAt:     l.CreatedAt, CompletedAt: l.CompletedAt,
 	}
 	eliminated := l.Eliminated()
 	for _, e := range l.Entrants {

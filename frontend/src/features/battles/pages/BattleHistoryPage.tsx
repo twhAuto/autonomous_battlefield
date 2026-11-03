@@ -1,10 +1,11 @@
-// Battle registry with URL-backed status filters, cursor navigation, refresh/retry states
-// and links to each battle.
+// Battle registry with URL-backed status and rules-version filters, cursor navigation,
+// refresh/retry states and links to each battle.
 
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { listBattles, type BattleHistoryPage as HistoryPage, type BattleSummary } from '../api/battles'
 import { usePermissions } from '../../auth/SessionContext'
+import { RulesVersionSelect } from '../components/RulesVersionSelect'
 
 const filters = ['', 'queued', 'running', 'paused', 'completed', 'failed', 'stopped']
 function outcomeLabel(battle: BattleSummary) {
@@ -21,6 +22,7 @@ export function BattleHistoryPage() {
   const { play } = usePermissions()
   const [params, setParams] = useSearchParams()
   const status = params.get('status') ?? ''
+  const rulesVersion = params.get('rulesVersion') ?? ''
   const cursor = params.get('cursor') ?? ''
   const previous = params.getAll('previous')
   const [page, setPage] = useState<HistoryPage | null>(null)
@@ -33,7 +35,7 @@ export function BattleHistoryPage() {
     setLoading(true)
     setError('')
     setPage(null)
-    listBattles({ status, cursor }, controller.signal).then((result) => {
+    listBattles({ status, rulesVersion, cursor }, controller.signal).then((result) => {
       if (!controller.signal.aborted) setPage(result)
     }).catch((error: unknown) => {
       if (!controller.signal.aborted) setError(error instanceof Error ? error.message : 'Battle history could not be loaded.')
@@ -41,13 +43,16 @@ export function BattleHistoryPage() {
       if (!controller.signal.aborted) setLoading(false)
     })
     return () => controller.abort()
-  }, [status, cursor, version])
+  }, [status, rulesVersion, cursor, version])
 
-  function firstPage(nextStatus: string) {
-    setParams(nextStatus ? { status: nextStatus } : {})
+  function firstPage(filters: { status: string; rulesVersion: string }) {
+    const next = new URLSearchParams()
+    if (filters.status) next.set('status', filters.status)
+    if (filters.rulesVersion) next.set('rulesVersion', filters.rulesVersion)
+    setParams(next)
   }
   function refresh() {
-    firstPage(status)
+    firstPage({ status, rulesVersion })
     setVersion((value) => value + 1)
   }
   function nextPage() {
@@ -79,24 +84,28 @@ export function BattleHistoryPage() {
       </section>
       <section className="directory" aria-label="Battle history" aria-busy={loading}>
         <div className="history-toolbar">
-          <label>Status <select value={status} onChange={(event) => firstPage(event.target.value)}>
-            {!filters.includes(status) && <option value={status}>Unknown status</option>}
-            {filters.map((value) => <option key={value} value={value}>{value ? value[0].toUpperCase() + value.slice(1) : 'All'}</option>)}
-          </select></label>
+          <div className="history-filters">
+            <label>Status <select value={status} onChange={(event) => firstPage({ status: event.target.value, rulesVersion })}>
+              {!filters.includes(status) && <option value={status}>Unknown status</option>}
+              {filters.map((value) => <option key={value} value={value}>{value ? value[0].toUpperCase() + value.slice(1) : 'All'}</option>)}
+            </select></label>
+            <RulesVersionSelect value={rulesVersion} onChange={(value) => firstPage({ status, rulesVersion: value })} />
+          </div>
           <button className="compact-action" type="button" onClick={refresh} disabled={loading}>REFRESH</button>
         </div>
         {loading && <output>Loading battle history…</output>}
         {error && <div role="alert"><p>{error}</p><button className="compact-action" type="button" onClick={() => setVersion((value) => value + 1)}>RETRY</button></div>}
         {!loading && page && <>
           {page.battles.length === 0 ? <div className="directory-state">
-            <h2>{status || cursor ? 'No matching battles' : 'No battles yet'}</h2>
-            <p>{status || cursor ? 'Change the status filter or refresh to see the latest battles.' : emptyHint(play)}</p>
-            {!status && !cursor && play && <Link className="compact-action" to="/battles/new">STAGE BATTLE →</Link>}
+            <h2>{status || rulesVersion || cursor ? 'No matching battles' : 'No battles yet'}</h2>
+            <p>{status || rulesVersion || cursor ? 'Change the filters or refresh to see the latest battles.' : emptyHint(play)}</p>
+            {!status && !rulesVersion && !cursor && play && <Link className="compact-action" to="/battles/new">STAGE BATTLE →</Link>}
           </div> : <table className="history-table">
             <caption className="visually-hidden">Battles, newest first</caption>
-            <thead><tr><th>Battle</th><th>Created</th><th>Status</th><th>Progress</th><th>Outcome</th><th><span className="visually-hidden">Details</span></th></tr></thead>
+            <thead><tr><th>Battle</th><th>Rules</th><th>Created</th><th>Status</th><th>Progress</th><th>Outcome</th><th><span className="visually-hidden">Details</span></th></tr></thead>
             <tbody>{page.battles.map((battle) => <tr key={battle.id}>
               <td data-label="Battle"><strong>{battle.participants.map((participant) => participant.name).join(' vs ')}</strong><small>{battle.scenarioId}</small>{battle.ownerName && <small className="history-owner">Started by {battle.ownerName}</small>}</td>
+              <td data-label="Rules">{battle.rulesVersion ? `v${battle.rulesVersion}` : '—'}</td>
               <td data-label="Created"><time dateTime={battle.createdAt}>{new Date(battle.createdAt).toLocaleString()}</time></td>
               <td data-label="Status"><span className="history-status">{battle.paused && (battle.status === 'queued' || battle.status === 'running') ? 'Paused' : battle.status}</span></td>
               <td data-label="Progress">{battle.currentTick} / {battle.requestedTicks} ticks</td>

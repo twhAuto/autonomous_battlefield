@@ -185,7 +185,7 @@ func TestPlayersAndGuestsReadLeaguesButCannotManageThem(t *testing.T) {
 		if got, err := h.service.GetLeague(reader, leagueID); err != nil || got.ID != leagueID {
 			t.Errorf("%s get = %+v, %v", role, got, err)
 		}
-		if list, err := h.service.ListLeagues(reader, 0); err != nil || len(list) != 1 {
+		if list, err := h.service.ListLeagues(reader, ListQuery{}); err != nil || len(list) != 1 {
 			t.Errorf("%s list = %+v, %v", role, list, err)
 		}
 		if _, err := h.service.Scheduling(reader); err != nil {
@@ -206,19 +206,20 @@ func TestLeagueReads(t *testing.T) {
 	if got, err := h.service.GetLeague(tester, strings.ToUpper(leagueID)); err != nil || got.ID != leagueID {
 		t.Fatalf("get = %+v, %v", got, err)
 	}
-	if list, err := h.service.ListLeagues(tester, 0); err != nil || len(list) != 1 || h.repo.listLimit != defaultListMax {
-		t.Fatalf("list = %+v, %v, limit %d", list, err, h.repo.listLimit)
+	query := ListQuery{RulesVersion: "13"}
+	if list, err := h.service.ListLeagues(tester, query); err != nil || len(list) != 1 || h.repo.listQuery != (ListQuery{Limit: defaultListMax, RulesVersion: "13"}) {
+		t.Fatalf("list = %+v, %v, query %+v", list, err, h.repo.listQuery)
 	}
-	for _, limit := range []int{-1, 101} {
-		if _, err := h.service.ListLeagues(tester, limit); !errors.Is(err, ErrInvalidLeague) {
-			t.Errorf("limit %d: err = %v", limit, err)
+	for _, invalid := range []ListQuery{{Limit: -1}, {Limit: 101}, {RulesVersion: strings.Repeat("9", game.MaxRulesVersionLength+1)}} {
+		if _, err := h.service.ListLeagues(tester, invalid); !errors.Is(err, ErrInvalidLeague) {
+			t.Errorf("query %+v: err = %v", invalid, err)
 		}
 	}
 	ci := actorContext(authn.CI)
 	if _, err := h.service.GetLeague(ci, leagueID); !errors.Is(err, authn.ErrForbidden) {
 		t.Errorf("service identity get err = %v", err)
 	}
-	if _, err := h.service.ListLeagues(ci, 0); !errors.Is(err, authn.ErrForbidden) {
+	if _, err := h.service.ListLeagues(ci, ListQuery{}); !errors.Is(err, authn.ErrForbidden) {
 		t.Errorf("service identity list err = %v", err)
 	}
 	if _, err := h.service.GetLeague(tester, "league"); !errors.Is(err, ErrInvalidLeague) {
@@ -273,7 +274,7 @@ type memoryRepo struct {
 	lockHeld  bool
 	createErr error
 	storeErr  error
-	listLimit int
+	listQuery ListQuery
 	completed map[string]int
 }
 
@@ -303,8 +304,8 @@ func (r *memoryRepo) GetLeague(_ context.Context, id string) (*league.League, er
 	return copyLeague(l), nil
 }
 
-func (r *memoryRepo) ListLeagues(_ context.Context, limit int) ([]league.Summary, error) {
-	r.listLimit = limit
+func (r *memoryRepo) ListLeagues(_ context.Context, query ListQuery) ([]league.Summary, error) {
+	r.listQuery = query
 	summaries := []league.Summary{}
 	for _, l := range r.leagues {
 		summaries = append(summaries, league.Summary{ID: l.ID, Name: l.Name, Status: l.Status, GroupCount: l.GroupCount})

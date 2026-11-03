@@ -11,6 +11,7 @@ import {
   listBattleEvents,
   listBattles,
   listDecisionHistory,
+  listRulesVersions,
   listModelProfiles,
   listScenarios,
   pauseBattle,
@@ -220,14 +221,20 @@ describe('battle history API', () => {
     const page = { battles: [], nextCursor: null }
     vi.mocked(fetch).mockImplementation(async () => jsonResponse(page))
     const signal = new AbortController().signal
-    await expect(listBattles({ status: 'paused', cursor: 'a+b', limit: 10 }, signal)).resolves.toEqual(page)
-    expect(fetch).toHaveBeenLastCalledWith('/v1/battles?status=paused&cursor=a%2Bb&limit=10', { signal, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    await expect(listBattles({ status: 'paused', rulesVersion: '13', cursor: 'a+b', limit: 10 }, signal)).resolves.toEqual(page)
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles?status=paused&rulesVersion=13&cursor=a%2Bb&limit=10', { signal, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
     await listBattles({})
     expect(fetch).toHaveBeenLastCalledWith('/v1/battles?limit=25', { signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
   })
   it.each([400, 500])('maps HTTP %s', async (status) => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status }))
     await expect(listBattles({})).rejects.toMatchObject({ status, message: status === 400 ? 'That battle history query is invalid.' : 'Battle history could not be loaded.' })
+  })
+  it('lists the recorded rules versions', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ current: '13', versions: ['13', '12'] })).mockResolvedValueOnce(new Response(null, { status: 500 }))
+    await expect(listRulesVersions()).resolves.toEqual({ current: '13', versions: ['13', '12'] })
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/rules-versions', { signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    await expect(listRulesVersions()).rejects.toMatchObject({ status: 500, message: 'Rules versions could not be loaded.' })
   })
   it('notifies the app when authentication expires', async () => {
     const listener = vi.fn()

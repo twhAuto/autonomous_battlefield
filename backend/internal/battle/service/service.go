@@ -127,6 +127,7 @@ type BattleEventPage struct {
 
 type Service interface {
 	ListBattles(context.Context, BattleHistoryInput) (BattleHistoryPage, error)
+	ListRulesVersions(context.Context) (RulesVersions, error)
 	ListScenarios() []ScenarioSummary
 	CreateBattle(context.Context, CreateBattleInput) (*BattleRun, error)
 	// ValidateBattle runs every CreateBattle check without creating the battle.

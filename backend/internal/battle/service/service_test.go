@@ -502,6 +502,7 @@ func (r *battleFactionRepo) GetFaction(_ context.Context, id string) (*faction.F
 type fakeBattleRepo struct {
 	summaries    []BattleSummary
 	historyQuery BattleHistoryQuery
+	versions     []string
 	created      CreateBattleParams
 	createErr    error
 	run          *BattleRun
@@ -595,6 +596,10 @@ func serviceTestScenario(identities [2]FactionIdentity) game.Scenario {
 func (r *fakeBattleRepo) ListBattles(_ context.Context, query BattleHistoryQuery) ([]BattleSummary, error) {
 	r.historyQuery = query
 	return r.summaries, r.listErr
+}
+
+func (r *fakeBattleRepo) ListRulesVersions(context.Context) ([]string, error) {
+	return r.versions, r.listErr
 }
 
 func TestBattleControlOwnershipAllRoles(t *testing.T) {

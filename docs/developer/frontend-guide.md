@@ -23,7 +23,8 @@ The frontend is a React/Vite single-page application.
 | [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario (default `frontier-siege`), participants, controllers, tick-limit selection, and the caller's battle allowance |
 | [`features/battles/components/ControllerSelect.tsx`](../../frontend/src/features/battles/components/ControllerSelect.tsx) | Scripted or model controller with dependent model and effort selectors (default Low effort), shared by battle and league setup |
 | [`features/battles/components/MapPreview.tsx`](../../frontend/src/features/battles/components/MapPreview.tsx) | Static terrain and castle-spawn preview of the selected scenario map |
-| [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status-filtered history table/cards with who started each battle, cursor navigation, refresh, and detail links |
+| [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status- and rules-version-filtered history table/cards with each battle's rules version and who started it, cursor navigation, refresh, and detail links |
+| [`features/battles/components/RulesVersionSelect.tsx`](../../frontend/src/features/battles/components/RulesVersionSelect.tsx) | Rules-version filter that battle history and the league list share: every version, or one that recorded battles ran on, with the current version marked |
 | [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Route-level composition, selected panel, and control actions |
 | [`features/auth/pages/LoginPage.tsx`](../../frontend/src/features/auth/pages/LoginPage.tsx) | Local-password login form used only in the development auth mode |
 | [`features/admin/pages/AdminSettingsPage.tsx`](../../frontend/src/features/admin/pages/AdminSettingsPage.tsx) | Persistent provider/profile switches, allowed roles for each profile and for each of its model options, save/conflict states, and entry to read-only role preview |
@@ -32,7 +33,7 @@ The frontend is a React/Vite single-page application.
 | [`features/battles/components/TypeStatistics.tsx`](../../frontend/src/features/battles/components/TypeStatistics.tsx) | After-action unit and building tables by type and the upgrade timeline; renders nothing for a result without per-type figures |
 | [`features/leagues/api/leagues.ts`](../../frontend/src/features/leagues/api/leagues.ts) | Typed league list, read, create and cancel requests, and entrant disqualification |
 | [`features/leagues/pages/CreateLeaguePage.tsx`](../../frontend/src/features/leagues/pages/CreateLeaguePage.tsx) | League setup: name, 8 or 16 entrants with faction, group and controller, maps, timing, and estimates of battles, duration and model decisions; `?from=<league id>` pre-fills the form from that league, and copied factions, maps, profiles, models or efforts that no longer exist block starting until replaced |
-| [`features/leagues/pages/LeaguePage.tsx`](../../frontend/src/features/leagues/pages/LeaguePage.tsx) | Running battles with tick progress, each group's placements, win and loss records and five matches, the knockout bracket, and fixtures with battle links and tiebreak winners (`components/LeagueStandings.tsx`), each entrant named with its controller, and [disqualifications](../architecture/api.md#leagues), refreshed while the league runs; for Admins, cancellation, disqualification of an entrant picked from the page header (`components/DisqualifyEntrant.tsx`), and **START AGAIN** into a pre-filled setup |
+| [`features/leagues/pages/LeaguePage.tsx`](../../frontend/src/features/leagues/pages/LeaguePage.tsx) | Rules versions its battles ran on, running battles with tick progress, each group's placements, win and loss records and five matches, the knockout bracket, and fixtures with battle links and tiebreak winners (`components/LeagueStandings.tsx`), each entrant named with its controller, and [disqualifications](../architecture/api.md#leagues), refreshed while the league runs; for Admins, cancellation, disqualification of an entrant picked from the page header (`components/DisqualifyEntrant.tsx`), and **START AGAIN** into a pre-filled setup |
 | [`features/analytics/pages/AnalyticsPage.tsx`](../../frontend/src/features/analytics/pages/AnalyticsPage.tsx) | Statistics report with URL-backed league, rules-version and fallback filters: model, head-to-head, unit, army-mix, upgrade, faction and map tables |
 | [`features/analytics/components/WinRateChart.tsx`](../../frontend/src/features/analytics/components/WinRateChart.tsx) | Model leaderboard: win rate per controller with its 95% interval |
 | [`features/admin/pages/MembersPage.tsx`](../../frontend/src/features/admin/pages/MembersPage.tsx) | Managed Player and Tester invitations, role changes, removal, sync retry, and game link (Admins only, when enabled) |
@@ -72,9 +73,10 @@ history rows and the battle header show **Started by** and faction cards
 
 The shell shows the signed-out screen after a successful logout or an HTTP 401
 confirming that the session is no longer authenticated. An Access logout instead
-shows a signing-out screen while the browser leaves for `/cdn-cgi/access/logout`;
-its only action repeats the Access logout, for when the browser stays, such as after
-a cancelled unsaved-changes prompt. If the request otherwise
+shows a signing-out screen, with no actions, while the browser leaves for
+`/cdn-cgi/access/logout`. If the browser stays, such as after a cancelled
+unsaved-changes prompt, the Access session is intact, and the screen's advice to
+reload returns to the app. If the request otherwise
 fails, it retains the current screen and shows an accessible retry message; it cannot confirm that the server session ended. Component tests
 cover local-password and Access sessions, and browser tests cover retry on desktop
 and mobile. The footer displays the product name without a hardcoded build number.
@@ -151,9 +153,9 @@ waits. Only the segments nearest the current tick stay in memory. A failed segme
 stops playback and keeps a retry; leaving the page aborts outstanding requests.
 
 `BattleHistoryPage` fetches on entry, filter or page navigation, retry, and manual
-refresh; it does not poll. URL parameters keep the status filter, current cursor,
-and prior cursors for Previous and browser navigation, and refresh returns to the
-newest page with the same filter. Obsolete requests are aborted and their results
+refresh; it does not poll. URL parameters keep the status and rules-version filters,
+current cursor, and prior cursors for Previous and browser navigation, and refresh
+returns to the newest page with the same filters. Obsolete requests are aborted and their results
 ignored.
 
 ## Battle page layout

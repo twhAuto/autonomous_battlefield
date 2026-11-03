@@ -572,7 +572,11 @@ immutable scenario snapshot in a single query, with lifecycle timestamps,
 progress, status and a compact outcome. It does not load simulation states or use
 the completed-result cache. Keyset pagination on `battle_runs_history_idx`
 (`created_at DESC, id DESC`) fetches one extra row to detect the next page; status
-filters read current values, so membership may change between requests.
+filters read current values, so membership may change between requests. A
+rules-version filter pages the same way through
+`battle_runs_rules_version_history_idx`, which leads with the generated
+`rules_version` column, and the version list skips through that index one version
+at a time.
 
 ## 8. Security and trust boundaries
 

@@ -13,6 +13,8 @@ import (
 // Repository describes the battle persistence required by the API-facing service.
 type Repository interface {
 	ListBattles(context.Context, BattleHistoryQuery) ([]BattleSummary, error)
+	// ListRulesVersions returns each distinct rules version recorded battles ran on.
+	ListRulesVersions(context.Context) ([]string, error)
 	CreateBattle(context.Context, CreateBattleParams) error
 	// BattleAllowance reads an owner's limited allowance: the Tester values when tester
 	// is set, otherwise the Player values.

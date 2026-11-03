@@ -1,4 +1,5 @@
-// Checks battle-summary row decoding and repository query outcomes.
+// Checks battle-summary row decoding, the rules-version statement and listing, and
+// repository query outcomes.
 
 package repo
 
@@ -13,7 +14,7 @@ import (
 
 func historyRow(participants, outcome []byte) battleRow {
 	return func(destinations ...any) error {
-		return assignBattleValues(destinations, []any{"00000000-0000-0000-0000-000000000001", "scenario", participants, "completed", false, uint64(25), uint64(10), time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC), (*time.Time)(nil), (*time.Time)(nil), outcome, "owner"})
+		return assignBattleValues(destinations, []any{"00000000-0000-0000-0000-000000000001", "scenario", "13", participants, "completed", false, uint64(25), uint64(10), time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC), (*time.Time)(nil), (*time.Time)(nil), outcome, "owner"})
 	}
 }
 
@@ -35,7 +36,7 @@ func TestListBattleSummaries(t *testing.T) {
 			if test.db.queryArgs[1] != before.CreatedAt || test.db.queryArgs[2] != before.ID {
 				t.Fatal(test.db.queryArgs)
 			}
-			if test.name == "summary" && (result[0].Participants[0].Name != "Original" || *result[0].Outcome.WinnerFactionID != "f1" || result[0].OwnerID != "owner") {
+			if test.name == "summary" && (result[0].Participants[0].Name != "Original" || *result[0].Outcome.WinnerFactionID != "f1" || result[0].OwnerID != "owner" || result[0].RulesVersion != "13") {
 				t.Fatal(result)
 			}
 		})
@@ -68,6 +69,36 @@ func TestListBattleSummariesWithoutCursorPassesNullBounds(t *testing.T) {
 	_, err := NewPostgres(db).ListBattles(context.Background(), battleservice.BattleHistoryQuery{Limit: 26})
 	if err != nil || db.queryArgs[1] != nil || db.queryArgs[2] != nil {
 		t.Fatalf("args=%+v err=%v", db.queryArgs, err)
+	}
+}
+
+func TestListBattleSummariesUsesTheVersionStatementOnlyForAVersion(t *testing.T) {
+	db := &battleDB{rows: &battleRows{}}
+	if _, err := NewPostgres(db).ListBattles(context.Background(), battleservice.BattleHistoryQuery{Limit: 26}); err != nil || db.querySQL != listBattlesSQL || len(db.queryArgs) != 4 {
+		t.Fatalf("unfiltered sql=%q args=%v err=%v", db.querySQL, db.queryArgs, err)
+	}
+	db.rows = &battleRows{}
+	if _, err := NewPostgres(db).ListBattles(context.Background(), battleservice.BattleHistoryQuery{RulesVersion: "13", Limit: 26}); err != nil || db.querySQL != listBattlesByVersionSQL || len(db.queryArgs) != 5 || db.queryArgs[4] != "13" {
+		t.Fatalf("version sql=%q args=%v err=%v", db.querySQL, db.queryArgs, err)
+	}
+}
+
+func TestListRulesVersions(t *testing.T) {
+	version := func(value string) battleRow {
+		return func(destinations ...any) error { return assignBattleValues(destinations, []any{value}) }
+	}
+	db := &battleDB{rows: &battleRows{scans: []battleRow{version("13"), version("12")}}}
+	versions, err := NewPostgres(db).ListRulesVersions(context.Background())
+	if err != nil || len(versions) != 2 || versions[0] != "13" || versions[1] != "12" || db.querySQL != listRulesVersionsSQL {
+		t.Fatalf("versions=%v err=%v", versions, err)
+	}
+	for name, db := range map[string]*battleDB{
+		"query": {queryErr: errDatabase},
+		"scan":  {rows: &battleRows{scans: []battleRow{func(...any) error { return errDatabase }}}},
+	} {
+		if _, err := NewPostgres(db).ListRulesVersions(context.Background()); err == nil || !strings.Contains(err.Error(), "list rules versions") {
+			t.Fatalf("%s err=%v", name, err)
+		}
 	}
 }
 
