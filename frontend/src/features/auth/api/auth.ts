@@ -8,13 +8,15 @@ export interface AuthSession {
   authenticated: boolean
   mode?: string
   capabilities?: { inspect: boolean; admin: boolean; members?: boolean }
-  actor?: { id: string; email?: string; role?: 'guest' | 'player' | 'tester' | 'admin' }
+  /** `displayName` is absent until a Player or Tester chooses one, and always for Guests. */
+  actor?: { id: string; email?: string; role?: 'guest' | 'player' | 'tester' | 'admin'; displayName?: string }
 }
 
 export interface AuthenticationClient {
   session(): Promise<AuthSession>
   login(username: string, password: string): Promise<AuthSession>
-  logout(): Promise<void>
+  // Resolves true when the browser is leaving for the Access logout page.
+  logout(): Promise<boolean>
 }
 
 export class AuthenticationError extends Error {
@@ -59,15 +61,19 @@ async function login(username: string, password: string): Promise<AuthSession> {
   return session()
 }
 
-async function logout(): Promise<void> {
+async function logout(): Promise<boolean> {
   const response = await authFetch('/v1/auth/logout', {
     method: 'POST',
     credentials: 'same-origin',
   })
   // An expired session is already signed out; other failures still need retry.
-  if (response.status === 401) return
+  if (response.status === 401) return false
   if (!response.ok) throw new AuthenticationError('Logout could not be completed.', response.status)
-  if (response.headers.get('Content-Type')?.includes('application/json')) { const body = await response.json() as { logoutUrl?: string }; if (body.logoutUrl === '/cdn-cgi/access/logout') window.location.assign(body.logoutUrl) }
+  if (!response.headers.get('Content-Type')?.includes('application/json')) return false
+  const body = await response.json() as { logoutUrl?: string }
+  if (body.logoutUrl !== '/cdn-cgi/access/logout') return false
+  window.location.assign(body.logoutUrl)
+  return true
 }
 
 export const authenticationClient: AuthenticationClient = { session, login, logout }

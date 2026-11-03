@@ -25,10 +25,13 @@ KUBELET_CA_FILE="$HOME/.local/state/battlefield/k3s/kubelet-ca.crt" \
 BATTLEFIELD_CONFIG_DIR="$HOME/.config/autonomous-battlefield/k3s-candidate" \
 BATTLEFIELD_ENV_FILE="$HOME/.config/autonomous-battlefield/k3s-candidate/deployment.env" \
 TARGET_URL=https://play.ordinalfrontier.com \
+BACKUP_RECIPIENT='age1…' \
   ./scripts/cd/setup-environment.sh production default k3s
 ```
 
-Registration reads the live namespace UID, single-node identity, versions,
+`BACKUP_RECIPIENT` records the public half of the
+[backup key](jenkins.md#production-delivery) as `BF_BACKUP_RECIPIENT`; a production
+registration without it refuses migrations. Registration reads the live namespace UID, single-node identity, versions,
 controller readiness and retained storage contract. It copies the dedicated
 kubeconfig and public kubelet CA into mode-0600 files outside the repository.
 Existing files are never overwritten. A cluster replacement needs an explicit
@@ -95,7 +98,9 @@ real delivery before adoption. It uses the pinned Ubuntu 24.04 cloud image, an
 existing active `default` NAT network, 4 vCPUs, 8 GiB RAM, a 32 GiB OS disk and a
 40 GiB retained data disk. It requires at least 10 GiB available RAM and 80 GiB
 free space in `/var/lib/libvirt/images` before creating its owned VM. Existing
-VMs and networks are recorded and checked after cleanup.
+VMs and networks are recorded and checked after cleanup. It registers the VM with a
+throwaway `age` key from `age-keygen` (installed with `age` by the CI role), so its
+pre-migration dumps are encrypted as in production.
 
 ```bash
 python3 scripts/infra/rehearse-k3s-delivery.py \
@@ -196,7 +201,8 @@ will move to (`<retained-profile>`, for example `retained-YYYYMMDD`) and a new
 private evidence directory under `/srv/battlefield-data/workspace/`.
 
 1. **Prepare the candidate.** Create the [separate registration](#prepare-a-separate-registration)
-   with `TARGET_URL` set to the existing public origin; its `BF_URL` must match it.
+   with `TARGET_URL` set to the existing public origin, which its `BF_URL` must
+   match, and `BACKUP_RECIPIENT` set to the old profile's `BF_BACKUP_RECIPIENT`.
    Prepare its application `.env` with the existing database, authentication,
    worker and capability credentials, but disable managed Players and every
    provider availability flag. Copy the old profile's `BF_TUNNEL_ID` and
@@ -228,7 +234,9 @@ private evidence directory under `/srv/battlefield-data/workspace/`.
    Preserve grants: database roles must already exist with the required attributes
    and credentials. Compare every public table's row count and content
    fingerprint, the sequence values and the ordered migration ledger before
-   starting new writers.
+   starting new writers. Then replace the evidence dump with a copy encrypted to the
+   profile's `BF_BACKUP_RECIPIENT` (`age --encrypt --recipient`) and delete the
+   plaintext, so no readable copy of the database stays on the host.
 4. **Adopt the registration.** Update Jenkins's `battlefield-production-kubeconfig`
    file credential from the candidate kubeconfig, then swap the registrations with
    directory moves under the held lock. `setup-environment.sh` deliberately refuses

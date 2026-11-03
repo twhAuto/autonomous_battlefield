@@ -28,20 +28,18 @@ test('main menu cards support keyboard navigation to every destination', async (
   }
 })
 
-test('player main menu stays compact at narrow widths', async ({ page }) => {
+test('guest main menu fits every width without a staging card', async ({ page }) => {
   await page.route('**/v1/auth/session', route => route.fulfill({ json: {
-    enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'player', role: 'player' },
+    enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'guest', role: 'guest' },
   } }))
-  for (const width of [320, 768, 1024]) {
+  for (const width of [320, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/')
     const menu = page.getByRole('region', { name: 'Main menu' })
     await expect(menu).toBeVisible({ timeout: 15_000 })
     await expect(menu.getByRole('link')).toHaveText([
-      /Stage battle/, /Factions/, /Battle history/,
+      /Factions/, /Battle history/, /Leagues/, /Statistics/,
     ])
-    await expect(menu.getByRole('link', { name: 'Leagues' })).toHaveCount(0)
-    await expect(menu.getByRole('link', { name: 'Statistics' })).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   }
 })

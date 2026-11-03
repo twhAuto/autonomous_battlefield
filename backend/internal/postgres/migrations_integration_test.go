@@ -10,9 +10,13 @@ import (
 	"github.com/pressly/goose/v3/lock"
 )
 
+// migrationLockBudget bounds each test, including waits for the global migration lock,
+// which other test packages hold while they migrate their own schemas in parallel.
+const migrationLockBudget = 2 * time.Minute
+
 func TestMigrationProviderLocksAcrossSchemas(t *testing.T) {
 	schemaURL, schema, admin := privateSchemaURL(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), migrationLockBudget)
 	defer cancel()
 	db, err := sql.Open("pgx", schemaURL)
 	if err != nil {
@@ -64,7 +68,7 @@ func TestMigrationProviderLocksAcrossSchemas(t *testing.T) {
 
 func TestMigrateAppliesPendingMigrationsOnce(t *testing.T) {
 	schemaURL, schema, admin := privateSchemaURL(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), migrationLockBudget)
 	defer cancel()
 	db, err := sql.Open("pgx", schemaURL)
 	if err != nil {

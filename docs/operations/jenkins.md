@@ -346,16 +346,49 @@ has 15 minutes, so slow image pulls don't fail the first Deployment. On failure,
 Jenkins prints descriptions and logs for every unavailable observability Deployment
 plus recent namespace events.
 
-The pre-migration database backup in `~/.local/state/battlefield/backups` on the
-agent gives the dump and its `pg_restore --list` check five minutes each
-(`BACKUP_TIMEOUT`, default `300s`). The limit applies inside the Postgres pod, and
-`kubectl exec` gets 15 seconds more. `pg_dump` gives up on table locks after one
-minute. If either step fails or runs out of time, the deploy deletes the partial
-dump and stops before the migration Job, so production keeps its running release.
-It then prints the `battlefield-postgres-0` pod status, its recent events, and the
-database sessions with their states, wait events, transaction ages and blocking
-sessions. Use that output to find a restarting pod or a session holding locks before
-rerunning the build.
+Before the migration Job, the deploy streams a `pg_dump` from the Postgres pod
+through `age` into `~/.local/state/battlefield/backups` on the agent, encrypted to
+the `BF_BACKUP_RECIPIENT` public key in the production `deployment.env`, while
+`pg_restore --list` checks the same stream inside the pod. Only ciphertext reaches
+the disk. The dump and its check get five minutes each (`BACKUP_TIMEOUT`, default
+`300s`). The limit applies inside the Postgres pod, and `kubectl exec` gets 15
+seconds more. `pg_dump` gives up on table locks after one minute. If a step fails or
+runs out of time, encryption fails, the profile has no valid recipient, or the agent
+lacks `age`, the deploy deletes the partial dump and stops before the migration Job,
+so production keeps its running release. A failed dump or check also prints the
+`battlefield-postgres-0` pod status, its recent events, and the database sessions
+with their states, wait events, transaction ages and blocking sessions. Use that
+output to find a restarting pod or a session holding locks before rerunning the
+build. After a verified backup, the deploy keeps the newest three encrypted dumps
+(`pre-migration-*.dump.age`) and deletes older ones and any plaintext
+`pre-migration-*.dump`, because each holds a full copy of the database, member
+emails included.
+
+The CI role installs `age`. Generate the key pair on the operator workstation and
+keep the private key there, with the other
+[operator recovery inputs](server-rebuild-contract.md#state-and-credential-locations);
+it never goes on the host. `age-keygen` prints the public key:
+
+```bash
+age-keygen -o ~/.config/autonomous-battlefield/server/backup-identity.txt
+```
+
+Add the public key to the production `deployment.env` as
+`BF_BACKUP_RECIPIENT=age1…`, or pass it as `BACKUP_RECIPIENT` to
+`scripts/cd/setup-environment.sh` when registering a cluster. To inspect a dump,
+decrypt it on the workstation and stream the plaintext, substituting the
+[registered operator and host](server-rebuild-contract.md#registered-facts):
+
+```bash
+ssh -o IdentitiesOnly=yes -i ~/.ssh/battlefield-automation <operator>@<host> \
+  'cat ~/.local/state/battlefield/backups/<dump>.dump.age' |
+  age --decrypt --identity ~/.config/autonomous-battlefield/server/backup-identity.txt |
+  pg_restore --list
+```
+
+To restore, stream the same decrypted output into `pg_restore --no-owner
+--exit-on-error --single-transaction` for the target database, whose roles must
+already exist, as in the [cluster move](k3s-delivery.md#move-production-to-a-new-cluster).
 
 ### Rollback
 

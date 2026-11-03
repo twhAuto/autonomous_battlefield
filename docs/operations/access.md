@@ -183,7 +183,10 @@ To enable guests:
 1. In Zero Trust, enable the **One-time PIN** identity provider if it is not
    already on, then add a self-hosted Access application for the entire guest
    hostname with only that provider. Give it one **Allow** policy: **Include →
-   Everyone**, **Require → Login Methods → One-time PIN**. Add no other policy.
+   Everyone**, **Require → Login Methods → One-time PIN**, and **Multi-factor
+   authentication → Disable MFA**. Without that override, the account's global MFA
+   setting asks every guest to enrol an authenticator after the code. Add no other
+   policy.
 2. Add a proxied DNS `CNAME` for the guest hostname pointing to
    `<BF_TUNNEL_ID>.cfargotunnel.com`, the same tunnel as the game.
 3. Put the guest application's AUD tag and origin in the production `.env`:
@@ -216,6 +219,9 @@ is a deployment configuration task.
 - Players see only available profiles explicitly allowed for Players. CLI profiles
   are off for Players by default; check **Player** on the profile and save to
   grant it. An empty role selection grants access to nobody.
+- **Allowed roles per model** limits each model option of a profile to some of the
+  profile's roles, for example Opus for Testers only and Haiku for Players too.
+  A role cleared on the profile is cleared from its models on save.
 - Without an admin override, the profile's configured `allowedRoles` is the default
   (for example `[player, tester, admin]`). Overrides take precedence; new
   profiles inherit their defaults, and removed profiles disappear on refresh.
@@ -263,6 +269,9 @@ PostgreSQL serializes admission across replicas:
   Tester battles. Queued, running and paused battles are all unfinished.
 - A retry with the same battle ID, scenario snapshot, ticks and owner returns the
   existing battle; different inputs conflict.
+- A Player can own one faction at a time; Testers and Admins have no faction
+  limit. The [faction rules](../architecture/api.md#factions) cover Players who
+  own several. The limit is fixed in code, not in `runtime_policy`.
 - Background generation allows 10 jobs per identity per UTC day, including for
   Admin, with a cooldown, queue and execution timeouts, and idempotency keys.
   Expired queued jobs and failed executions both count.

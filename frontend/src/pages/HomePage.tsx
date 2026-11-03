@@ -1,4 +1,4 @@
-// Entry points for play, faction management, and role-appropriate reports.
+// Entry points for play, faction management, leagues and statistics.
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { usePermissions } from '../features/auth/SessionContext'
@@ -20,13 +20,13 @@ function MenuCard({ to, number, title, description, children }: Readonly<{
 }
 
 export function HomePage() {
-  const { inspect, play } = usePermissions()
+  const { play } = usePermissions()
   return <section className="command-menu" aria-labelledby="menu-heading">
     <header className="command-menu__header">
       <h1 id="menu-heading">Main menu</h1>
       <p>Choose your next move.</p>
     </header>
-    <div className={`menu-grid${inspect ? '' : ' menu-grid--play'}`}>
+    <div className={`menu-grid${play ? '' : ' menu-grid--view'}`}>
       {play && <Link className="menu-card menu-card--battle" to="/battles/new" aria-labelledby="menu-title-01" aria-describedby="menu-description-01">
         <div className="menu-card__top" aria-hidden="true"><span className="menu-card__number">01</span><span className="menu-card__eyebrow">BATTLE SETUP</span></div>
         <svg className="menu-card__map" viewBox="0 0 320 180" fill="none" aria-hidden="true">
@@ -47,14 +47,12 @@ export function HomePage() {
       <MenuCard to="/battles" number="03" title="Battle history" description="Return to active battles or review the results.">
         <path d="M4 8a8 8 0 1 1 0 8M4 3v5h5m3-1v5l3 2" />
       </MenuCard>
-      {inspect && <>
-        <MenuCard to="/leagues" number="04" title="Leagues" description="Follow tournaments, standings and champions.">
-          <path d="M8 3h8v7a4 4 0 0 1-8 0Zm8 2h4v3a4 4 0 0 1-4 4M8 5H4v3a4 4 0 0 0 4 4m4 2v6m-4 1h8" />
-        </MenuCard>
-        <MenuCard to="/analytics" number="05" title="Statistics" description="Compare models, factions and battlefield performance.">
-          <path d="M4 3v18h17M8 16v-4m5 4V8m5 8V4" />
-        </MenuCard>
-      </>}
+      <MenuCard to="/leagues" number="04" title="Leagues" description="Follow tournaments, standings and champions.">
+        <path d="M8 3h8v7a4 4 0 0 1-8 0Zm8 2h4v3a4 4 0 0 1-4 4M8 5H4v3a4 4 0 0 0 4 4m4 2v6m-4 1h8" />
+      </MenuCard>
+      <MenuCard to="/analytics" number="05" title="Statistics" description="Compare models, factions and battlefield performance.">
+        <path d="M4 3v18h17M8 16v-4m5 4V8m5 8V4" />
+      </MenuCard>
     </div>
   </section>
 }

@@ -176,6 +176,31 @@ func TestCreateFactionRecordsTheCallerAsOwner(t *testing.T) {
 	}
 }
 
+func TestCreateFactionLimitsOnlyPlayers(t *testing.T) {
+	input := ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "A", Doctrine: "Scout"}
+	for name, test := range map[string]struct {
+		ctx  context.Context
+		want int
+	}{
+		"player":   {authn.WithActor(context.Background(), authn.Actor{ID: "player-7", Role: authn.Player}), playerFactionLimit},
+		"tester":   {authn.WithActor(context.Background(), authn.Actor{ID: "tester-7", Role: authn.Tester}), 0},
+		"admin":    {authn.WithActor(context.Background(), authn.Actor{ID: "admin-7", Role: authn.Admin}), 0},
+		"no actor": {context.Background(), 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := &fakeFactionRepository{ownerLimit: -1}
+			if err := NewService(repo, fakeRulesets{}).CreateFaction(test.ctx, input); err != nil || repo.ownerLimit != test.want {
+				t.Fatalf("owner limit = %d, error = %v, want limit %d", repo.ownerLimit, err, test.want)
+			}
+		})
+	}
+	repo := &fakeFactionRepository{createErr: ErrFactionLimitReached}
+	player := authn.WithActor(context.Background(), authn.Actor{ID: "player-7", Role: authn.Player})
+	if err := NewService(repo, fakeRulesets{}).CreateFaction(player, input); !errors.Is(err, ErrFactionLimitReached) {
+		t.Fatalf("error = %v, want ErrFactionLimitReached", err)
+	}
+}
+
 func TestDeleteFaction(t *testing.T) {
 	id := "7f22e693-bacd-46bb-b942-64fa613cd388"
 	repo := &fakeFactionRepository{}
@@ -194,6 +219,7 @@ func TestDeleteFaction(t *testing.T) {
 
 type fakeFactionRepository struct {
 	createdFaction *faction.Faction
+	ownerLimit     int
 	storedFaction  *faction.Faction
 	createErr      error
 	getErr         error
@@ -214,8 +240,9 @@ func (r *fakeFactionRepository) ListFactions(context.Context) ([]faction.Faction
 	return r.factions, nil
 }
 
-func (r *fakeFactionRepository) CreateFaction(_ context.Context, stored faction.Faction) error {
+func (r *fakeFactionRepository) CreateFaction(_ context.Context, stored faction.Faction, ownerLimit int) error {
 	r.createdFaction = &stored
+	r.ownerLimit = ownerLimit
 	return r.createErr
 }
 
@@ -225,7 +252,7 @@ func (r *fakeFactionRepository) DeleteFaction(_ context.Context, id string) erro
 }
 
 func (r *fakeFactionRepository) UpdateFaction(ctx context.Context, stored faction.Faction) error {
-	return r.CreateFaction(ctx, stored)
+	return r.CreateFaction(ctx, stored, 0)
 }
 
 func TestBackgroundCreationAndEditing(t *testing.T) {

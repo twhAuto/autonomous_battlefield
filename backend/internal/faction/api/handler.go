@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -17,10 +18,49 @@ import (
 
 type Handler struct {
 	factionService factionservice.Service
+	owners         OwnerNames
+}
+
+// OwnerNames labels the people who own factions. Without one, responses omit ownerName.
+type OwnerNames interface {
+	Labels(ctx context.Context, ownerIDs []string) (map[string]string, error)
 }
 
 func NewHandler(factionService factionservice.Service) *Handler {
 	return &Handler{factionService: factionService}
+}
+
+// WithOwnerNames labels each listed faction with its owner.
+func (h *Handler) WithOwnerNames(owners OwnerNames) *Handler {
+	h.owners = owners
+	return h
+}
+
+// factionResponse is a listed faction labelled with its owner.
+type factionResponse struct {
+	faction.Faction
+	OwnerName string `json:"ownerName,omitempty"`
+}
+
+// labelled names every faction's owner with one lookup. A failed lookup leaves the
+// names out rather than failing the list.
+func (h *Handler) labelled(r *http.Request, factions []faction.Faction) []factionResponse {
+	var labels map[string]string
+	if h.owners != nil && len(factions) > 0 {
+		owners := make([]string, len(factions))
+		for i, f := range factions {
+			owners[i] = f.OwnerID
+		}
+		var err error
+		if labels, err = h.owners.Labels(r.Context(), owners); err != nil {
+			slog.WarnContext(r.Context(), "owner_names_failed", "request_id", httpapi.RequestID(r.Context()), "error", err)
+		}
+	}
+	result := make([]factionResponse, len(factions))
+	for i, f := range factions {
+		result[i] = factionResponse{Faction: f, OwnerName: labels[f.OwnerID]}
+	}
+	return result
 }
 
 const (
@@ -44,13 +84,9 @@ func (h *Handler) ListFactions(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, r, http.StatusInternalServerError, "could not list factions")
 		return
 	}
-	if factions == nil {
-		factions = []faction.Faction{}
-	}
-
 	response := struct {
 		Factions any `json:"factions"`
-	}{Factions: factions}
+	}{Factions: h.labelled(r, factions)}
 
 	if err := httpapi.WriteJSON(w, http.StatusOK, response); err != nil {
 		return
@@ -87,6 +123,10 @@ func (h *Handler) CreateFaction(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, factionservice.ErrFactionAlreadyExists) {
 		apierror.WriteCode(w, r, http.StatusConflict, apierror.CodeAlreadyExists, "faction already exists")
+		return
+	}
+	if errors.Is(err, factionservice.ErrFactionLimitReached) {
+		apierror.Write(w, r, http.StatusConflict, "players can own only one faction at a time")
 		return
 	}
 	if err != nil {

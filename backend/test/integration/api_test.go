@@ -70,6 +70,7 @@ func TestAPIIntegrationAgainstPostgres(t *testing.T) {
 	t.Run("poll to completion and view", func(t *testing.T) { checkCompletedBattle(t, api, bob, battleID, blue) })
 	users := integrationUsers{alice: alice, bob: bob, tester: api.as(issuer.user("tester")), admin: api.as(issuer.user("admin"))}
 	t.Run("authorization", func(t *testing.T) { checkAuthorization(t, api, users, battleID, blue, red) })
+	t.Run("display names", func(t *testing.T) { checkDisplayNames(t, api, users, battleID) })
 }
 
 // isolatedAPIDatabase migrates a private schema so the in-process engine only claims
@@ -180,11 +181,16 @@ func checkAuthentication(t *testing.T, api *integrationAPI, issuer *accessIssuer
 }
 
 func checkFactions(t *testing.T, api *integrationAPI, alice, bob *integrationClient, blue, red string) {
-	for _, id := range []string{blue, red} {
-		body := factionBody(id, "Faction "+id[:8])
-		api.expect(t, alice.post("/v1/factions", body), http.StatusCreated)
-		api.expect(t, alice.post("/v1/factions", body), http.StatusCreated) // Identical retry.
+	// A Player owns one faction at a time, so each Player creates one.
+	for _, create := range []struct {
+		owner *integrationClient
+		id    string
+	}{{alice, blue}, {bob, red}} {
+		body := factionBody(create.id, "Faction "+create.id[:8])
+		api.expect(t, create.owner.post("/v1/factions", body), http.StatusCreated)
+		api.expect(t, create.owner.post("/v1/factions", body), http.StatusCreated) // Identical retry.
 	}
+	api.expectError(t, alice.post("/v1/factions", factionBody(randomID(t), "Second")), http.StatusConflict, apierror.CodeConflict)
 	api.expectError(t, bob.post("/v1/factions", factionBody(blue, "Taken")), http.StatusConflict, apierror.CodeAlreadyExists)
 	var listed struct {
 		Factions []struct{ ID, OwnerID string }
@@ -367,6 +373,39 @@ func checkAuthorization(t *testing.T, api *integrationAPI, users integrationUser
 // checkDecisionHistoryRoles reads the completed attempt's decisions as a Player and
 // a Tester. Both see each decision's status and applied plan, only the Tester sees
 // usage diagnostics, and the Player still cannot fetch saved decision context.
+// checkDisplayNames sets names through the API and reads them back as owner labels.
+// Alice owns every faction and the battle; the Admin has signed in but chooses no name.
+func checkDisplayNames(t *testing.T, api *integrationAPI, users integrationUsers, battleID string) {
+	type session struct{ Actor struct{ DisplayName *string } }
+	var before, after session
+	api.decode(t, users.alice.get("/v1/auth/session"), http.StatusOK, &before)
+	api.decode(t, users.admin.get("/v1/auth/session"), http.StatusOK, &session{})
+	var saved struct{ DisplayName string }
+	api.decode(t, users.alice.send(http.MethodPut, "/v1/profile", `{"displayName":"  Alice Prime "}`, nil), http.StatusOK, &saved)
+	api.decode(t, users.alice.get("/v1/auth/session"), http.StatusOK, &after)
+	if before.Actor.DisplayName != nil || saved.DisplayName != "Alice Prime" || after.Actor.DisplayName == nil || *after.Actor.DisplayName != "Alice Prime" {
+		t.Fatalf("session names before %v, saved %q, after %v", before.Actor.DisplayName, saved.DisplayName, after.Actor.DisplayName)
+	}
+	api.expectError(t, users.bob.send(http.MethodPut, "/v1/profile", `{"displayName":"alice PRIME"}`, nil), http.StatusConflict, apierror.CodeConflict)
+	api.expectError(t, users.bob.send(http.MethodPut, "/v1/profile", `{"displayName":"B!"}`, nil), http.StatusBadRequest, apierror.CodeInvalidRequest)
+	var factions struct{ Factions []struct{ OwnerName string } }
+	api.decode(t, users.bob.get("/v1/factions"), http.StatusOK, &factions)
+	var history struct {
+		Battles []struct{ ID, OwnerName string }
+	}
+	api.decode(t, users.tester.get("/v1/battles"), http.StatusOK, &history)
+	var battle struct{ OwnerName string }
+	api.decode(t, users.bob.get("/v1/battles/"+battleID), http.StatusOK, &battle)
+	if len(factions.Factions) == 0 || factions.Factions[0].OwnerName != "Alice Prime" || battle.OwnerName != "Alice Prime" {
+		t.Fatalf("owner names: factions %+v, battle %q", factions.Factions, battle.OwnerName)
+	}
+	for _, row := range history.Battles {
+		if row.ID == battleID && row.OwnerName != "Alice Prime" {
+			t.Fatalf("history owner = %q", row.OwnerName)
+		}
+	}
+}
+
 func checkDecisionHistoryRoles(t *testing.T, api *integrationAPI, player, tester *integrationClient, battleID string) {
 	t.Helper()
 	type decisionRow struct {

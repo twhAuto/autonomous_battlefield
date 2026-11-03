@@ -12,7 +12,7 @@ export function factionColors(roster: Iterable<string>) {
   return new Map(sorted.map((factionId, index) => [factionId, palette[Math.min(index, palette.length - 1)]]))
 }
 
-// Player responses carry only the controller type, so the model stays hidden from them.
+// Scripted controllers have no model, so they get no label.
 export function modelLabel(participant: BattleParticipant | undefined) {
   const controller = participant?.controller
   if (controller?.type !== 'model' || !controller.modelIdentifier) return ''

@@ -21,7 +21,7 @@ battlefield_env_load() {
   export DEPLOY_ENV="${requested}"
   local config="${BATTLEFIELD_ENV_FILE:-${HOME}/.config/autonomous-battlefield/${requested}/deployment.env}"
   [[ -f "${config}" ]] || { battlefield_env_error "Missing ${config}; run scripts/cd/setup-environment.sh ${requested} on the target machine."; return 1; }
-  unset BF_DRIVER BF_ENV BF_CONTEXT BF_CLUSTER BF_UID BF_DOCKER_HOST BF_URL BF_KUBECONFIG BF_DISPOSABLE BF_TUNNEL_ID BF_TUNNEL_IMAGE BF_TUNNEL_CREDENTIALS_FILE BF_KUBELET_CA_FILE
+  unset BF_DRIVER BF_ENV BF_CONTEXT BF_CLUSTER BF_UID BF_DOCKER_HOST BF_URL BF_KUBECONFIG BF_DISPOSABLE BF_TUNNEL_ID BF_TUNNEL_IMAGE BF_TUNNEL_CREDENTIALS_FILE BF_KUBELET_CA_FILE BF_BACKUP_RECIPIENT
   local helper profile_values key value
   helper="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/application-env.cjs"
   profile_values="$(node "${helper}" profile "${config}")" || return

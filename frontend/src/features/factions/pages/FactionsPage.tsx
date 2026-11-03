@@ -1,10 +1,12 @@
-// Loads the faction registry with retry states and links to the authorized editor.
+// Loads the faction registry with retry states and links to the authorized editor. A
+// Player who owns a faction sees why they cannot create another instead of the action.
 
 import { usePermissions } from '../../auth/SessionContext'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Faction, FactionApiError, listFactions } from '../api/factions'
 import { Emblem } from '../../../shared/components/Emblem'
+import { factionLimitMessage } from '../limits'
 
 export function FactionsPage() {
  const permissions = usePermissions()
@@ -32,6 +34,10 @@ export function FactionsPage() {
     return () => controller.abort()
   }, [requestVersion])
 
+  const atLimit = status === 'success' && permissions.atFactionLimit(factions)
+  // A Player's action waits for the registry; if it cannot load, the API still enforces the limit.
+  const canCreate = permissions.play && !atLimit && !(permissions.oneFaction && status === 'loading')
+
   return (
     <>
       <section className="page-header page-header--directory">
@@ -42,7 +48,8 @@ export function FactionsPage() {
             <h1>Factions</h1>
             <p>Every banner registered in OrdinalFrontier.</p>
           </div>
-          {permissions.play && <Link className="compact-action" to="/factions/new">+ CREATE FACTION</Link>}
+          {canCreate && <Link className="compact-action" to="/factions/new">+ CREATE FACTION</Link>}
+          {atLimit && <p className="faction-limit" role="note">{factionLimitMessage}</p>}
         </div>
       </section>
 
@@ -88,6 +95,7 @@ export function FactionsPage() {
                 <div className="registry-card__body">
                   <span>REGISTERED FACTION</span>
                   <h2>{faction.name}</h2>
+                  {faction.ownerName && <p className="registry-card__owner">Created by {faction.ownerName}</p>}
                   <p style={{ whiteSpace: 'pre-wrap' }}>{faction.doctrine}</p>
                   {faction.background && <p style={{ whiteSpace: 'pre-wrap' }}>{faction.background}</p>}
                   {permissions.canManage(faction.ownerId) && <Link to={`/factions/${faction.id}/edit`}>Edit faction</Link>}

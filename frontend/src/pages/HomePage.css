@@ -12,7 +12,7 @@
 .command-menu__header h1 { margin: 0 0 10px; font-size: clamp(30px, 4vw, 40px); font-weight: 500; letter-spacing: -.04em; }
 .command-menu__header p { margin: 0; color: var(--muted); }
 .menu-grid { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 16px; }
-.menu-grid--play { grid-template-columns: 1.15fr 2fr; }
+.menu-grid--view { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .menu-card { position: relative; min-width: 0; display: flex; flex-direction: column; gap: 30px; padding: 26px; color: inherit; background: #151a14; border: 1px solid var(--line); text-decoration: none; transition: border-color .2s, background .2s; }
 .menu-card:hover, .menu-card:focus-visible { border-color: var(--lime); background-color: #1b2317; }
 .menu-card__top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -34,7 +34,7 @@
 .menu-card__action > span { font-size: 24px; }
 
 @media (max-width: 1000px) {
-  .menu-grid, .menu-grid--play { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .menu-grid, .menu-grid--view { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .menu-card--battle { grid-row: auto; grid-column: 1 / -1; padding-right: 45%; }
   .menu-card__map { position: absolute; width: 36%; right: 5%; top: 50%; transform: translateY(-50%); }
 }
@@ -42,7 +42,7 @@
 @media (max-width: 600px) {
   .command-menu { padding: 28px 0 40px; }
   .command-menu__header { margin-bottom: 22px; }
-  .menu-grid, .menu-grid--play { grid-template-columns: 1fr; gap: 12px; }
+  .menu-grid, .menu-grid--view { grid-template-columns: 1fr; gap: 12px; }
   .menu-card { gap: 20px; padding: 22px; }
   .menu-card--battle { gap: 26px; }
   .menu-card__map { display: none; }

@@ -63,7 +63,7 @@ describe('analytics requests', () => {
 
   it('explains failures and names controllers', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(reply(403)).mockResolvedValueOnce(reply(500))
-    await expect(getAnalytics({})).rejects.toThrow('testers and administrators')
+    await expect(getAnalytics({})).rejects.toThrow('cannot view statistics')
     await expect(getAnalytics({})).rejects.toThrow('could not be loaded')
     expect(controllerName({ type: 'scripted', profileId: 'ignored' })).toBe('Scripted')
     expect(controllerName({ type: 'model', profileId: 'claude' })).toBe('claude')

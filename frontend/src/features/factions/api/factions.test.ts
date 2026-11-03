@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFaction, deleteFaction, FactionApiError, listFactionRulesets, listFactions } from './factions'
+import { factionLimitMessage } from '../limits'
 
 const faction = {
   id: '7f22e693-bacd-46bb-b942-64fa613cd388', name: 'Northwind', doctrine: 'Defend your castle.',
@@ -85,6 +86,14 @@ describe('faction API', () => {
       status,
       message: expect.stringContaining(message),
     })
+  })
+
+  it('tells the faction limit apart from a reused identifier', async () => {
+    const refusal = (code: string) => new Response(JSON.stringify({ error: { code, message: 'refused' } }), { status: 409 })
+    vi.mocked(fetch).mockResolvedValueOnce(refusal('conflict'))
+    await expect(createFaction(faction)).rejects.toMatchObject({ status: 409, code: 'conflict', message: factionLimitMessage })
+    vi.mocked(fetch).mockResolvedValueOnce(refusal('already_exists'))
+    await expect(createFaction(faction)).rejects.toMatchObject({ status: 409, code: 'already_exists', message: expect.stringContaining('identifier is already in use') })
   })
 
   it('returns the blueprint validation detail supplied by the server', async () => {

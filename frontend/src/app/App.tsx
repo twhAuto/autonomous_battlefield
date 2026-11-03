@@ -21,9 +21,18 @@ import { authenticationClient, type AuthenticationClient, type AuthSession } fro
 import { RolePreviewContext, previewRoleNames, type PreviewRole } from '../features/auth/RolePreviewContext'
 import { authenticationRequiredEvent, setRequestPreviewRole } from '../shared/api/request'
 import { SessionContext } from '../features/auth/SessionContext'
+import { needsDisplayName, signedInName } from '../features/profile/api/profile'
+import { DisplayNamePrompt } from '../features/profile/pages/DisplayNamePrompt'
+import { ProfilePage } from '../features/profile/pages/ProfilePage'
 import '../styles.css'
 
-function AppLayout({ actorID, admin, inspect, play, logoutError, onLogout }: Readonly<{ actorID: string; admin: boolean; inspect: boolean; play: boolean; logoutError: string; onLogout(): void }>) {
+// The signed-in name; a Player or Tester follows it to change their display name.
+function SignedInAs({ name, editable, onNavigate }: Readonly<{ name: string; editable: boolean; onNavigate?: () => void }>) {
+  if (!editable) return <span className="signed-in-as">Signed in as <strong>{name}</strong></span>
+  return <Link className="signed-in-as" to="/profile" title="Change your display name" onClick={onNavigate}>Signed in as <strong>{name}</strong></Link>
+}
+
+function AppLayout({ actorID, accountName, nameEditable, admin, play, logoutError, onLogout }: Readonly<{ actorID: string; accountName: string; nameEditable: boolean; admin: boolean; play: boolean; logoutError: string; onLogout(): void }>) {
   const location = useLocation()
   const preview = useContext(RolePreviewContext)
   const mobile = useMobile()
@@ -46,14 +55,6 @@ function AppLayout({ actorID, admin, inspect, play, logoutError, onLogout }: Rea
     menuButton.current?.focus()
   }
   const isBattleDetail = /^\/battles\/[^/]+$/.test(location.pathname)
-  const currentDate = useMemo(
-    () => new Intl.DateTimeFormat('en', {
-      month: 'short',
-      day: '2-digit',
-      year: 'numeric',
-    }).format(new Date()),
-    [],
-  )
 
   return (
     <div className="app-shell">
@@ -68,16 +69,16 @@ function AppLayout({ actorID, admin, inspect, play, logoutError, onLogout }: Rea
           {play && <NavLink to="/battles/new" onClick={closeMobileMenu}>Stage battle</NavLink>}
           <NavLink to="/factions" onClick={closeMobileMenu}>Factions</NavLink>
           <NavLink to="/battles" end onClick={closeMobileMenu}>Battle history</NavLink>
-          {inspect && <NavLink to="/leagues" onClick={closeMobileMenu}>Leagues</NavLink>}
-          {inspect && <NavLink to="/analytics" onClick={closeMobileMenu}>Statistics</NavLink>}
+          <NavLink to="/leagues" onClick={closeMobileMenu}>Leagues</NavLink>
+          <NavLink to="/analytics" onClick={closeMobileMenu}>Statistics</NavLink>
           {admin && <NavLink to="/admin" onClick={closeMobileMenu}>Admin</NavLink>}
-          {mobile && <div className="mobile-account"><span>Signed in as {actorID}</span><button type="button" onClick={onLogout} aria-label={`Log out ${actorID}`}>Log out</button></div>}
+          {mobile && <div className="mobile-account"><SignedInAs name={accountName} editable={nameEditable} onNavigate={closeMobileMenu} /><button type="button" onClick={onLogout} aria-label={`Log out ${actorID}`}>Log out</button></div>}
         </nav>
         <div className="topbar__status">
           <span className="status-dot" />
           <span>FRONTIER ONLINE</span>
           <span className="topbar__divider" />
-          {currentDate.toUpperCase()}
+          <SignedInAs name={accountName} editable={nameEditable} />
           <button className="logout-button" type="button" onClick={onLogout} aria-label={`Log out ${actorID}`}>LOG OUT</button>
         </div>
       </header>
@@ -116,6 +117,7 @@ export default function App({ authentication = authenticationClient, initialSess
   useEffect(() => () => setRequestPreviewRole(null), [])
   const [sessionError, setSessionError] = useState('')
   const [logoutError, setLogoutError] = useState('')
+  const [signingOut, setSigningOut] = useState(false)
   const [sessionAttempt, setSessionAttempt] = useState(0)
 
   useEffect(() => {
@@ -139,9 +141,16 @@ export default function App({ authentication = authenticationClient, initialSess
     changePreviewRole(null)
     setLogoutError('')
     try {
-      await authentication.logout()
+      // Access logout navigates away; showing the signed-out card meanwhile would offer
+      // a Sign in that races that navigation.
+      if (await authentication.logout()) {
+        setSigningOut(true)
+        return
+      }
+      setSigningOut(false)
       setSession(previous => ({ enabled: true, authenticated: false, mode: previous?.mode }))
     } catch {
+      setSigningOut(false)
       setLogoutError('Logout could not be confirmed. Try Log out again.')
     }
   }
@@ -152,8 +161,11 @@ export default function App({ authentication = authenticationClient, initialSess
   const previewContext = useMemo(() => ({ role: previewRole, setRole: changePreviewRole }), [previewRole, changePreviewRole])
   const adminNow = canAdmin && !previewRole
   const effectiveRole = effectiveSession?.actor?.role ?? (session?.mode === 'cloudflare' ? 'player' : 'admin')
-  const inspect = effectiveRole === 'admin' || effectiveRole === 'tester'
   const play = effectiveRole !== 'guest'
+  const nameEditable = session?.actor?.role === 'player' || session?.actor?.role === 'tester'
+  const saveDisplayName = useCallback((displayName: string) => {
+    setSession(previous => previous?.actor ? { ...previous, actor: { ...previous.actor, displayName } } : previous)
+  }, [])
 
   if (sessionError) {
     return (
@@ -169,17 +181,25 @@ export default function App({ authentication = authenticationClient, initialSess
       </main>
     )
   }
+  if (signingOut) {
+    // The browser can stay, for example when a page's unsaved-changes prompt is
+    // cancelled, so the screen offers the Access logout again.
+    return <main className="login-page"><section className="login-card" aria-labelledby="signing-out-title"><h1 id="signing-out-title">Signing out…</h1><p>Ending your Cloudflare Access session. If this page stays open, sign out again.</p><button className="submit-button" type="button" onClick={() => { void logout() }}><span>SIGN OUT AGAIN</span><span>→</span></button></section></main>
+  }
   if (!session) {
     return <main className="login-page"><div className="loader" aria-label="Checking authentication" /></main>
   }
   if (!session.authenticated) {
-    if (session.mode === 'cloudflare') return <main className="login-page"><section className="login-card"><h1>Sign in to Battlefield</h1><p>Your session has expired or access is unavailable.</p><button type="button" onClick={() => window.location.assign('/')}>Sign in</button></section></main>
+    if (session.mode === 'cloudflare') return <main className="login-page"><section className="login-card"><h1>Sign in to Battlefield</h1><p>Your session has expired or access is unavailable.</p><button className="submit-button" type="button" onClick={() => window.location.assign('/')}><span>SIGN IN</span><span>→</span></button></section></main>
     return <LoginPage authentication={authentication} onAuthenticated={setSession} />
+  }
+  if (needsDisplayName(session)) {
+    return <DisplayNamePrompt logoutError={logoutError} onSaved={saveDisplayName} onLogout={logout} />
   }
 
   return (
     <RolePreviewContext.Provider value={previewContext}><SessionContext.Provider value={effectiveSession ?? session}><Routes key={previewRole ?? 'admin'}>
-      <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} admin={adminNow} inspect={inspect} play={play} logoutError={logoutError} onLogout={logout} />}>
+      <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} accountName={signedInName(session)} nameEditable={nameEditable} admin={adminNow} play={play} logoutError={logoutError} onLogout={logout} />}>
         <Route index element={<HomePage />} />
         {play && <><Route path="factions/new" element={<CreateFactionPage />} />
           <Route path="factions/:id/edit" element={<CreateFactionPage />} /></>}
@@ -187,10 +207,11 @@ export default function App({ authentication = authenticationClient, initialSess
         <Route path="factions" element={<FactionsPage />} />
         <Route path="battles" element={<BattleHistoryPage />} />
         <Route path="battles/:id" element={<BattlePage />} />
-        {inspect && <><Route path="leagues" element={<LeaguesPage canCreate={adminNow} />} />
-          <Route path="leagues/new" element={adminNow ? <CreateLeaguePage /> : <NotFoundPage />} />
-          <Route path="leagues/:id" element={<LeaguePage canManage={adminNow} />} />
-          <Route path="analytics" element={<AnalyticsPage />} /></>}
+        {nameEditable && <Route path="profile" element={<ProfilePage name={signedInName(session)} onSaved={saveDisplayName} />} />}
+        <Route path="leagues" element={<LeaguesPage canCreate={adminNow} />} />
+        <Route path="leagues/new" element={adminNow ? <CreateLeaguePage /> : <NotFoundPage />} />
+        <Route path="leagues/:id" element={<LeaguePage canManage={adminNow} />} />
+        <Route path="analytics" element={<AnalyticsPage />} />
         {canAdmin && !previewRole && <><Route path="admin" element={<AdminSettingsPage />} />{session.capabilities?.members && <Route path="admin/members" element={<MembersPage />} />}</>}
         <Route path="*" element={<NotFoundPage />} />
       </Route>

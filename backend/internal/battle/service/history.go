@@ -22,6 +22,9 @@ type BattleOutcome struct {
 	Reason          string  `json:"reason"`
 }
 type BattleSummary struct {
+	// OwnerID selects OwnerName, the owner's label, which the API adds to each row.
+	OwnerID        string                     `json:"-"`
+	OwnerName      string                     `json:"ownerName,omitempty"`
 	ID             string                     `json:"id"`
 	ScenarioID     string                     `json:"scenarioId"`
 	Participants   []BattleParticipantSummary `json:"participants"`

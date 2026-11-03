@@ -7,6 +7,7 @@
 .registry-card__body { min-width: 0; }
 .registry-card__body > span { color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .16em; }
 .registry-card h2 { margin: 9px 0 12px; overflow: hidden; font-size: 24px; font-weight: 500; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; }
+.registry-card__owner { margin: -6px 0 12px; color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .08em; }
 .registry-card code { display: block; overflow: hidden; color: var(--muted); font: 12px 'DM Mono', monospace; text-overflow: ellipsis; }
 .registry-card__status { position: absolute; right: 20px; bottom: 18px; display: flex; align-items: center; gap: 7px; color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .1em; }
 .registry-card__delete { position: absolute; left: 30px; bottom: 16px; border: 0; background: transparent; color: #a96c63; cursor: pointer; font: 12px 'DM Mono', monospace; letter-spacing: .1em; }
@@ -34,6 +35,8 @@
 .faction-prose { white-space: pre-wrap; }
 .background-generator button { color: var(--lime); border: 1px solid var(--line); background: var(--ink); padding: 8px 12px; }
 .registry-card a { color: var(--lime); }
+.directory-title .faction-limit, .faction-limit { max-width: 340px; margin: 0; padding: 10px 14px; border-left: 2px solid var(--lime); color: #b8c0b1; font-size: 14px; line-height: 1.55; }
+.faction-limit p { margin: 0 0 6px; }
 .danger-zone { border-top: 1px solid #b17768; margin-top: 32px; padding-top: 16px; }
 .danger-zone button { background: #211714; border: 1px solid #b17768; color: #ffb3a5; padding: 12px 20px; }
 

@@ -74,7 +74,8 @@ production-to-test renames.
   Git-tracked files under `backend/evals`; `test-ai-manifest.py` covers
   reproducibility and corpus identity.
 - `scripts/ci/verify-frontend-image.py` starts a built frontend image with production
-  filesystem and user restrictions and checks its probes and assets;
+  filesystem and user restrictions and checks its probes, assets and
+  Content-Security-Policy;
   `test-frontend-image.sh` builds the real Dockerfile from private-permission inputs.
 - `test-doc-links.py` fails on a tracked Markdown link to a missing file or heading
   anchor (GitHub slug rules); external URLs, code and HTML comments are skipped.

@@ -1,11 +1,13 @@
 // Checks profile creation and editing, doctrine/background Unicode limits, save failures,
-// and duplicate-submission prevention.
+// duplicate-submission prevention, and the Player faction limit.
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CreateFactionPage, doctrineTemplates } from './CreateFactionPage'
+import { SessionContext } from '../../auth/SessionContext'
+import { factionLimitMessage } from '../limits'
 vi.mock('../components/BackgroundGenerator', () => ({ BackgroundGenerator: () => null }))
 const id='7f22e693-bacd-46bb-b942-64fa613cd388'
 function show(path='/factions/new') {return render(<MemoryRouter initialEntries={[path]}><Link to="/factions/new">New faction</Link><Routes><Route path="/factions/new" element={<CreateFactionPage/>}/><Route path="/factions/:id/edit" element={<CreateFactionPage/>}/></Routes></MemoryRouter>)}
@@ -126,4 +128,50 @@ it('restores a saved emblem and retains a new selection after a failed edit', as
  await screen.findByText(/faction could not be updated/)
  expect(screen.getByRole('radio', { name: 'Moon' })).toBeChecked()
  expect(JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string).emblem).toBe('moon')
+})
+
+describe('Player faction limit', () => {
+ const player = { enabled: true, authenticated: true, mode: 'cloudflare' as const, actor: { id: 'self', role: 'player' as const } }
+ const showAsPlayer = () => render(<SessionContext.Provider value={player}><MemoryRouter initialEntries={['/factions/new']}><Routes><Route path="/factions/new" element={<CreateFactionPage/>}/></Routes></MemoryRouter></SessionContext.Provider>)
+ const registry = (ownerId: string) => new Response(JSON.stringify({ factions: [{ id, name: 'Northwind', doctrine: 'Hold', ownerId }] }))
+ beforeEach(() => { vi.stubGlobal('fetch', vi.fn()); vi.spyOn(crypto, 'randomUUID').mockReturnValue(id) })
+
+ it('shows the reason instead of the form to a Player who owns a faction', async () => {
+  vi.mocked(fetch).mockResolvedValue(registry('self'))
+  showAsPlayer()
+  expect(screen.getByText('Checking your factions…')).toBeInTheDocument()
+  expect(await screen.findByRole('note')).toHaveTextContent(factionLimitMessage)
+  expect(screen.getByRole('link', { name: /view faction registry/i })).toHaveAttribute('href', '/factions')
+  expect(screen.queryByLabelText('Faction name')).not.toBeInTheDocument()
+ })
+
+ it('lets a Player who owns none create one, then shows the reason', async () => {
+  vi.mocked(fetch).mockResolvedValueOnce(registry('someone-else')).mockResolvedValueOnce(new Response(null, { status: 201 }))
+  const user = userEvent.setup(); showAsPlayer()
+  await user.type(await screen.findByLabelText('Faction name'), 'Crownwatch')
+  await user.click(screen.getByRole('button', { name: 'CREATE FACTION' }))
+  expect(await screen.findByText('Crownwatch has entered the battlefield.')).toBeInTheDocument()
+  expect(screen.getByRole('note')).toHaveTextContent(factionLimitMessage)
+  expect(screen.queryByLabelText('Faction name')).not.toBeInTheDocument()
+  expect(screen.getAllByRole('link', { name: /view faction registry/i })).toHaveLength(1)
+ })
+
+ it('shows the form when the check fails and the reason when the API refuses', async () => {
+  vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 503 }))
+   .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'conflict', message: 'players can own only one faction at a time' } }), { status: 409 }))
+  const user = userEvent.setup(); showAsPlayer()
+  await user.type(await screen.findByLabelText('Faction name'), 'Crownwatch')
+  await user.click(screen.getByRole('button', { name: 'CREATE FACTION' }))
+  expect(await screen.findByRole('note')).toHaveTextContent(factionLimitMessage)
+  expect(screen.queryByLabelText('Faction name')).not.toBeInTheDocument()
+  expect(screen.queryByText(/identifier is already in use/)).not.toBeInTheDocument()
+ })
+
+ it('does not check the limit for an edit', async () => {
+  vi.mocked(fetch).mockResolvedValue(registry('self'))
+  render(<SessionContext.Provider value={player}><MemoryRouter initialEntries={[`/factions/${id}/edit`]}><Routes><Route path="/factions/:id/edit" element={<CreateFactionPage/>}/></Routes></MemoryRouter></SessionContext.Provider>)
+  expect(await screen.findByLabelText('Faction name')).toHaveValue('Northwind')
+  expect(screen.queryByRole('note')).not.toBeInTheDocument()
+  expect(fetch).toHaveBeenCalledTimes(1)
+ })
 })

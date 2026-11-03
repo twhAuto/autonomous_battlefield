@@ -154,11 +154,15 @@ test('cluster driver defaults to Kind and K3s requires an explicit production st
     fs.writeFileSync(file, base + 'BF_DRIVER=k3s\nBF_KUBELET_CA_FILE=ca.crt\n');
     assert.equal(profile(file).get('BF_DRIVER'), 'k3s');
     assert.equal(profile(file).get('BF_KUBELET_CA_FILE'), path.join(dir, 'ca.crt'));
+    const recipient = 'age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p';
+    fs.appendFileSync(file, `BF_BACKUP_RECIPIENT=${recipient}\n`);
+    assert.equal(profile(file).get('BF_BACKUP_RECIPIENT'), recipient);
     for (const [body, error] of [
       [base + 'BF_DRIVER=other\n', /Invalid cluster driver/],
       [base + 'BF_DRIVER=k3s\n', /BF_KUBELET_CA_FILE/],
       [base + 'BF_DRIVER=k3s\nBF_DOCKER_HOST=unix:///var/run/docker.sock\n', /must not bind/],
       [base.replace('production', 'dev') + 'BF_DRIVER=k3s\n', /production profile/],
+      [base + 'BF_DRIVER=k3s\nBF_KUBELET_CA_FILE=ca.crt\nBF_BACKUP_RECIPIENT=age1short\n', /age public key/],
     ]) {
       fs.writeFileSync(file, body);
       assert.throws(() => profile(file), error);

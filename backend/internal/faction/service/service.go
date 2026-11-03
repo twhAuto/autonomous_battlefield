@@ -19,7 +19,14 @@ var (
 	ErrFactionNotFound      = errors.New("faction not found")
 	ErrFactionAlreadyExists = errors.New("faction already exists")
 	ErrInvalidFaction       = errors.New("invalid faction")
+	// ErrFactionLimitReached refuses a Player's create while they own any faction.
+	ErrFactionLimitReached = errors.New("faction limit reached")
 )
+
+// playerFactionLimit is how many factions a Player may own before creating another
+// is refused. Testers and Admins have no limit; a Player who owns more, such as a
+// Tester whose role became Player, keeps them all.
+const playerFactionLimit = 1
 
 var uuidPattern = regexp.MustCompile(`^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$`)
 
@@ -70,7 +77,7 @@ func (s *service) CreateFaction(ctx context.Context, input ProfileInput) error {
 		return err
 	}
 	stored.OwnerID = authn.Owner(ctx)
-	err = s.repository.CreateFaction(ctx, stored)
+	err = s.repository.CreateFaction(ctx, stored, ownerLimit(ctx))
 	if errors.Is(err, ErrFactionAlreadyExists) {
 		// A retry of the same caller's identical request succeeds, matching battle
 		// creation; any other reuse of the client-generated ID remains a conflict.
@@ -85,6 +92,14 @@ func (s *service) CreateFaction(ctx context.Context, input ProfileInput) error {
 		}
 	}
 	return err
+}
+
+// ownerLimit is the caller's faction limit, or zero for none.
+func ownerLimit(ctx context.Context) int {
+	if a, ok := authn.ActorFromContext(ctx); ok && a.Role == authn.Player {
+		return playerFactionLimit
+	}
+	return 0
 }
 
 // normalizeFaction keeps creation and editing subject to the same profile rules.

@@ -42,6 +42,9 @@ type Config struct {
 	SessionSecret string
 	SessionTTL    time.Duration
 	CookieSecure  bool
+	// People records an Admin, Tester or Player each time their session is read and
+	// returns their display name. It is never called for Guests or service identities.
+	People func(context.Context, Actor) (string, error)
 }
 
 type Actor struct {
@@ -230,10 +233,32 @@ func (r *Routes) session(response http.ResponseWriter, request *http.Request) {
 		})
 		return
 	}
+	described, err := r.sessionActor(request.Context(), actor)
+	if err != nil {
+		apierror.Write(response, request, http.StatusServiceUnavailable, "session could not be loaded")
+		return
+	}
 	_ = json.NewEncoder(response).Encode(map[string]any{
-		"enabled": r.manager.Enabled(), "authenticated": true, "actor": actor, "mode": r.manager.config.Mode,
+		"enabled": r.manager.Enabled(), "authenticated": true, "actor": described, "mode": r.manager.config.Mode,
 		"capabilities": map[string]bool{"inspect": actor.CanInspect(), "admin": actor.Role == Admin, "members": actor.Role == Admin && r.manager.config.Mode == ModeCloudflare && r.manager.config.ResolveMember != nil},
 	})
+}
+
+// sessionActorBody is the session's description of its caller.
+type sessionActorBody struct {
+	Actor
+	DisplayName string `json:"displayName,omitempty"`
+}
+
+// sessionActor adds the display name of anyone who can own something.
+func (r *Routes) sessionActor(ctx context.Context, actor Actor) (sessionActorBody, error) {
+	body := sessionActorBody{Actor: actor}
+	if r.manager.config.People == nil || actor.Role == Guest || actor.Role == CI {
+		return body, nil
+	}
+	name, err := r.manager.config.People(ctx, actor)
+	body.DisplayName = name
+	return body, err
 }
 
 func (r *Routes) logout(response http.ResponseWriter, _ *http.Request) {

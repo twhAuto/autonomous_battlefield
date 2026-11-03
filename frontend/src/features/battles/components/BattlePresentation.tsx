@@ -28,6 +28,7 @@ export function BattleHeader({ battle, battleTitle, connection, connectionMessag
       <div className="battle-command-bar__meta">
         <div className="battle-meta-row">
           <span>SCENARIO <strong>{battle.scenarioId}</strong></span>
+          {battle.ownerName && <span className="battle-owner">Started by <strong>{battle.ownerName}</strong></span>}
           {battle.league && <span>LEAGUE <Link className="text-link" to={`/leagues/${encodeURIComponent(battle.league.id)}`}>{battle.league.name}</Link> · {matchLabel(battle.league).toUpperCase()}</span>}
           {connection !== 'settled' && <ConnectionBadge state={connection} />}
         </div>

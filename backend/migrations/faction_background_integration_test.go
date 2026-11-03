@@ -118,7 +118,7 @@ func checkCurrentRepositoryReadsLegacyFaction(t *testing.T, config *pgx.ConnConf
 	if fields := encodedFields(legacy); fields["blueprint"] != nil {
 		t.Fatal("legacy blueprint leaked")
 	}
-	if err = repo.CreateFaction(ctx, faction.Faction{ID: randomUUID(t), Name: "New", Doctrine: "Defend", Background: "New origins", OwnerID: "owner"}); err != nil {
+	if err = repo.CreateFaction(ctx, faction.Faction{ID: randomUUID(t), Name: "New", Doctrine: "Defend", Background: "New origins", OwnerID: "owner"}, 0); err != nil {
 		t.Fatal(err)
 	}
 }

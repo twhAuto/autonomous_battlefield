@@ -73,10 +73,15 @@ func TestReportFiltersFallbacksAllVersionsAndTruncates(t *testing.T) {
 	}
 }
 
-func TestReportRejectsPlayersInvalidLeaguesAndStorageErrors(t *testing.T) {
-	player := authn.WithActor(context.Background(), authn.Actor{ID: "player", Role: authn.Player})
-	if _, err := New(&fakeRepo{}, "9").Report(player, Query{}); !errors.Is(err, authn.ErrForbidden) {
-		t.Fatalf("player err = %v", err)
+func TestReportRejectsServiceIdentitiesInvalidLeaguesAndStorageErrors(t *testing.T) {
+	for _, role := range []authn.Role{authn.Player, authn.Guest} {
+		if _, err := New(&fakeRepo{}, "9").Report(authn.WithActor(context.Background(), authn.Actor{ID: "viewer", Role: role}), Query{}); err != nil {
+			t.Fatalf("%s err = %v", role, err)
+		}
+	}
+	ci := authn.WithActor(context.Background(), authn.Actor{ID: "ci", Role: authn.CI})
+	if _, err := New(&fakeRepo{}, "9").Report(ci, Query{}); !errors.Is(err, authn.ErrForbidden) {
+		t.Fatalf("service identity err = %v", err)
 	}
 	if _, err := New(&fakeRepo{}, "9").Report(context.Background(), Query{}); !errors.Is(err, authn.ErrForbidden) {
 		t.Fatalf("anonymous err = %v", err)

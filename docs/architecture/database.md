@@ -16,7 +16,7 @@ places its volume on the retained `battlefield-retained` storage class.
 
 | Process | Login | Reads and writes |
 | --- | --- | --- |
-| API (`cmd/server`) | `DATABASE_URL` (application login) | Factions, battle creation, generation jobs, model access, Player membership; reads battles, events and decisions for inspection, and replay frames for replays |
+| API (`cmd/server`) | `DATABASE_URL` (application login) | Factions, battle creation, generation jobs, model access, Player membership, people's roles and display names; reads battles, events and decisions for inspection, and replay frames for replays |
 | Engine (`cmd/engine`) | `DATABASE_URL` (application login) | Battle claims, ticks and state, events, replay frames, decision windows and fallbacks, expiry sweeps |
 | Migration job (`cmd/server -migrate`) | `DATABASE_URL` (application login) | Schema changes; needs `CREATEROLE` the first time `00004` runs |
 | AI gateway (`cmd/aigateway`) | `AI_GATEWAY_DATABASE_URL`, a login that inherits only `battlefield_ai_gateway` | Decision and generation claims, context reads, plan submission, usage and failures |
@@ -40,8 +40,8 @@ schema lifecycle. Grants (restated in full by `00017`):
 | `battle_runs` | `SELECT(decision_budget_exempt)`, read by claim admission | `00022` |
 | `agent_execution_leases` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` | `00011` |
 
-The role has no access to battle events, battle state, replay frames, factions, membership or
-policy tables beyond these columns. When `AI_GATEWAY_DATABASE_URL` is absent, the
+The role has no access to battle events, battle state, replay frames, factions, membership,
+people or policy tables beyond these columns. When `AI_GATEWAY_DATABASE_URL` is absent, the
 deployment scripts use the pre-rename `MCP_DATABASE_URL` if present, and otherwise
 reuse `DATABASE_URL`, which is acceptable only for local development. Production
 must supply the restricted login
@@ -64,13 +64,14 @@ must supply the restricted login
 | `runtime_policy` | Singleton: AI stop switch, battle allowances, per-battle model budget, CLI concurrency | Row lock serializes every admission decision |
 | `agent_execution_leases` | Active CLI execution slots, keyed by decision or generation ID | Rows expire with their lease and are pruned on admission |
 | `model_access_policy` | Singleton administrator model-access policy | `version` rejects conflicting saves |
-| `player_members` / `player_membership_sync` / `player_membership_audit` | Managed Player and Tester grants with each member's role, Cloudflare Access group synchronization state, and audit history | Unique email; versioned desired and synced state. `role` is `player` or `tester`; a role change keeps the version. Audit actions are `grant`, `remove`, `retry`, `import` and `role`, with the role set by a grant, import or role change |
+| `player_members` / `player_membership_sync` / `player_membership_audit` | Managed Player and Tester grants with each member's role, Cloudflare Access group synchronization state, and audit history | Unique email; versioned desired and synced state. `role` is `player` or `tester`; a role change keeps the version. Audit actions are `grant`, `remove`, `retry`, `import` and `role`, with the role set by a grant, import or role change. Removed members [expire](#expiry); deleting one sets its audit rows' `member_id` to null and keeps them |
+| `people` | One row per Admin, Tester or Player who has read their session or set a name: role as last recorded, optional display name | Written by the API; Guests and service identities are never stored. `role` is `admin`, `tester` or `player`. `display_name` is null or 3–24 letters, digits, spaces, hyphens or underscores with no leading or trailing space (check constraint), unique ignoring case. Owner IDs in other tables are not foreign keys to it: an owner without a row is labelled as unnamed |
 | `battle_controller_evaluation` (view) | Per-controller decision count, fallback and invalid-plan rates, latency, tokens, plan diversity and win rate | Readable by the AI gateway role. `GET /v1/analytics` reports these figures by model and reasoning effort as well, from `battle_runs` and `battle_decisions` |
 | `friend_ai_usage` (view) | Model usage per identity across decisions and generation jobs | Private reporting view |
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
 These diagrams show every column of every table, generated from the schema after
-migration `00028` with keys marked `PK` and `FK`. Update them with any schema
+migration `00030` with keys marked `PK` and `FK`. Update them with any schema
 change. Battles snapshot faction data instead of referencing `factions`, so
 deleting a faction never changes a battle. Gameplay content lives in the frozen
 scenario and state JSON of `battle_runs`, not in relational columns: each battle
@@ -290,11 +291,17 @@ erDiagram
     }
 ```
 
-### Player membership
+### People and Player membership
 
 ```mermaid
 erDiagram
-    PLAYER_MEMBERS ||--o{ PLAYER_MEMBERSHIP_AUDIT : "audited by"
+    PLAYER_MEMBERS |o--o{ PLAYER_MEMBERSHIP_AUDIT : "audited by"
+    PEOPLE {
+        text actor_id PK
+        text display_name
+        text role
+        timestamptz updated_at
+    }
     PLAYER_MEMBERS {
         uuid id PK
         text email
@@ -350,6 +357,7 @@ same migrated schema, are:
 | `faction_background_generations` | `faction_generation_quota` | `(actor_id, created_at)` | Daily allowance counts |
 | `agent_execution_leases` | `agent_execution_expiry` | `(expires_at)` | Pruning and counting active CLI leases |
 | `player_members` | `player_members_email_key` | Unique `(email)` | One membership per email |
+| `people` | `people_display_name_key` | Unique `(lower(display_name))`; nulls never conflict | Display names unique ignoring case |
 
 ## Coordination patterns
 
@@ -410,6 +418,14 @@ Background generation is admitted in application code under the actor's
 (default 10) jobs per UTC day, counting queued jobs that later expire, with one
 active job per actor and same-key retries reusing the existing job.
 
+A Player's faction create is also admitted in application code. One transaction
+takes advisory lock `pg_advisory_xact_lock(741928330, hashtext(owner_id))`, checks
+that the owner owns no faction, and inserts, so concurrent creates by one owner
+run one after another and the later one sees the earlier faction. An `id` already
+in use skips the check and reaches the unique constraint, as a retry does. Tester
+and Admin creates take no lock. The [faction rules](api.md#factions) state the
+limit.
+
 ### Wake-up notifications
 
 Inserting a model decision runs `pg_notify('battlefield_decision_ready', profile_id)`.
@@ -449,6 +465,12 @@ accepted.
   queued job past its expiry becomes `expired` (`queue_timeout`); a running one
   becomes `failed` (`timeout`).
 - **CLI leases:** pruned on every admission and deleted when usage is reported.
+- **Removed members:** each API replica's membership reconciler purges when it
+  starts and then hourly. It deletes a member, and with it the email, once the member
+  was removed more than seven days ago and Cloudflare has confirmed the removal; a
+  removal still awaiting confirmation is kept. The purge takes the singleton
+  desired-state lock that membership changes take, so a concurrent grant either
+  restores the member first or creates a new member afterwards.
 
 ## Migrations
 

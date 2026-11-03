@@ -2,11 +2,15 @@ import { useContext, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { SessionContext } from '../../auth/SessionContext'
 import { RolePreviewContext, previewRoleNames, type PreviewRole } from '../../auth/RolePreviewContext'
-import { getModelSettings, saveModelSettings, type AccessPolicy, type AccessRole, type ModelAccess, type ModelSettings } from '../api/settings'
+import { getModelSettings, modelRoles, saveModelSettings, type AccessPolicy, type AccessRole, type ModelAccess, type ModelSettings } from '../api/settings'
 
 type ModelProfile = ModelSettings['models'][number]
 
 const roleNames: Record<AccessRole, string> = { admin: 'Administrator', tester: 'Tester', player: 'Player' }
+const roles = Object.keys(roleNames) as AccessRole[]
+function toggled(values: AccessRole[], role: AccessRole) {
+  return values.includes(role) ? values.filter(value => value !== role) : [...values, role]
+}
 function Switch({ checked, label, disabled, onChange }: Readonly<{ checked: boolean; label: string; disabled: boolean; onChange(): void }>) {
   return <button className="admin-switch" type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={onChange}>{checked ? 'On' : 'Off'}</button>
 }
@@ -26,19 +30,24 @@ function saveStatus(saving: boolean, saved: boolean, dirty: boolean) {
 function ModelAccessCard({ model, access, providerEnabled, saving, onChange }: Readonly<{
   model: ModelProfile; access: ModelAccess; providerEnabled: boolean; saving: boolean; onChange(access: ModelAccess): void
 }>) {
-  function toggleRole(role: AccessRole) {
-    const allowedRoles = access.allowedRoles.includes(role)
-      ? access.allowedRoles.filter(value => value !== role)
-      : [...access.allowedRoles, role]
-    onChange({ ...access, allowedRoles })
+  function toggleModelRole(option: string, role: AccessRole) {
+    onChange({ ...access, models: { ...access.models, [option]: { allowedRoles: toggled(modelRoles(access, option), role) } } })
   }
+  const options = model.modelOptions ?? []
+  const locked = saving || !access.enabled || !providerEnabled
   return <article className="admin-model">
     <div className="admin-model-heading"><h4>{model.displayName}</h4><Switch label={`${model.displayName} model access`} checked={access.enabled} disabled={saving || !providerEnabled} onChange={() => onChange({ ...access, enabled: !access.enabled })} /></div>
     <p>{model.modelLabel || 'Default model'} · {model.runtime === 'cli' ? 'CLI subscription' : 'API'}</p>
     <p className={model.available ? 'admin-available' : 'admin-unavailable'}>{availabilityLabel(model, access, providerEnabled)}</p>
-    <fieldset disabled={saving || !access.enabled || !providerEnabled} className="admin-roles"><legend>Allowed roles</legend>
-      {(Object.keys(roleNames) as AccessRole[]).map(role => <label key={role}><input type="checkbox" checked={access.allowedRoles.includes(role)} onChange={() => toggleRole(role)} />{roleNames[role]}</label>)}
+    <fieldset disabled={locked} className="admin-roles"><legend>Allowed roles</legend>
+      {roles.map(role => <label key={role}><input type="checkbox" checked={access.allowedRoles.includes(role)} onChange={() => onChange({ ...access, allowedRoles: toggled(access.allowedRoles, role) })} />{roleNames[role]}</label>)}
     </fieldset>
+    {options.length > 0 && <fieldset disabled={locked} className="admin-model-roles"><legend>Allowed roles per model</legend>
+      <p className="admin-note">Each model can be limited to some of the roles allowed above.</p>
+      {options.map(option => <fieldset key={option.id} className="admin-model-role"><legend>{option.id}</legend>
+        {roles.map(role => <label key={role}><input type="checkbox" checked={modelRoles(access, option.id).includes(role)} disabled={!access.allowedRoles.includes(role)} onChange={() => toggleModelRole(option.id, role)} />{roleNames[role]}</label>)}
+      </fieldset>)}
+    </fieldset>}
     {model.runtime === 'cli' && <p className="admin-note">Selecting Player allows players to start AI work on the CLI host. Usage quotas and runtime availability still apply.</p>}
   </article>
 }

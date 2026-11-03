@@ -185,7 +185,7 @@ func TestLeagueRoutesMapErrors(t *testing.T) {
 		{"bad limit", authn.Tester, http.MethodGet, "/v1/leagues?limit=zero", "", nil, 400, ""},
 		{"zero limit", authn.Tester, http.MethodGet, "/v1/leagues?limit=0", "", nil, 400, ""},
 		{"limit too high", authn.Tester, http.MethodGet, "/v1/leagues?limit=101", "", nil, 400, ""},
-		{"player list", authn.Player, http.MethodGet, "/v1/leagues", "", nil, 403, ""},
+		{"service identity list", authn.CI, http.MethodGet, "/v1/leagues", "", nil, 403, ""},
 		{"list failure", authn.Tester, http.MethodGet, "/v1/leagues", "", func(h *harness) { h.repo.err = errors.New("database down") }, 500, ""},
 		{"slot read failure", authn.Tester, http.MethodGet, "/v1/leagues", "", func(h *harness) { h.repo.slotsErr = errors.New("database down") }, 500, ""},
 		{"missing league", authn.Tester, http.MethodGet, "/v1/leagues/" + testLeagueID, "", nil, 404, ""},

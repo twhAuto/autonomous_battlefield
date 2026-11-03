@@ -8,8 +8,6 @@ import (
 	"strconv"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
@@ -31,13 +29,18 @@ func (h *Handler) ListBattles(w http.ResponseWriter, r *http.Request) {
 		failure{event: "battle_history_read_failed", message: "could not list battles"}) {
 		return
 	}
-	if authn.GameplayOnly(r.Context()) {
-		for i := range page.Battles {
-			for j := range page.Battles[i].Participants {
-				p := &page.Battles[i].Participants[j]
-				p.Controller = game.ControllerConfig{Type: p.Controller.Type}
-			}
-		}
-	}
+	h.labelOwners(r, page.Battles)
 	_ = httpapi.WriteJSON(w, http.StatusOK, page)
+}
+
+// labelOwners names every row's owner with one lookup for the page.
+func (h *Handler) labelOwners(r *http.Request, battles []battleservice.BattleSummary) {
+	owners := make([]string, len(battles))
+	for i, battle := range battles {
+		owners[i] = battle.OwnerID
+	}
+	labels := h.ownerNames(r, owners)
+	for i := range battles {
+		battles[i].OwnerName = labels[battles[i].OwnerID]
+	}
 }

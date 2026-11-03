@@ -19,8 +19,10 @@ Testers assigned in `BATTLEFIELD_ACCESS_ROLES`.
    owns this group's complete contents, including its name, include/exclude rules,
    and empty require list; do not share it with other apps or edit it manually.
 4. Add an **Allow** policy to the game: **Include → Access groups → Battlefield
-   managed Players**, **Require → Login Methods → One-time PIN**. Login Methods
-   must be a Require rule, not an additional Include rule. Keep the Admin MFA
+   managed Players**, **Require → Login Methods → One-time PIN**, and
+   **Multi-factor authentication → Disable MFA** so the account's global MFA
+   setting does not apply. Login Methods must be a Require rule, not an additional
+   Include rule. Keep the Admin MFA
    policy, any policy for configured Testers and the CI service policy separate.
    Remove any older Player-specific Allow rules so this group is the sole
    admission path for managed members. These are manual Access
@@ -75,7 +77,10 @@ Tester [permissions](../architecture/api.md#roles-and-ownership) and
 [battle allowance](../architecture/api.md#admission-limits). Changing an active
 member's role in its row applies to the member's next API request without a
 Cloudflare update, because every managed member belongs to the same group. A
-removed member keeps its role, and **Grant access** on its row restores it.
+removed member keeps its role, and **Grant access** on its row restores it, until
+the member [expires](../architecture/database.md#expiry) and leaves the list.
+Granting that email afterwards is a new invitation, as a Player unless you choose
+Tester.
 
 **Remove access** denies subsequent game API requests as soon as the database
 change commits, including requests with a previously valid JWT. Cloudflare group
@@ -114,15 +119,18 @@ For errors, check the configured account/group IDs, token expiry/permissions, an
 API network access to `https://api.cloudflare.com`. API logs emit
 `player_members_sync_failed` with a sanitized HTTP status or transport/database/timeout
 category, without credentials or Cloudflare response bodies. Expected concurrent-edit
-serialization retries use debug-level `player_members_sync_retry`.
+serialization retries use debug-level `player_members_sync_retry`. A purge of expired
+members logs `player_members_purged` with a count, or `player_members_purge_failed`
+with a fixed reason, never an email; a failed purge retries an hour later.
 Configured Admin and Tester authentication remains available independently of
 the membership lookup. Member lookup failures deny access; they never fall back to
 static roles.
 Managed configuration, including imported Player email syntax/length, is validated
 before opening the API database pool; invalid configuration fails startup with a
 setting-level error and does not log an address. Domains must use dotted DNS names,
-not address literals. Restarting recovers pending work and never repeats the initial import or deletes
-removed-member records. A request timeout may have updated Cloudflare remotely;
+not address literals. Restarting recovers pending work and never repeats the initial import; removed-member
+records stay until they [expire](../architecture/database.md#expiry), and a restart
+deletes only those already expired. A request timeout may have updated Cloudflare remotely;
 the next attempt repairs the complete list before activating pending members.
 
 Rotate the token in private `.env`, run configuration validation and the normal

@@ -34,21 +34,30 @@ export function createApiClient(ErrorType: new (message: string) => Error, notif
 }
 
 /**
- * Reads the human message from an API error response. The server sends a JSON
- * `{ error: { code, message, requestId } }` envelope; plain-text bodies from older
- * servers or intermediaries are still accepted. Returns '' when there is no message.
+ * Reads the stable code and human message from an API error response. The server
+ * sends a JSON `{ error: { code, message, requestId } }` envelope; plain-text bodies
+ * from older servers or intermediaries are still accepted as a message without a
+ * code. Missing parts are ''.
  */
-export async function errorMessage(response: Response): Promise<string> {
+export async function errorDetail(response: Response): Promise<{ code: string; message: string }> {
   const text = (await response.text()).trim()
-  if (!text) return ''
+  if (!text) return { code: '', message: '' }
   try {
     const body: unknown = JSON.parse(text)
-    const message = typeof body === 'object' && body !== null && 'error' in body
-      ? (body as { error?: { message?: unknown } }).error?.message
+    const error = typeof body === 'object' && body !== null && 'error' in body
+      ? (body as { error?: { code?: unknown; message?: unknown } }).error
       : undefined
     // Never surface raw JSON: an unrecognised JSON body yields no message.
-    return typeof message === 'string' ? message.trim() : ''
+    return {
+      code: typeof error?.code === 'string' ? error.code : '',
+      message: typeof error?.message === 'string' ? error.message.trim() : '',
+    }
   } catch {
-    return text
+    return { code: '', message: text }
   }
+}
+
+/** Reads the human message from an API error response; '' when there is none. */
+export async function errorMessage(response: Response): Promise<string> {
+  return (await errorDetail(response)).message
 }

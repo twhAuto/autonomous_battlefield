@@ -59,7 +59,7 @@ func TestGetReportErrors(t *testing.T) {
 		{"bad since", authn.Tester, "/v1/analytics?since=yesterday", nil, http.StatusBadRequest},
 		{"bad fallback flag", authn.Tester, "/v1/analytics?excludeFallback=maybe", nil, http.StatusBadRequest},
 		{"bad league", authn.Tester, "/v1/analytics?leagueId=league", nil, http.StatusBadRequest},
-		{"player", authn.Player, "/v1/analytics", nil, http.StatusForbidden},
+		{"service identity", authn.CI, "/v1/analytics", nil, http.StatusForbidden},
 		{"storage", authn.Admin, "/v1/analytics", errors.New("database down"), http.StatusInternalServerError},
 	} {
 		if response := serve(t, &fakeRepo{err: test.err}, test.role, test.target); response.Code != test.status {

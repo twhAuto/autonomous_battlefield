@@ -109,16 +109,22 @@ func (s *Store) Start(ctx context.Context) (stop func(), err error) {
 }
 
 // Run stops on process cancellation. Requests and transactions have their own
-// deadlines, and each API replica may safely run this loop.
+// deadlines, and each API replica may safely run this loop. It also purges expired
+// removed members, first on start and then every purgeInterval.
 func (s *Store) Run(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
+	var purged time.Time
 	for {
 		if ctx.Err() != nil {
 			return
 		}
 		if err := s.Reconcile(ctx); err != nil && ctx.Err() == nil {
 			logSyncFailure(err)
+		}
+		if time.Since(purged) >= purgeInterval {
+			purged = time.Now()
+			s.expire(ctx)
 		}
 		select {
 		case <-ctx.Done():

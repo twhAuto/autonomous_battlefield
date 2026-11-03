@@ -21,7 +21,10 @@ public for infrastructure probes; everything under `/v1` follows the rules below
 | `disabled-development` | Shared `local-development` identity for every client; never a production mode. |
 
 `GET /v1/auth/session` is always public so a client can learn the mode; an
-unauthenticated caller receives `401` with a session body rather than an error.
+unauthenticated caller receives `401` with a session body rather than an error. For
+an Admin, Tester or Player it also records the caller's current role and returns
+their [display name](#display-names) as `actor.displayName` once one is set; it
+returns `503` if that record cannot be read or written.
 Unsafe browser requests must send the configured `Origin`, and nonempty bodies
 must be `application/json`. Missing or invalid credentials return `401`; a missing
 role or permission never grants access. See the
@@ -41,24 +44,44 @@ to.
 Faction and battle responses carry a server-assigned `ownerId`. Updating or
 deleting a faction, and stopping, pausing or resuming a battle, require ownership
 or the Admin role. Players can read shared factions, battles, events, replays,
-history and decision history, but receive gameplay-only responses: events and
-replay events without payloads, battles without inspection fields, decisions with
-only their status and applied plan, and a reduced model-profile list. Saved
-decision context, [leagues](#leagues) and [analytics](#analytics) require Tester
-or Admin; only Admins create or cancel a league or disqualify its entrants.
+history, decision history, [leagues](#leagues) and [analytics](#analytics), but
+receive gameplay-only responses: events and replay events without payloads,
+battles without inspection fields but with each side's controller and league,
+decisions with only their status and applied plan, and a reduced model-profile
+list. Saved decision context requires Tester or Admin; only Admins create or cancel
+a league or disqualify its entrants.
 
 Guests only view. Every token from the guest Access application is a Guest,
 whatever its email, and guests are off unless that application is configured.
 Guests read the scenario catalog, factions, faction rulesets, battle history,
-battles, faction views, events, replays and decision history, with the Player
-projection. Every other route returns `403`, including model profiles, the battle
+battles, faction views, events, replays, decision history, leagues and analytics,
+with the Player projection. Every other route returns `403`, including model profiles, the battle
 allowance, background generation and every mutation, and Guests own nothing they
 can manage.
 
 Selecting a model controller, for a battle or for background generation, requires
-an enabled, verified profile and a role allowed by the
-[model access policy](#model-access-administration). Players need explicit
-approval for each API and CLI profile.
+an enabled, verified profile and a role the
+[model access policy](#model-access-administration) allows for both the profile and
+the model. Players need explicit approval for each API and CLI profile.
+
+### Display names
+
+`PUT /v1/profile` sets the caller's own display name. Players, Testers and Admins
+may call it; Guests receive `403`. The name is trimmed, must be 3 to 24 letters,
+digits, spaces, hyphens or underscores (`400` otherwise), and must not match
+another person's name ignoring case (`409 conflict`); saving one's own name again in
+another case succeeds. Names can be changed at any time. The
+[frontend guide](../developer/frontend-guide.md#routes-and-session) describes when the
+web app asks for one.
+
+Factions from `GET /v1/factions`, battle history rows, and the battle returned by
+`GET /v1/battles/{id}` and by stop, pause and resume carry `ownerName` for every
+role, Guests included: `Admin` for anything an Admin owns, league battles and
+`legacy-admin` rows included; otherwise the owner's display name, or
+`Unnamed commander` before they choose one. The label follows the owner's role as
+last recorded by their session, so an Admin's items say `Admin` whatever name they
+hold. No response names another person by email. When names cannot be read
+promptly, responses omit `ownerName` instead of waiting or failing.
 
 ### Admission limits
 
@@ -78,6 +101,7 @@ people's battles are admitted. Paused battles are unfinished. A
 retry that reuses a request's identifier with the same inputs and identity
 returns the work already admitted rather than consuming another allowance. League
 battles are Admin battles and also skip the per-battle model decision budget.
+Faction ownership has its own [Player limit](#factions).
 
 `GET /v1/battles/allowance` reports the caller's battle counts and limits from the
 same counts admission uses, without reserving anything, so a start can still
@@ -139,9 +163,19 @@ and `/metrics` are outside the OpenAPI contract.
 
 The client chooses the faction `id`, so creation is safe to retry: the same `id`,
 caller and trimmed content returns `201` again without another write, while a
-different caller or content returns `409`. Names, doctrines and backgrounds are
-trimmed before storage. Doctrine is limited to 4,000 and background to 1,000
-Unicode characters, not UTF-8 bytes; a missing background means empty.
+different caller or content returns `409 already_exists`.
+
+A Player can own one faction at a time. While they own any, creating one with a new
+`id` returns `409 conflict` with the message `players can own only one faction at a
+time`; deleting their faction lets them create another. The limit only blocks
+creation: a Player who owns several factions, such as a Tester whose role became
+Player, keeps them all but cannot create another until they own none. Testers and
+Admins have no faction limit. Concurrent creates by one Player cannot both succeed;
+the [database guide](database.md#admission-triggers) describes the lock.
+
+Names, doctrines and backgrounds are trimmed before storage. Doctrine is limited to
+4,000 and background to 1,000 Unicode characters, not UTF-8 bytes; a missing
+background means empty.
 
 The cosmetic `emblem` field accepts `star`, `crown`, `shield`, `swords`, `wolf`,
 `raven`, `serpent`, `tree`, `leaf`, `flame`, `sun`, or `moon`. Omitted or empty
@@ -301,7 +335,7 @@ of lookups it made. A request belonging to another battle or attempt returns
 ## Leagues
 
 A league plays AI entrants against each other in background battles. Admins create
-and cancel leagues and disqualify entrants; Testers and Admins read them.
+and cancel leagues and disqualify entrants; every signed-in role reads them.
 
 `POST /v1/leagues` takes a client-supplied `id`, a `name`, one to five
 `scenarioIds`, the battle timing (`tickCount`, optional `tickDuration` and
@@ -373,7 +407,7 @@ champion. Repeating it returns `200` with the league unchanged.
 
 ## Analytics
 
-`GET /v1/analytics` summarizes completed battles for Testers and Admins: per
+`GET /v1/analytics` summarizes completed battles for every signed-in role: per
 controller (scripted, or profile, model and reasoning effort) the win, draw and loss
 record, castle wins, a 95% Wilson interval on the win rate, mean ticks to win,
 fallback and invalid-plan rates, mean decision latency and tokens per battle; the
@@ -403,8 +437,9 @@ sees only their own jobs; with authentication disabled, every client shares the
 Admission allows 10 requests per actor per UTC day, at least 30 seconds apart, and
 one queued or running job. A repeated `idempotencyKey` with the same normalized
 input returns the original job without another charge; the same key with
-different input returns `409`. Validation failures (`400`) and unavailable or
-disabled profiles (`503`) reserve no quota. A limit returns `429` with
+different input returns `409`. Validation failures (`400`) reserve no quota, and
+neither do unavailable or disabled profiles (`503`), which include a profile or
+configured model the caller's role [may not use](#model-access-administration). A limit returns `429` with
 `Retry-After` and the retry and reset times. Options and job reads are `no-store`.
 
 Queued jobs expire after five minutes, and running jobs time out after two; both
@@ -426,7 +461,9 @@ requests immediately. A grant may name the role: a new member without one is a
 Player, and an existing member keeps its role unless the grant names another.
 Changing only the role of an active member leaves `version` unchanged, so it
 applies to the member's next request. Admin cannot be assigned here, and any other
-role returns `400`. Repeating an unchanged grant or removal is idempotent. Emails
+role returns `400`. Repeating an unchanged grant or removal is idempotent. The list includes
+removed members until they [expire](database.md#expiry); a grant after that creates
+a new member. Emails
 are trimmed and lowercased, and must use a dotted DNS domain, a local part of at
 most 64 bytes and a total of at most 254 bytes. A configured Admin or Tester email
 returns `409`. `syncError` is a sanitized group-level failure, and automatic
@@ -443,6 +480,23 @@ roles drawn once each from `admin`, `tester` and `player`; an empty
 restricts only new battle selections and generation admissions, and cannot enable a
 profile whose credentials or runtime are unavailable. See
 [model access and role preview](system-architecture.md#model-access-and-role-preview).
+
+A profile entry's optional `models` map narrows its
+[model options](#model-and-effort-selection) by role. Each key must be one of the
+profile's option IDs and each `allowedRoles` a subset of the profile's own, or the
+`PUT` returns `400`; an empty list denies everyone. A model without an entry,
+including every model of a profile entry without `models`, allows every role its
+profile allows. `GET` omits entries for models outside the profile's options.
+
+A caller's role must be allowed both the profile and the chosen model.
+`GET /v1/model-profiles` lists only the models the caller's role may use and omits a
+profile whose models it may use none of. When the role may not use the profile's
+configured model, `modelLabel` names the first option it may use, and a model
+controller without `modelIdentifier` selects that option. Battle and league creation
+return `403 permission_denied` for a model the role may not use; league entrants are
+checked with the Admin role that owns league battles. Background generation runs its
+profile's configured model, so it is unavailable to a role that may not use that
+model.
 
 ### Upgrade-level orders
 
@@ -465,12 +519,14 @@ emit `unit_repaired` events and use support-action target markers.
 
 ## Model and effort selection
 
-`GET /v1/model-profiles` includes `modelOptions` for authorized profiles, including
-Player-visible profiles. Each option contains `id`, `reasoningEfforts`, and an
-optional `defaultReasoningEffort`. An absent option list means only the configured
-model is selectable. `POST /v1/battles` accepts optional `modelIdentifier` and
-`reasoningEffort` in each model controller. Unsupported combinations return 422;
-scripted controllers reject these model fields. Profile role checks still apply.
+`GET /v1/model-profiles` includes `modelOptions` for each listed profile, limited to
+the models the caller's role may use. Each option contains `id`, `reasoningEfforts`,
+and an optional `defaultReasoningEffort`. An absent option list means only the
+configured model is selectable. `POST /v1/battles` accepts optional `modelIdentifier`
+and `reasoningEffort` in each model controller. Unsupported combinations return 422;
+scripted controllers reject these model fields. The
+[model access](#model-access-administration) role checks for the profile and the
+model still apply.
 The selection is frozen for execution and retry matching. Provider aliases remain
 aliases, rather than promises of a specific underlying version.
 

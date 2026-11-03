@@ -128,6 +128,35 @@ describe('App', () => {
     expect(authentication.logout).toHaveBeenCalledTimes(2)
   })
 
+  it('shows a signing-out screen while the browser leaves for the Access logout page', async () => {
+    const authentication: AuthenticationClient = { session: vi.fn(), login: vi.fn(), logout: vi.fn().mockResolvedValue(true) }
+    const user = userEvent.setup()
+    render(<MemoryRouter><App authentication={authentication} initialSession={{
+      enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'test-admin', role: 'admin' },
+    }} /></MemoryRouter>)
+
+    await user.click(screen.getByRole('button', { name: 'Log out test-admin' }))
+    expect(await screen.findByRole('heading', { name: 'Signing out…' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Sign in to Battlefield' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button').map(button => button.textContent)).toEqual(['SIGN OUT AGAIN→'])
+  })
+
+  it('offers the Access logout again when the browser stayed, and returns to the app if it fails', async () => {
+    const authentication: AuthenticationClient = { session: vi.fn(), login: vi.fn(), logout: vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockRejectedValueOnce(new Error('offline')) }
+    const user = userEvent.setup()
+    render(<MemoryRouter><App authentication={authentication} initialSession={{
+      enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'test-admin', role: 'admin' },
+    }} /></MemoryRouter>)
+
+    await user.click(screen.getByRole('button', { name: 'Log out test-admin' }))
+    await user.click(await screen.findByRole('button', { name: /sign out again/i }))
+    expect(authentication.logout).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('heading', { name: 'Signing out…' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /sign out again/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Logout could not be confirmed. Try Log out again.')
+    expect(screen.getByRole('heading', { name: 'Main menu' })).toBeInTheDocument()
+  })
+
   it.each(['local-password', 'cloudflare'])('signs out an expired %s session when logout returns 401', async (mode) => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 401 }))
     const user = userEvent.setup()
@@ -143,20 +172,16 @@ describe('App', () => {
 
   it.each(['admin', 'tester', 'player'] as const)('offers the %s main-menu destinations allowed by primary navigation', (role) => {
     render(<MemoryRouter><App initialSession={{
-      enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'test-user', role },
+      enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'test-user', role, displayName: 'Iron Duke' },
     }} /></MemoryRouter>)
     const menu = screen.getByRole('region', { name: 'Main menu' })
 
     expect(within(menu).getByRole('heading', { name: 'Factions' }).closest('a')).toHaveAttribute('href', '/factions')
     expect(within(menu).getByRole('link', { name: /stage battle/i })).toHaveAttribute('href', '/battles/new')
     expect(within(menu).getByRole('link', { name: /battle history/i })).toHaveAttribute('href', '/battles')
-    expect(within(menu).getAllByRole('link')).toHaveLength(role === 'player' ? 3 : 5)
+    expect(within(menu).getAllByRole('link')).toHaveLength(5)
     for (const [name, href] of [['Leagues', '/leagues'], ['Statistics', '/analytics']]) {
-      if (role === 'player') {
-        expect(within(menu).queryByRole('link', { name })).not.toBeInTheDocument()
-      } else {
-        expect(within(menu).getByRole('link', { name })).toHaveAttribute('href', href)
-      }
+      expect(within(menu).getByRole('link', { name })).toHaveAttribute('href', href)
     }
   })
 
@@ -166,7 +191,7 @@ describe('App', () => {
       policy: { providers: {}, profiles: {} },
       models: [],
     })))
-    const playerSession: AuthSession = { enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'player', role: 'player' } }
+    const playerSession: AuthSession = { enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'player', role: 'player', displayName: 'Iron Duke' } }
     const { unmount } = render(<MemoryRouter initialEntries={['/admin']}><App initialSession={playerSession} /></MemoryRouter>)
     expect(screen.getByRole('heading', { name: 'This route is outside the mapped frontier.' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
@@ -833,7 +858,7 @@ it('uses Access reauthentication without offering the local password form', asyn
 
 it('prevents a Player from opening another person’s faction editor directly',async()=>{
  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({factions:[{id:firstId,name:'Shared',doctrine:'Defend',ownerId:'someone-else'}]}))))
- render(<MemoryRouter initialEntries={[`/factions/${firstId}/edit`]}><App initialSession={{enabled:true,authenticated:true,mode:'cloudflare',actor:{id:'friend',role:'player'}}}/></MemoryRouter>)
+ render(<MemoryRouter initialEntries={[`/factions/${firstId}/edit`]}><App initialSession={{enabled:true,authenticated:true,mode:'cloudflare',actor:{id:'friend',role:'player',displayName:'Friend'}}}/></MemoryRouter>)
  expect(await screen.findByText('You can only edit your own factions.')).toBeInTheDocument()
  expect(screen.queryByRole('button',{name:'SAVE FACTION'})).not.toBeInTheDocument()
 })

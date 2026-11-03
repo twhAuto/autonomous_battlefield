@@ -290,7 +290,11 @@ def main():
                             if code:
                                 report['command_exit'] = code
                                 raise ValueError('Rehearsal command failed')
-                command('scripts/cd/setup-environment.sh','production','default','k3s')
+                # A throwaway age identity for the rehearsal's encrypted pre-migration dumps.
+                identity=work/'backup-identity.txt'
+                subprocess.run(['age-keygen','-o',str(identity)],check=True,capture_output=True)
+                recipient=subprocess.run(['age-keygen','-y',str(identity)],check=True,capture_output=True,text=True).stdout.strip()
+                command('scripts/cd/setup-environment.sh','production','default','k3s',BACKUP_RECIPIENT=recipient)
                 env['KUBECONFIG']=str(registration/'kubeconfig')
                 app={'POSTGRES_DB':'battlefield','POSTGRES_USER':'battlefield','POSTGRES_PASSWORD':'synthetic-delivery-only',
                     'DATABASE_URL':'postgres://battlefield:synthetic-delivery-only@battlefield-postgres:5432/battlefield?sslmode=disable',
