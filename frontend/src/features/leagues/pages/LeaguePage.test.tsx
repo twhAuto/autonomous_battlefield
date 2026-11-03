@@ -1,6 +1,6 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { League } from '../api/leagues'
 import { LeaguePage, leagueRefreshMs } from './LeaguePage'
@@ -73,6 +73,21 @@ it('shows group tables and matches, the bracket and fixtures', async () => {
   expect(screen.queryByRole('link', { name: 'START AGAIN →' })).not.toBeInTheDocument()
   expect(screen.queryByRole('region', { name: 'Now playing' })).not.toBeInTheDocument()
   expect(screen.queryByRole('region', { name: 'Disqualifications' })).not.toBeInTheDocument()
+})
+
+function LocationState() {
+  return <output data-testid="state">{JSON.stringify(useLocation().state)}</output>
+}
+
+it('opens Statistics with the way back to this league', async () => {
+  vi.mocked(fetch).mockImplementation(async () => reply(200, sampleLeague()))
+  const user = userEvent.setup()
+  render(<MemoryRouter initialEntries={['/leagues/league-1']}><Routes>
+    <Route path="/leagues/:id" element={<LeaguePage canManage={false} />} />
+    <Route path="/analytics" element={<LocationState />} />
+  </Routes></MemoryRouter>)
+  await user.click(await screen.findByRole('link', { name: 'STATISTICS →' }))
+  expect(screen.getByTestId('state')).toHaveTextContent('{"backToLeague":"league-1"}')
 })
 
 it('puts running battles first with their tick progress', async () => {

@@ -1062,7 +1062,7 @@ paths:
           schema: {type: string, format: uuid}
         - name: rulesVersion
           in: query
-          description: Omit for the current rules version; `all` includes every version.
+          description: Omit for the current rules version, name one version to report only its battles, or pass `all` for every version.
           schema: {type: string}
         - name: since
           in: query

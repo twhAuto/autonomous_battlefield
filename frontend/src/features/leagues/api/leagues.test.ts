@@ -59,9 +59,11 @@ describe('analytics requests', () => {
   it('sends only the chosen filters', async () => {
     vi.mocked(fetch).mockImplementation(async () => reply(200, { battles: 0 }))
     await getAnalytics({})
-    await getAnalytics({ leagueId: 'x', allRules: true, excludeFallback: true })
+    await getAnalytics({ leagueId: 'x', rulesVersion: 'all', excludeFallback: true })
+    await getAnalytics({ rulesVersion: '12' })
     expect(String(vi.mocked(fetch).mock.calls[0][0])).toMatch(/\/v1\/analytics$/)
     expect(String(vi.mocked(fetch).mock.calls[1][0])).toContain('/v1/analytics?leagueId=x&rulesVersion=all&excludeFallback=true')
+    expect(String(vi.mocked(fetch).mock.calls[2][0])).toMatch(/\/v1\/analytics\?rulesVersion=12$/)
   })
 
   it('explains failures and names controllers', async () => {

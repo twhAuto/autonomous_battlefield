@@ -33,14 +33,21 @@ function Location() {
   return null
 }
 
-function serve(body: () => Response = () => reply(200, report())) {
-  vi.mocked(fetch).mockImplementation(async (input) => String(input).includes('/v1/leagues')
-    ? reply(200, { leagues: [{ id: 'league-1', name: 'Autumn cup' }] })
-    : body())
+const versions = () => reply(200, { current: '9', versions: ['9', '8'] })
+
+function serve(body: () => Response = () => reply(200, report()), rulesVersions = versions) {
+  vi.mocked(fetch).mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.includes('/v1/leagues')) return reply(200, { leagues: [{ id: 'league-1', name: 'Autumn cup' }] })
+    return url.includes('/v1/battles/rules-versions') ? rulesVersions() : body()
+  })
 }
 
-function show(path = '/analytics') {
-  return render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/analytics" element={<><AnalyticsPage /><Location /></>} /></Routes></MemoryRouter>)
+const analyticsCalls = () => vi.mocked(fetch).mock.calls.map(([input]) => String(input)).filter(url => url.includes('/v1/analytics'))
+const optionNames = (select: HTMLElement) => within(select).getAllByRole('option').map(option => option.textContent)
+
+function show(entry: string | { pathname: string; search?: string; state?: unknown } = '/analytics') {
+  return render(<MemoryRouter initialEntries={[entry]}><Routes><Route path="/analytics" element={<><AnalyticsPage /><Location /></>} /></Routes></MemoryRouter>)
 }
 
 beforeEach(() => { vi.stubGlobal('fetch', vi.fn()) })
@@ -78,25 +85,67 @@ it('keeps filters in the URL and refetches with them', async () => {
   const user = userEvent.setup()
   show()
   await screen.findByText('Win rate by controller')
-  await user.selectOptions(await screen.findByLabelText('Battles'), 'league-1')
-  await user.click(screen.getByRole('checkbox', { name: 'Every rules version' }))
+  const rules = screen.getByRole('combobox', { name: 'Rules' })
+  await screen.findByRole('option', { name: 'v9 (current)' })
+  expect(rules).toHaveDisplayValue('v9 (current)')
+  expect(optionNames(rules)).toEqual(['All versions', 'v9 (current)', 'v8'])
+  await screen.findByRole('option', { name: 'Autumn cup' })
+  await user.selectOptions(screen.getByLabelText('Battles'), 'league-1')
+  await user.selectOptions(rules, '8')
   await user.click(screen.getByRole('checkbox', { name: 'Leave out battles with scripted fallbacks' }))
-  expect(lastSearch).toBe('?leagueId=league-1&rules=all&fallback=exclude')
-  const calls = vi.mocked(fetch).mock.calls.map(([input]) => String(input)).filter(url => url.includes('/v1/analytics'))
-  expect(calls.at(-1)).toContain('leagueId=league-1&rulesVersion=all&excludeFallback=true')
+  expect(lastSearch).toBe('?leagueId=league-1&rulesVersion=8&fallback=exclude')
+  expect(analyticsCalls().at(-1)).toContain('leagueId=league-1&rulesVersion=8&excludeFallback=true')
+  await user.selectOptions(rules, 'all')
+  expect(analyticsCalls().at(-1)).toContain('rulesVersion=all')
   await user.selectOptions(screen.getByLabelText('Battles'), '')
-  expect(lastSearch).toBe('?rules=all&fallback=exclude')
+  await user.selectOptions(rules, '')
+  expect(lastSearch).toBe('?fallback=exclude')
+  expect(analyticsCalls().at(-1)).toMatch(/\/v1\/analytics\?excludeFallback=true$/)
 })
 
-it('links back to the selected league', async () => {
+it('treats a URL naming the current rules version as the default', async () => {
+  serve()
+  show('/analytics?rulesVersion=9')
+  const rules = await screen.findByRole('combobox', { name: 'Rules' })
+  await screen.findByRole('option', { name: 'v9 (current)' })
+  expect(rules).toHaveDisplayValue('v9 (current)')
+  expect(optionNames(rules)).toEqual(['All versions', 'v9 (current)', 'v8'])
+})
+
+it('keeps the current, every and chosen rules version when versions cannot load', async () => {
+  serve(undefined, () => reply(500, {}))
+  show('/analytics?rulesVersion=7')
+  await screen.findByText('Win rate by controller')
+  const rules = screen.getByRole('combobox', { name: 'Rules' })
+  expect(optionNames(rules)).toEqual(['All versions', 'Current version', 'v7'])
+  expect(rules).toHaveDisplayValue('v7')
+  expect(analyticsCalls().at(-1)).toContain('rulesVersion=7')
+})
+
+it('links back to the league it was opened from while filters change', async () => {
   serve()
   const user = userEvent.setup()
-  show('/analytics?leagueId=league-1')
+  show({ pathname: '/analytics', search: '?leagueId=league-1', state: { backToLeague: 'league-1' } })
   await screen.findByText('Win rate by controller')
   expect(screen.getByRole('link', { name: '← BACK TO LEAGUE' })).toHaveAttribute('href', '/leagues/league-1')
   expect(screen.getByRole('link', { name: '← MAIN MENU' })).toHaveAttribute('href', '/')
   await user.selectOptions(screen.getByLabelText('Battles'), '')
+  expect(lastSearch).toBe('')
+  expect(screen.getByRole('link', { name: '← BACK TO LEAGUE' })).toHaveAttribute('href', '/leagues/league-1')
+})
+
+it('offers no way back to a league that the URL or filter chose', async () => {
+  serve()
+  const user = userEvent.setup()
+  show('/analytics?leagueId=league-1')
+  await screen.findByText('Win rate by controller')
   expect(screen.queryByRole('link', { name: '← BACK TO LEAGUE' })).not.toBeInTheDocument()
+  await user.selectOptions(screen.getByLabelText('Battles'), '')
+  await screen.findByRole('option', { name: 'Autumn cup' })
+  await user.selectOptions(screen.getByLabelText('Battles'), 'league-1')
+  expect(lastSearch).toBe('?leagueId=league-1')
+  expect(screen.queryByRole('link', { name: '← BACK TO LEAGUE' })).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: '← MAIN MENU' })).toHaveAttribute('href', '/')
 })
 
 it('explains empty, truncated and failed reports', async () => {
@@ -123,7 +172,7 @@ it('drops the previous report when a filter change fails', async () => {
   show()
   expect(await screen.findByRole('table', { name: 'Faction records' })).toBeInTheDocument()
   fail = true
-  await user.click(screen.getByRole('checkbox', { name: 'Every rules version' }))
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Rules' }), 'all')
   expect(await screen.findByRole('alert')).toHaveTextContent('Statistics unavailable')
   expect(screen.queryByRole('table', { name: 'Faction records' })).not.toBeInTheDocument()
   expect(screen.queryByText('Win rate by controller')).not.toBeInTheDocument()

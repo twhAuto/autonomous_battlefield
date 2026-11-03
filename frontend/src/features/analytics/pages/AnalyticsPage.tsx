@@ -3,10 +3,14 @@
 // section; filters live in the URL.
 
 import { type ReactNode, useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { RulesVersionSelect } from '../../battles/components/RulesVersionSelect'
 import { listLeagues, type LeagueSummary } from '../../leagues/api/leagues'
 import { controllerKey, controllerName, getAnalytics, type AnalyticsReport, type Matchup, type ModelUnit } from '../api/analytics'
 import { percent, WinRateChart } from '../components/WinRateChart'
+
+/** Navigation state a league page's link sets so Statistics offers the way back to it. */
+export interface StatisticsOrigin { backToLeague: string }
 
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
 
@@ -14,10 +18,18 @@ function ratio(value: number | null, digits = 2) {
   return value === null ? '—' : value.toFixed(digits)
 }
 
+function originLeague(state: unknown) {
+  const league = (state as Partial<StatisticsOrigin> | null)?.backToLeague
+  return typeof league === 'string' ? league : ''
+}
+
 export function AnalyticsPage() {
   const [params, setParams] = useSearchParams()
+  const location = useLocation()
+  // The way back follows where the page was opened from, not the league filter.
+  const backToLeague = originLeague(location.state)
   const leagueId = params.get('leagueId') ?? ''
-  const allRules = params.get('rules') === 'all'
+  const rulesVersion = params.get('rulesVersion') ?? ''
   const excludeFallback = params.get('fallback') === 'exclude'
   const [report, setReport] = useState<AnalyticsReport | null>(null)
   const [leagues, setLeagues] = useState<LeagueSummary[]>([])
@@ -34,7 +46,7 @@ export function AnalyticsPage() {
     const controller = new AbortController()
     setLoading(true)
     setError('')
-    getAnalytics({ leagueId, allRules, excludeFallback }, controller.signal).then(result => {
+    getAnalytics({ leagueId, rulesVersion, excludeFallback }, controller.signal).then(result => {
       if (!controller.signal.aborted) setReport(result)
     }).catch((loadError: unknown) => {
       if (controller.signal.aborted) return
@@ -43,13 +55,13 @@ export function AnalyticsPage() {
       setError(loadError instanceof Error ? loadError.message : 'Statistics could not be loaded.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [leagueId, allRules, excludeFallback])
+  }, [leagueId, rulesVersion, excludeFallback])
 
   function setFilter(name: string, value: string) {
     const next = new URLSearchParams(params)
     if (value) next.set(name, value)
     else next.delete(name)
-    setParams(next)
+    setParams(next, { state: location.state })
   }
 
   return (
@@ -58,7 +70,7 @@ export function AnalyticsPage() {
         <Link className="back-link" to="/">← MAIN MENU</Link>
         <div className="hero__eyebrow"><span>06</span> STATISTICS</div>
         <div className="directory-title"><div><h1>Statistics</h1><p>Which models win, which units and upgrades decide battles, and whether maps and sides are fair, across completed battles.</p></div>
-          {leagueId && <Link className="compact-action" to={`/leagues/${encodeURIComponent(leagueId)}`}>← BACK TO LEAGUE</Link>}</div>
+          {backToLeague && <Link className="compact-action" to={`/leagues/${encodeURIComponent(backToLeague)}`}>← BACK TO LEAGUE</Link>}</div>
       </section>
       <form className="analytics-filters" aria-label="Statistics filters" onSubmit={event => event.preventDefault()}>
         <label>Battles <select value={leagueId} onChange={event => setFilter('leagueId', event.target.value)}>
@@ -68,7 +80,7 @@ export function AnalyticsPage() {
             {leagues.map(league => <option key={league.id} value={league.id}>{league.name}</option>)}
           </optgroup>
         </select></label>
-        <label><input type="checkbox" checked={allRules} onChange={event => setFilter('rules', event.target.checked ? 'all' : '')} /> Every rules version</label>
+        <RulesVersionSelect currentByDefault value={rulesVersion} onChange={version => setFilter('rulesVersion', version)} />
         <label><input type="checkbox" checked={excludeFallback} onChange={event => setFilter('fallback', event.target.checked ? 'exclude' : '')} /> Leave out battles with scripted fallbacks</label>
       </form>
       {error && <div className="directory-state directory-state--error" role="alert"><h2>Statistics unavailable</h2><p>{error}</p></div>}
