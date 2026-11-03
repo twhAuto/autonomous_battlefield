@@ -24,6 +24,24 @@ func TestVersionedSystemPromptIsEmbedded(t *testing.T) {
 	}
 }
 
+// The shared prefix must be identical for every faction and request, and end before
+// either appears, or a cached prefix would leak one decision's data into another.
+func TestSessionDecisionSharedPrefixExcludesFactionAndRequest(t *testing.T) {
+	a := ai.DecisionSession{RequestID: "request-a", FactionName: "North", Doctrine: "hold"}
+	b := ai.DecisionSession{RequestID: "request-b", FactionName: "South", Doctrine: "raid"}
+	n := SessionDecisionSharedBytes(a)
+	first, second := SessionDecision(a, nil), SessionDecision(b, nil)
+	if n != SessionDecisionSharedBytes(b) || first[:n] != DecisionInstructions+"\n" || second[:n] != first[:n] {
+		t.Fatalf("shared prefix differs between decisions: %d bytes", n)
+	}
+	if strings.Contains(first[:n], "North") || strings.Contains(first[:n], "request-a") {
+		t.Fatal("shared prefix contains faction or request data")
+	}
+	if SessionDecisionSharedBytes(ai.DecisionSession{JobType: "faction_background"}) != 0 {
+		t.Fatal("background generation has no shared decision prefix")
+	}
+}
+
 func TestDecisionPromptSharesPolicyAndSeparatesTransport(t *testing.T) {
 	session := ai.DecisionSession{RequestID: "request-123"}
 	tool := SessionDecision(session, nil)

@@ -38,7 +38,7 @@ func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 	if err != nil {
 		return ai.DecisionResult{ErrorCategory: "mcp_discovery"}, err
 	}
-	messages := []ai.Message{{Role: "user", Content: prompts.SessionDecision(session, nil)}}
+	messages := []ai.Message{{Role: "user", Content: prompts.SessionDecision(session, nil), SharedPrefixBytes: prompts.SessionDecisionSharedBytes(session)}}
 	usage := ai.Usage{Scope: "api_calls", ModelCalls: new(int64)}
 	for step := 0; step < session.Profile.MaxSteps; step++ {
 		turnCtx, span := generationSpan(ctx, session, "api_call")

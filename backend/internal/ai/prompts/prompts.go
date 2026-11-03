@@ -104,6 +104,17 @@ func SessionDecision(session ai.DecisionSession, inline []byte) string {
 	}
 	return prompt
 }
+
+// SessionDecisionSharedBytes is the length of the leading part of
+// SessionDecision(session, nil) that every battle decision shares: the decision
+// instructions, before the faction identity and request.
+func SessionDecisionSharedBytes(session ai.DecisionSession) int {
+	if session.JobType == "faction_background" {
+		return 0
+	}
+	return len(DecisionInstructions) + 1
+}
+
 func SessionToolNames(session ai.DecisionSession) []string {
 	if session.JobType == "faction_background" {
 		return []string{"get_background_context", "submit_faction_background"}

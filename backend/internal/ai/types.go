@@ -68,14 +68,16 @@ type ModelTurnResult struct {
 // "assistant" or "tool". An assistant message carries any text and the tool calls it
 // requested, plus the turn's ProviderContent when its provider returned one; a tool
 // message answers one call, identified by ToolCallID and Name, with the result in
-// Content.
+// Content. SharedPrefixBytes is the length of a leading part of Content that every
+// decision sends unchanged, which a provider with explicit prompt caching marks.
 type Message struct {
-	Role            string          `json:"role"`
-	Content         string          `json:"content"`
-	ToolCalls       []ToolCall      `json:"toolCalls,omitempty"`
-	ToolCallID      string          `json:"toolCallId,omitempty"`
-	Name            string          `json:"name,omitempty"`
-	ProviderContent json.RawMessage `json:"providerContent,omitempty"`
+	Role              string          `json:"role"`
+	Content           string          `json:"content"`
+	ToolCalls         []ToolCall      `json:"toolCalls,omitempty"`
+	ToolCallID        string          `json:"toolCallId,omitempty"`
+	Name              string          `json:"name,omitempty"`
+	ProviderContent   json.RawMessage `json:"providerContent,omitempty"`
+	SharedPrefixBytes int             `json:"-"`
 }
 
 type ToolDefinition struct {

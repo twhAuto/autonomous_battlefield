@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -61,6 +62,32 @@ func TestAnthropicSendsConversationToolsAndEffort(t *testing.T) {
 		`{"role":"user","content":[{"type":"text","text":"decide"}]},`+
 		`{"role":"assistant","content":[{"type":"text","text":"checking"},{"type":"tool_use","id":"call-a","name":"get_decision_context","input":{"requestId":"r"}},{"type":"tool_use","id":"call-b","name":"get_unit_details","input":{"requestId":"r","unitIds":["ranger"]}}]},`+
 		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-a","is_error":false,"content":[{"type":"text","text":"{\"context\":{\"requestId\":\"r\"}}"}]},{"type":"tool_result","tool_use_id":"call-b","is_error":false,"content":[{"type":"text","text":"not an object"}]}]}]`)
+}
+
+// The shared prefix and the end of each request are cache breakpoints; the text
+// Claude receives is the same message split in two.
+func TestAnthropicMarksSharedPrefixAndRequestForCaching(t *testing.T) {
+	var request map[string]any
+	turn := providerRequest()
+	turn.Messages[0] = ai.Message{Role: "user", Content: "shared policy\nfaction and request", SharedPrefixBytes: len("shared policy\n")}
+	if _, err := (&Anthropic{APIKey: "key", Client: anthropicCapture(t, `{"content":[]}`, &request)}).NextTurn(context.Background(), turn); err != nil {
+		t.Fatal(err)
+	}
+	sameJSON(t, "cache_control", request["cache_control"], `{"type":"ephemeral"}`)
+	sameJSON(t, "messages", request["messages"], `[{"role":"user","content":[`+
+		`{"type":"text","text":"shared policy\n","cache_control":{"type":"ephemeral"}},`+
+		`{"type":"text","text":"faction and request"}]}]`)
+	body, _ := json.Marshal(request)
+	if breakpoints := strings.Count(string(body), `"cache_control"`); breakpoints != 2 {
+		t.Fatalf("breakpoints = %d, want 2 (Claude allows at most 4)", breakpoints)
+	}
+	for _, shared := range []int{0, len(turn.Messages[0].Content)} {
+		turn.Messages[0].SharedPrefixBytes = shared
+		if _, err := (&Anthropic{APIKey: "key", Client: anthropicCapture(t, `{"content":[]}`, &request)}).NextTurn(context.Background(), turn); err != nil {
+			t.Fatal(err)
+		}
+		sameJSON(t, "messages", request["messages"], `[{"role":"user","content":[{"type":"text","text":"shared policy\nfaction and request"}]}]`)
+	}
 }
 
 func TestAnthropicOmitsEffortWhenUnset(t *testing.T) {
