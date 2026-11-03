@@ -39,13 +39,16 @@ export interface LeagueFixture {
 }
 export interface League {
   id: string; ownerId: string; name: string; status: LeagueStatus; groupCount: 2 | 4; settings: LeagueSettings
-  champion: number | null; progress: LeagueProgress; entrants: LeagueEntrant[]
+  champion: number | null; progress: LeagueProgress
+  /** The rules versions of the fixtures' battles, newest first; empty before the first battle. */
+  rulesVersions: string[]
+  entrants: LeagueEntrant[]
   groups: { group: GroupLetter; standings: LeagueStanding[] }[]; knockout: LeagueTie[]; fixtures: LeagueFixture[]
   createdAt: string; completedAt: string | null
 }
 export interface LeagueSummary {
   id: string; ownerId: string; name: string; status: LeagueStatus; groupCount: 2 | 4; entrantCount: 8 | 16
-  champion: { entrant: number; factionName: string } | null; progress: LeagueProgress; createdAt: string; completedAt: string | null
+  champion: { entrant: number; factionName: string } | null; progress: LeagueProgress; rulesVersions: string[]; createdAt: string; completedAt: string | null
 }
 export interface CreateLeagueInput {
   id: string; name: string; scenarioIds: string[]; tickCount: number; tickDuration?: string; decisionIntervalTicks?: number
@@ -65,8 +68,10 @@ const leagueFetch = createApiClient(LeagueApiError)
 export interface LeagueScheduling { battleSlots: number; cliSlots: number }
 export interface LeagueList { leagues: LeagueSummary[]; scheduling?: LeagueScheduling }
 
-export async function listLeagues(signal?: AbortSignal): Promise<LeagueList> {
-  const response = await leagueFetch('/v1/leagues', { signal })
+/** Lists leagues, newest first; a rules version keeps only leagues with a battle on it. */
+export async function listLeagues(signal?: AbortSignal, query: { rulesVersion?: string } = {}): Promise<LeagueList> {
+  const params = query.rulesVersion ? `?${new URLSearchParams({ rulesVersion: query.rulesVersion })}` : ''
+  const response = await leagueFetch(`/v1/leagues${params}`, { signal })
   if (!response.ok) throw new LeagueApiError('Leagues could not be loaded.', response.status)
   return (await response.json()) as LeagueList
 }

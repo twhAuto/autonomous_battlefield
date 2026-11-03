@@ -28,7 +28,8 @@ type FixtureState = { session: Session; takenNames: string[]; deleteFails: boole
 // Battle reads, kept out of the main router so each handler stays simple to read.
 function battleRoute(api: FixtureState, pathname: string, search: URLSearchParams): unknown {
   const battle = battleFixture(api.width, api.height)
-  if (pathname === '/v1/battles') return { battles: [{ ...battle, createdAt: '2026-09-10T00:00:00Z', outcome: { winnerFactionId: factionId, reason: 'castle_destroyed' } }], nextCursor: '' }
+  if (pathname === '/v1/battles') return { battles: [{ ...battle, rulesVersion: '3', createdAt: '2026-09-10T00:00:00Z', outcome: { winnerFactionId: factionId, reason: 'castle_destroyed' } }], nextCursor: '' }
+  if (pathname === '/v1/battles/rules-versions') return { current: '3', versions: ['3'] }
   if (pathname === `/v1/battles/${battleId}`) return battle
   // A freshly staged battle is served as queued under its own generated identifier.
   if (api.created && pathname === `/v1/battles/${api.created.id}`) {

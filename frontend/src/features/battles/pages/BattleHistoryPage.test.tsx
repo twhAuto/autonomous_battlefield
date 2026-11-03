@@ -1,18 +1,18 @@
-// Checks battle-history filters, cursor navigation, browser history, stale-request
-// handling, and return links from battle details.
+// Checks battle-history status and rules-version filters, cursor navigation, browser
+// history, stale-request handling, and return links from battle details.
 
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { BattleHistoryPage } from './BattleHistoryPage'
-import { listBattles, type BattleSummary } from '../api/battles'
+import { listBattles, listRulesVersions, type BattleSummary } from '../api/battles'
 import { BattleHeader } from '../components/BattlePresentation'
 import type { BattleRun } from '../api/battles'
 
-vi.mock('../api/battles', async (original) => ({ ...await original<typeof import('../api/battles')>(), listBattles: vi.fn() }))
+vi.mock('../api/battles', async (original) => ({ ...await original<typeof import('../api/battles')>(), listBattles: vi.fn(), listRulesVersions: vi.fn() }))
 const summary: BattleSummary = {
-  id: '00000000-0000-0000-0000-000000000001', scenarioId: 'siege',
+  id: '00000000-0000-0000-0000-000000000001', scenarioId: 'siege', rulesVersion: '13',
   participants: [{ id: 'north', name: 'North' }, { id: 'south', name: 'South' }],
   status: 'completed', paused: false, requestedTicks: 25, currentTick: 20,
   createdAt: '2026-09-07T00:00:00Z', startedAt: null, completedAt: null,
@@ -32,7 +32,10 @@ function renderHistory(path = '/battles') {
     </Routes>
   </MemoryRouter>)
 }
-beforeEach(() => { vi.mocked(listBattles).mockReset() })
+beforeEach(() => {
+  vi.mocked(listBattles).mockReset()
+  vi.mocked(listRulesVersions).mockReset().mockResolvedValue({ current: '13', versions: ['13', '12'] })
+})
 
 it('names who started each battle when the name is known', async () => {
   vi.mocked(listBattles).mockResolvedValue({ battles: [{ ...summary, ownerName: 'Admin' }, { ...summary, id: 'named', ownerName: 'Iron Duke' }, { ...summary, id: 'unknown' }], nextCursor: null })
@@ -110,7 +113,7 @@ it('resets pagination when filtering and distinguishes filtered empty results', 
   renderHistory('/battles?cursor=old')
   await screen.findByText('No matching battles')
   await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'paused')
-  await waitFor(() => expect(listBattles).toHaveBeenLastCalledWith({ status: 'paused', cursor: '' }, expect.any(AbortSignal)))
+  await waitFor(() => expect(listBattles).toHaveBeenLastCalledWith({ status: 'paused', rulesVersion: '', cursor: '' }, expect.any(AbortSignal)))
   expect(screen.getByTestId('location').textContent).toBe('/battles?status=paused')
   await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), '')
   await screen.findByText('No battles yet')
@@ -140,9 +143,9 @@ it('does not display stale successful or failed requests after changing filters'
   renderHistory()
   expect(screen.getByText('Loading battle history…')).toHaveRole('status')
   const firstSignal = vi.mocked(listBattles).mock.calls[0][1]
-  await user.selectOptions(screen.getByRole('combobox'), 'running')
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'running')
   expect(firstSignal?.aborted).toBe(true)
-  await user.selectOptions(screen.getByRole('combobox'), 'failed')
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'failed')
   await screen.findByText('No matching battles')
   await act(async () => {
     resolveFirst({ battles: [summary], nextCursor: null })
@@ -158,7 +161,7 @@ it('cancels on unmount, handles non-Error failures, and allows correcting unknow
   const view = renderHistory('/battles?status=unknown')
   expect(await screen.findByRole('alert')).toHaveTextContent('Battle history could not be loaded.')
   expect(screen.getByRole('option', { name: 'Unknown status' })).toBeInTheDocument()
-  await user.selectOptions(screen.getByRole('combobox'), '')
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), '')
   await screen.findByText('No battles yet')
   const signal = vi.mocked(listBattles).mock.calls.at(-1)?.[1]
   view.unmount()
@@ -173,7 +176,7 @@ it('opens details, and browser back returns to the filtered page', async () => {
   expect(screen.getByRole('heading', { name: 'North vs South' })).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Browser back' }))
   await screen.findByRole('table')
-  expect(listBattles).toHaveBeenLastCalledWith({ status: 'completed', cursor: 'page2' }, expect.any(AbortSignal))
+  expect(listBattles).toHaveBeenLastCalledWith({ status: 'completed', rulesVersion: '', cursor: 'page2' }, expect.any(AbortSignal))
 })
 
 it('restores the first page from a directly loaded cursor without prior cursors', async () => {
@@ -183,4 +186,37 @@ it('restores the first page from a directly loaded cursor without prior cursors'
   await screen.findByText('No matching battles')
   await user.click(screen.getByRole('button', { name: /previous/i }))
   expect(await screen.findByText('No battles yet')).toBeInTheDocument()
+})
+
+it('shows the rules version of each battle and filters by one alongside the status', async () => {
+  const user = userEvent.setup()
+  vi.mocked(listBattles).mockResolvedValue({ battles: [summary], nextCursor: null })
+  renderHistory('/battles?status=completed&cursor=old')
+  expect(await screen.findByText('v13')).toBeInTheDocument()
+  const rules = screen.getByRole('combobox', { name: 'Rules' })
+  expect(await screen.findByRole('option', { name: 'v13 (current)' })).toBeInTheDocument()
+  await user.selectOptions(rules, '12')
+  await waitFor(() => expect(listBattles).toHaveBeenLastCalledWith({ status: 'completed', rulesVersion: '12', cursor: '' }, expect.any(AbortSignal)))
+  expect(screen.getByTestId('location').textContent).toBe('/battles?status=completed&rulesVersion=12')
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), '')
+  expect(screen.getByTestId('location').textContent).toBe('/battles?rulesVersion=12')
+  await user.selectOptions(rules, '')
+  expect(screen.getByTestId('location').textContent).toBe('/battles')
+})
+
+it('keeps a linked rules version selectable when the version list is unavailable', async () => {
+  vi.mocked(listRulesVersions).mockRejectedValue(new Error('offline'))
+  vi.mocked(listBattles).mockResolvedValue({ battles: [], nextCursor: null })
+  renderHistory('/battles?rulesVersion=7')
+  expect(await screen.findByText('Change the filters or refresh to see the latest battles.')).toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: 'Rules' })).toHaveValue('7')
+  expect(screen.getByRole('option', { name: 'v7' })).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'STAGE BATTLE →' })).not.toBeInTheDocument()
+})
+
+it('marks a battle without a recorded rules version', async () => {
+  vi.mocked(listBattles).mockResolvedValue({ battles: [{ ...summary, rulesVersion: '' }], nextCursor: null })
+  renderHistory()
+  expect(await screen.findByText('North wins')).toBeInTheDocument()
+  expect(screen.getAllByRole('cell').find(cell => cell.dataset.label === 'Rules')).toHaveTextContent('—')
 })

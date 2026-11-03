@@ -388,6 +388,8 @@ export interface BattleSummary {
   /** Who started the battle: their display name, Admin, or a neutral fallback; absent when names are unavailable. */
   ownerName?: string
   scenarioId: string
+  /** The rules version the battle's scenario was frozen with. */
+  rulesVersion: string
   participants: BattleParticipant[]
   status: BattleStatus
   paused: boolean
@@ -402,12 +404,21 @@ export interface BattleHistoryPage {
   battles: BattleSummary[]
   nextCursor: string | null
 }
-export async function listBattles(query: { status?: string; cursor?: string; limit?: number }, signal?: AbortSignal): Promise<BattleHistoryPage> {
+export async function listBattles(query: { status?: string; rulesVersion?: string; cursor?: string; limit?: number }, signal?: AbortSignal): Promise<BattleHistoryPage> {
   const params = new URLSearchParams()
   if (query.status) params.set('status', query.status)
+  if (query.rulesVersion) params.set('rulesVersion', query.rulesVersion)
   if (query.cursor) params.set('cursor', query.cursor)
   params.set('limit', String(query.limit ?? 25))
   const response = await battlefieldFetch(`/v1/battles?${params}`, { signal })
   if (!response.ok) throw new BattleApiError(response.status === 400 ? 'That battle history query is invalid.' : 'Battle history could not be loaded.', response.status)
   return await response.json() as BattleHistoryPage
+}
+
+/** Every rules version a battle recorded, and current, the version new battles use; newest first. */
+export interface RulesVersions { current: string; versions: string[] }
+export async function listRulesVersions(signal?: AbortSignal): Promise<RulesVersions> {
+  const response = await battlefieldFetch('/v1/battles/rules-versions', { signal })
+  if (!response.ok) throw new BattleApiError('Rules versions could not be loaded.', response.status)
+  return await response.json() as RulesVersions
 }

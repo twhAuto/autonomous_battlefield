@@ -9,6 +9,7 @@ import { cancelLeague, getLeague, LeagueApiError, type League } from '../api/lea
 import { DisqualifyEntrant } from '../components/DisqualifyEntrant'
 import { Disqualifications, FixtureList, GroupStage, KnockoutBracket, NowPlaying } from '../components/LeagueStandings'
 import { entrantName } from '../presentation/leagues'
+import { rulesVersionsLabel } from '../../battles/components/RulesVersionSelect'
 
 export const leagueRefreshMs = 10_000
 
@@ -62,7 +63,8 @@ export function LeaguePage({ canManage }: Readonly<{ canManage: boolean }>) {
         <div className="directory-title">
           <div>
             <h1>{league.name}</h1>
-            <p>{league.entrants.length} entrants · {league.settings.scenarioIds.join(', ')} · {league.settings.tickCount} ticks per battle · {league.progress.settled} of {league.progress.total} fixtures settled</p>
+            <p>{league.entrants.length} entrants · {league.settings.scenarioIds.join(', ')} · {league.settings.tickCount} ticks per battle
+              {league.rulesVersions.length > 0 && ` · rules ${rulesVersionsLabel(league.rulesVersions)}`} · {league.progress.settled} of {league.progress.total} fixtures settled</p>
           </div>
           <div className="league-actions">
             <Link className="compact-action" to={`/analytics?leagueId=${encodeURIComponent(league.id)}`}>STATISTICS →</Link>

@@ -1,11 +1,14 @@
-// League registry: status, progress and champion, with the league setup link for
-// Admins.
+// League registry: status, rules versions, progress and champion, with a URL-backed
+// rules-version filter and the league setup link for Admins.
 
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
+import { RulesVersionSelect, rulesVersionsLabel } from '../../battles/components/RulesVersionSelect'
 import { listLeagues, type LeagueSummary } from '../api/leagues'
 
 export function LeaguesPage({ canCreate }: Readonly<{ canCreate: boolean }>) {
+  const [params, setParams] = useSearchParams()
+  const rulesVersion = params.get('rulesVersion') ?? ''
   const [leagues, setLeagues] = useState<LeagueSummary[] | null>(null)
   const [error, setError] = useState('')
   const [version, setVersion] = useState(0)
@@ -13,13 +16,14 @@ export function LeaguesPage({ canCreate }: Readonly<{ canCreate: boolean }>) {
   useEffect(() => {
     const controller = new AbortController()
     setError('')
-    listLeagues(controller.signal).then((result) => {
+    setLeagues(null)
+    listLeagues(controller.signal, { rulesVersion }).then((result) => {
       if (!controller.signal.aborted) setLeagues(result.leagues)
     }).catch((loadError: unknown) => {
       if (!controller.signal.aborted) setError(loadError instanceof Error ? loadError.message : 'Leagues could not be loaded.')
     })
     return () => controller.abort()
-  }, [version])
+  }, [rulesVersion, version])
 
   return (
     <>
@@ -32,18 +36,28 @@ export function LeaguesPage({ canCreate }: Readonly<{ canCreate: boolean }>) {
         </div>
       </section>
       <section className="directory" aria-label="Leagues" aria-busy={leagues === null && !error}>
+        <div className="history-toolbar">
+          <div className="history-filters">
+            <RulesVersionSelect value={rulesVersion} onChange={(value) => setParams(value ? { rulesVersion: value } : {})} />
+          </div>
+        </div>
         {leagues === null && !error && <output>Loading leagues…</output>}
         {error && <div role="alert"><p>{error}</p><button className="compact-action" type="button" onClick={() => setVersion((value) => value + 1)}>RETRY</button></div>}
-        {leagues?.length === 0 && <div className="directory-state">
+        {leagues?.length === 0 && rulesVersion && <div className="directory-state">
+          <h2>No matching leagues</h2>
+          <p>No league has a battle on rules v{rulesVersion}. Choose another version.</p>
+        </div>}
+        {leagues?.length === 0 && !rulesVersion && <div className="directory-state">
           <h2>No leagues yet</h2>
           <p>{canCreate ? 'Start a league to compare models, factions and units across many battles.' : 'An administrator can start a league.'}</p>
           {canCreate && <Link className="compact-action" to="/leagues/new">START LEAGUE →</Link>}
         </div>}
         {leagues && leagues.length > 0 && <table className="history-table">
           <caption className="visually-hidden">Leagues, newest first</caption>
-          <thead><tr><th>League</th><th>Created</th><th>Status</th><th>Progress</th><th>Champion</th><th><span className="visually-hidden">Details</span></th></tr></thead>
+          <thead><tr><th>League</th><th>Rules</th><th>Created</th><th>Status</th><th>Progress</th><th>Champion</th><th><span className="visually-hidden">Details</span></th></tr></thead>
           <tbody>{leagues.map((league) => <tr key={league.id}>
             <td data-label="League"><strong>{league.name}</strong><small>{league.entrantCount} entrants · {league.groupCount} groups</small></td>
+            <td data-label="Rules">{league.rulesVersions.length > 0 ? rulesVersionsLabel(league.rulesVersions) : '—'}</td>
             <td data-label="Created"><time dateTime={league.createdAt}>{new Date(league.createdAt).toLocaleString()}</time></td>
             <td data-label="Status"><span className="history-status">{league.status}</span></td>
             <td data-label="Progress">{league.progress.settled} / {league.progress.total} fixtures</td>
