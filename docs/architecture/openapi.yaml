@@ -52,6 +52,8 @@ security:
 tags:
   - name: Authentication
     description: Session discovery, and sign-in for the local administrator account.
+  - name: Profile
+    description: The caller's display name, shown on the battles and factions they own.
   - name: Factions
     description: Faction profiles that battles snapshot when they are queued.
   - name: Battles
@@ -90,7 +92,7 @@ paths:
                 enabled: true
                 authenticated: true
                 mode: cloudflare
-                actor: {id: 3f2a…, email: friend@example.com, role: player}
+                actor: {id: 3f2a…, email: friend@example.com, role: player, displayName: Iron Duke}
                 capabilities: {inspect: false, admin: false, members: false}
         '401':
           description: Not authenticated. The body is a session, not an error.
@@ -100,6 +102,7 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/Session'}
               example: {enabled: true, authenticated: false, mode: local-password}
+        '503': {$ref: '#/components/responses/Unavailable'}
 
   /v1/auth/login:
     post:
@@ -152,6 +155,49 @@ paths:
         '204':
           description: Local mode. The session cookie is cleared.
         '405': {$ref: '#/components/responses/MethodNotAllowed'}
+
+  /v1/profile:
+    put:
+      tags: [Profile]
+      operationId: setDisplayName
+      summary: Choose or change the caller's display name
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: |
+        Players, Testers and Admins only; Guests receive `403 permission_denied`.
+        The name is trimmed and then checked against `DisplayName`. A name that
+        matches another person's ignoring case returns `409 conflict`; saving the
+        caller's own name again, in any case, succeeds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [displayName]
+              properties:
+                displayName:
+                  description: Trimmed before it is checked.
+                  type: string
+            example: {displayName: Iron Duke}
+      responses:
+        '200':
+          description: Saved. The body holds the stored, trimmed name.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [displayName]
+                properties:
+                  displayName: {$ref: '#/components/schemas/DisplayName'}
+              example: {displayName: Iron Duke}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '503': {$ref: '#/components/responses/Unavailable'}
 
   /v1/factions:
     get:
@@ -310,7 +356,9 @@ paths:
       description: |
         Never returns credential values or credential environment-variable names.
         Players see only available profiles they are approved for, with a reduced set
-        of fields.
+        of fields. Each profile lists only the `modelOptions` the caller's role may
+        use, and `modelLabel` names the model an omitted `modelIdentifier` selects for
+        that role; a profile whose models the role may use none of is omitted.
       responses:
         '200':
           description: Profiles visible to the caller.
@@ -364,7 +412,8 @@ paths:
         - {$ref: '#/components/parameters/Origin'}
       description: |
         Both factions must exist. The API snapshots faction names, backgrounds and
-        doctrines, the map, ruleset, and controller plans.
+        doctrines, the map, ruleset, and controller plans. A model controller whose
+        profile or model the caller's role may not use returns `403`.
 
         **Idempotency:** the client supplies the battle `id`, which makes retries safe.
         Repeating a request with the same `id` returns `202` and the **existing**
@@ -736,7 +785,8 @@ paths:
         **Idempotency:** a repeated `idempotencyKey` with the same normalized input
         returns the original job without another charge. The same key with different
         input returns `409 conflict`. Validation failures (`400`) and unavailable
-        profiles (`503`) do not reserve quota.
+        profiles (`503`), including a profile or configured model the caller's role
+        may not use, do not reserve quota.
       requestBody:
         required: true
         content:
@@ -1031,7 +1081,9 @@ paths:
       parameters:
         - {$ref: '#/components/parameters/Origin'}
       description: |
-        Must include every configured provider and profile with no extras. A stale
+        Must include every configured provider and profile with no extras. Per-model
+        entries are optional; each must name one of the profile's model options and
+        allow only roles the profile allows, or the request returns `400`. A stale
         `version` returns `409`. The policy restricts only new selections; it cannot
         enable a profile whose credentials or runtime are unavailable.
       requestBody:
@@ -1353,12 +1405,33 @@ components:
             id: {type: string}
             email: {type: string}
             role: {$ref: '#/components/schemas/SessionRole'}
+            displayName:
+              description: |
+                The caller's display name. Omitted when none is set, and always for
+                Guests and service identities.
+              $ref: '#/components/schemas/DisplayName'
         capabilities:
           type: object
           properties:
             inspect: {type: boolean}
             admin: {type: boolean}
             members: {type: boolean}
+
+    DisplayName:
+      description: |
+        3 to 24 letters, digits, spaces, hyphens or underscores, with no leading or
+        trailing space, unique ignoring case.
+      type: string
+      minLength: 3
+      maxLength: 24
+      pattern: '^[A-Za-z0-9_-][A-Za-z0-9 _-]{1,22}[A-Za-z0-9_-]$'
+
+    OwnerName:
+      description: |
+        Who owns the item, for display: `Admin` for anything an Admin owns, league
+        battles included; otherwise the owner's display name, or `Unnamed commander`
+        before they choose one. Never an email. Omitted when names cannot be read.
+      type: string
 
     LoginRequest:
       type: object
@@ -1384,6 +1457,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         ownerId: {type: string}
+        ownerName: {$ref: '#/components/schemas/OwnerName'}
         emblem: {$ref: '#/components/schemas/FactionEmblem'}
         name: {type: string}
         doctrine: {type: string}
@@ -1552,7 +1626,7 @@ components:
                     description: Required when `type` is `model`.
                     type: string
                   modelIdentifier:
-                    description: Operator-allowlisted model; omission uses the profile default.
+                    description: Operator-allowlisted model; omission selects the model the model-profile list names in `modelLabel` for the caller's role.
                     type: string
                   reasoningEffort:
                     description: Supported effort for the selected model; omission uses the configured option default or provider default.
@@ -1893,6 +1967,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         ownerId: {type: string}
+        ownerName: {$ref: '#/components/schemas/OwnerName'}
         scenarioId: {type: string}
         scenarioDigest: {type: string}
         requestedTicks: {type: integer}
@@ -2339,6 +2414,7 @@ components:
       required: [id, scenarioId, participants, status, paused, requestedTicks, currentTick, createdAt, startedAt, completedAt, outcome]
       properties:
         id: {type: string, format: uuid}
+        ownerName: {$ref: '#/components/schemas/OwnerName'}
         scenarioId: {type: string}
         participants:
           type: array
@@ -2715,6 +2791,21 @@ components:
                 type: array
                 uniqueItems: true
                 items: {$ref: '#/components/schemas/Role'}
+              models:
+                description: |
+                  Roles for individual model options, keyed by option `id`. Each list is
+                  a subset of the profile's `allowedRoles`, and an empty list denies
+                  everyone. A model without an entry allows every role the profile
+                  allows.
+                type: object
+                additionalProperties:
+                  type: object
+                  required: [allowedRoles]
+                  properties:
+                    allowedRoles:
+                      type: array
+                      uniqueItems: true
+                      items: {$ref: '#/components/schemas/Role'}
 
     ModelAccessSettings:
       type: object

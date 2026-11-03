@@ -34,6 +34,14 @@ function renderHistory(path = '/battles') {
 }
 beforeEach(() => { vi.mocked(listBattles).mockReset() })
 
+it('names who started each battle when the name is known', async () => {
+  vi.mocked(listBattles).mockResolvedValue({ battles: [{ ...summary, ownerName: 'Admin' }, { ...summary, id: 'named', ownerName: 'Iron Duke' }, { ...summary, id: 'unknown' }], nextCursor: null })
+  renderHistory()
+  expect(await screen.findByText('Started by Admin')).toBeInTheDocument()
+  expect(screen.getByText('Started by Iron Duke')).toBeInTheDocument()
+  expect(screen.getAllByText(/^Started by/)).toHaveLength(2)
+})
+
 it('renders summaries and distinguishes a draw from absent outcomes', async () => {
   vi.mocked(listBattles).mockResolvedValue({ battles: [
     summary,

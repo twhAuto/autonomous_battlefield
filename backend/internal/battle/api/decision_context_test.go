@@ -59,7 +59,7 @@ func TestContextRoute(t *testing.T) {
 
 func TestParticipantProfileUsesBattleSnapshot(t *testing.T) {
 	run := &battleservice.BattleRun{ScenarioSnapshot: game.Scenario{Factions: []game.FactionSetup{{ID: "a", Name: "Historical name", Background: "Historical background", Doctrine: "Historical doctrine"}, {ID: "legacy", Name: "Legacy"}}}}
-	data, err := json.Marshal(battleResponse(run))
+	data, err := json.Marshal(battleResponse(run, ""))
 	if err != nil {
 		t.Fatal(err)
 	}

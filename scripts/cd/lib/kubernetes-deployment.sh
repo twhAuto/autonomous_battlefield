@@ -512,29 +512,72 @@ cluster_deploy_database_diagnostics() {
     sh -c 'exec psql --no-psqlrc --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --command "select pid, application_name, state, wait_event_type, wait_event, now() - xact_start as transaction_age, pg_blocking_pids(pid) as blocked_by from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid() order by xact_start"' >&2 || true
 }
 
-# The ownership migration must never precede a durable, readable backup. Query text stays
-# out of the diagnostics because build logs are retained. A stopped dump's server session
-# ends when it next writes; pg_dump gives up on table locks after a minute, so a session
-# waiting on a lock ends by then too.
+# Dumps are encrypted to this age public key; its private key stays off this host.
+backup_recipient_pattern='^age1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58}$'
+# Each dump holds a full copy of the database, member emails included.
+backup_keep=3
+
+# Keeps the newest encrypted dumps and deletes the rest, including plaintext dumps that
+# predate encryption. Runs only after a verified backup, so a newer dump always remains.
+cluster_deploy_prune_backups() {
+  local backup_dir="$1" dump
+  local -a dumps
+  mapfile -t dumps < <(find "${backup_dir}" -maxdepth 1 -type f -name 'pre-migration-*.dump.age' -printf '%f\n' | sort -r)
+  for dump in "${dumps[@]:backup_keep}"; do
+    rm -f -- "${backup_dir}/${dump}" || echo "Warning: could not delete the old database dump ${dump}." >&2
+  done
+  find "${backup_dir}" -maxdepth 1 -type f -name 'pre-migration-*.dump' -delete ||
+    echo "Warning: could not delete plaintext database dumps in ${backup_dir}." >&2
+}
+
+# The ownership migration must never precede a durable, readable backup. The dump streams
+# through tee: age writes only ciphertext to disk, and pg_restore --list checks the
+# plaintext stream in the pod. Query text stays out of the diagnostics because build logs
+# are retained. A stopped dump's server session ends when it next writes; pg_dump gives up
+# on table locks after a minute, so a session waiting on a lock ends by then too.
 cluster_deploy_backup_database() {
   local backup_dir="${BATTLEFIELD_BACKUP_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/battlefield/backups}"
-  local backup_file status=0 failure=''
+  local recipient="${BF_BACKUP_RECIPIENT:-}" backup_file stream encryptor encrypted=0 failure=''
+  local -a status
+  if [[ ! "${recipient}" =~ ${backup_recipient_pattern} ]]; then
+    failure='BF_BACKUP_RECIPIENT in the deployment profile is not an age public key'
+  elif ! command -v age >/dev/null; then
+    failure='age is not installed on this agent'
+  fi
+  if [[ -n "${failure}" ]]; then
+    echo "Database backup failed: ${failure}; refusing migration." >&2
+    return 1
+  fi
   install -d -m 700 "${backup_dir}"
-  backup_file="$(mktemp "${backup_dir}/pre-migration-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX.dump")"
+  backup_file="$(mktemp "${backup_dir}/pre-migration-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX.dump.age")"
   chmod 600 "${backup_file}"
-  cluster_deploy_backup_exec \
-    'exec pg_dump --format=custom --no-owner --lock-wait-timeout=60s --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' \
-    >"${backup_file}" || status=$?
-  if ((status != 0)); then
-    failure="pg_dump $(cluster_deploy_backup_outcome "${status}")"
-  elif [[ ! -s "${backup_file}" ]]; then
-    failure='the dump is empty'
-  else
-    # pg_restore --list reads only the archive's table of contents. Drain the rest, or
-    # kubectl blocks sending a dump larger than the stream buffers.
-    cluster_deploy_backup_exec -i 'pg_restore --list; status=$?; cat >/dev/null; exit "$status"' \
-      <"${backup_file}" >/dev/null || status=$?
-    ((status == 0)) || failure="pg_restore --list $(cluster_deploy_backup_outcome "${status}")"
+  stream="$(mktemp -d "${backup_dir}/.stream.XXXXXX")"
+  mkfifo -m 600 "${stream}/dump"
+  # The deadline also covers opening the FIFO, which blocks until tee opens it.
+  timeout --kill-after=10s "$((${backup_timeout%s} + 30))" \
+    sh -c 'exec age --encrypt --recipient "$1" <"$2" >"$3"' age "${recipient}" "${stream}/dump" "${backup_file}" &
+  encryptor=$!
+  # pg_restore --list reads only the archive's table of contents. Drain the rest, or
+  # kubectl blocks sending a dump larger than the stream buffers.
+  {
+    cluster_deploy_backup_exec \
+      'exec pg_dump --format=custom --no-owner --lock-wait-timeout=60s --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' |
+      tee "${stream}/dump" |
+      cluster_deploy_backup_exec -i 'pg_restore --list >/dev/null; status=$?; cat >/dev/null; exit "$status"'
+    status=("${PIPESTATUS[@]}")
+  } || true
+  wait "${encryptor}" || encrypted=$?
+  rm -rf -- "${stream}"
+  # A stage killed by SIGPIPE (141) only shows that a later stage stopped reading, so
+  # age is checked first and pg_restore before a pg_dump that lost its reader.
+  if ((encrypted != 0)); then
+    failure='age could not encrypt the dump'
+  elif ((status[0] != 0 && (status[0] != 141 || status[2] == 0))); then
+    failure="pg_dump $(cluster_deploy_backup_outcome "${status[0]}")"
+  elif ((status[2] != 0)); then
+    failure="pg_restore --list $(cluster_deploy_backup_outcome "${status[2]}")"
+  elif ((status[1] != 0)); then
+    failure='age could not encrypt the dump'
   fi
   if [[ -n "${failure}" ]]; then
     rm -f -- "${backup_file}"
@@ -542,7 +585,8 @@ cluster_deploy_backup_database() {
     cluster_deploy_database_diagnostics
     return 1
   fi
-  echo "Database backup verified: ${backup_file}"
+  cluster_deploy_prune_backups "${backup_dir}"
+  echo "Database backup verified and encrypted: ${backup_file}"
 }
 
 cluster_deploy_migration() {

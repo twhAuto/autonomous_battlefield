@@ -106,11 +106,17 @@ and the [codebase guide](../developer/codebase-guide.md#executable-entry-points)
 
 The frontend is a static build served by Nginx. Nginx requires revalidation of the
 SPA entry document after rollouts and returns 404 for missing hashed assets instead
-of routing those requests to HTML. Every Nginx response carries
-`frame-ancestors 'none'` CSP, `X-Frame-Options: DENY`, `nosniff`, a strict-origin
-referrer policy and HSTS, so the admin and gameplay UI cannot be framed for
-clickjacking. The CSP deliberately leaves script and connect sources open because
-`VITE_API_URL` may name a separate API origin.
+of routing those requests to HTML. Every Nginx response carries a
+Content-Security-Policy, `X-Frame-Options: DENY`, `nosniff`, a strict-origin
+referrer policy and HSTS. The policy loads scripts, styles, fonts and images only
+from the frontend's origin (fonts are bundled, small ones inlined as `data:` URIs),
+forbids framing and plugins, keeps `<base>` and form posts on that origin, and lets
+scripts fetch only from it plus, when a build sets `VITE_API_URL`, that API origin,
+which Nginx receives as `CSP_API_ORIGIN`. Inline and off-origin scripts are
+blocked, and requests and resource loads to other sites are refused. The policy
+narrows what an injection could do but does not make data exfiltration
+impossible: same-origin scripts still run, and it does not restrict top-level
+navigation.
 
 ### Battle inspection
 
@@ -600,6 +606,8 @@ Player projections ([API roles](api.md#roles-and-ownership)), which Guests also
 receive, run after shared cache retrieval and omit model diagnostics, raw prompts and
 internal errors. The frontend hides inspection panels and stops their requests for
 Players and Guests.
+Responses name owners by display name or `Admin` from the `people` table, never by
+email ([display names](api.md#display-names)).
 Cloudflare Access admission and MFA are independent deployment requirements. For
 static roles, user removal requires Access rule removal, session revocation,
 application role removal,
@@ -650,7 +658,7 @@ separation, credential rotation, rollback limitations and live acceptance checks
 ### Model access and role preview
 
 The administrator-only `/admin` control center uses `GET /v1/admin/model-access` and
-`PUT /v1/admin/model-access` to manage provider and individual profile access,
+`PUT /v1/admin/model-access` to manage provider, profile and per-model access,
 including allowed roles, stored in a singleton PostgreSQL policy row. Version checks
 reject conflicting saves with HTTP 409. Each API
 selection reads the durable policy with a bounded timeout, so replicas and restarts

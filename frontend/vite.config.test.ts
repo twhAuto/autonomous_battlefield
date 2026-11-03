@@ -28,6 +28,16 @@ it.each(['file:///tmp/api', 'http://user:password@localhost:8080', 'https://exam
   await expect(proxyTarget()).rejects.toThrow('DEV_API_PROXY_TARGET')
 })
 
+it('accepts an empty or origin-only API URL and rejects one the image policy cannot allow', async () => {
+  vi.stubEnv('DEV_API_PROXY_TARGET', '')
+  for (const api of ['', 'https://api.example.test', 'https://api.example.test/']) {
+    vi.stubEnv('VITE_API_URL', api)
+    expect(await proxyTarget()).toBe('http://localhost:8080')
+  }
+  vi.stubEnv('VITE_API_URL', 'https://api.example.test/base')
+  await expect(proxyTarget()).rejects.toThrow('VITE_API_URL')
+})
+
 it('loads the proxy setting from env files without exposing it as a VITE variable', () => {
   const directory = mkdtempSync(join(tmpdir(), 'battlefield-vite-env-'))
   try {

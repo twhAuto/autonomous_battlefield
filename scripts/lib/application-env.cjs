@@ -10,7 +10,7 @@ const fields = {
   cache: 'BATTLEFIELD_REDIS_URL',
   runtime: 'LOG_LEVEL OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT OTEL_TRACES_SAMPLER_ARG LANGFUSE_BASE_URL LANGFUSE_PROJECT_ID',
 };
-const profileFields = 'BF_ENV BF_CONTEXT BF_CLUSTER BF_UID BF_DOCKER_HOST BF_URL BF_KUBECONFIG BF_DISPOSABLE BF_TUNNEL_ID BF_TUNNEL_CREDENTIALS_FILE BF_TUNNEL_IMAGE BF_KUBELET_CA_FILE BF_DRIVER'.split(' ');
+const profileFields = 'BF_ENV BF_CONTEXT BF_CLUSTER BF_UID BF_DOCKER_HOST BF_URL BF_KUBECONFIG BF_DISPOSABLE BF_TUNNEL_ID BF_TUNNEL_CREDENTIALS_FILE BF_TUNNEL_IMAGE BF_KUBELET_CA_FILE BF_DRIVER BF_BACKUP_RECIPIENT'.split(' ');
 
 function read(file) {
   const values = new Map();
@@ -132,6 +132,8 @@ function profile(file) {
   if (values.get('BF_ENV') === 'production' && values.get('BF_DISPOSABLE') === '1') throw new Error('Production cannot be disposable.');
   if (values.get('BF_TUNNEL_ID') && !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(values.get('BF_TUNNEL_ID'))) throw new Error('Invalid tunnel UUID.');
   if (values.get('BF_TUNNEL_IMAGE') && !/^cloudflare\/cloudflared@sha256:[a-f0-9]{64}$/.test(values.get('BF_TUNNEL_IMAGE'))) throw new Error('Tunnel image must use a verified digest.');
+  // Pre-migration dumps are encrypted to this age public key; see kubernetes-deployment.sh.
+  if (values.get('BF_BACKUP_RECIPIENT') && !/^age1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58}$/.test(values.get('BF_BACKUP_RECIPIENT'))) throw new Error('Backup recipient must be an age public key.');
   for (const key of ['BF_KUBECONFIG','BF_TUNNEL_CREDENTIALS_FILE','BF_KUBELET_CA_FILE']) if (values.get(key)) values.set(key,path.resolve(path.dirname(file),values.get(key)));
   return values;
 }

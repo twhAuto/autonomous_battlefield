@@ -11,6 +11,8 @@
       - unzip
       - xz-utils
       - python3-venv
+      # Production deliveries encrypt their pre-migration database dumps with age.
+      - age
       # Ubuntu 26.04 moved sg/newgrp from login into util-linux-extra.
       - "{{ 'util-linux-extra' if ansible_facts['distribution_version'] == '26.04' else 'login' }}"
       - xvfb

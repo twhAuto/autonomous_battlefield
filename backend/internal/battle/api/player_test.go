@@ -26,13 +26,13 @@ func TestPlayerProjectionAfterSharedCachedRead(t *testing.T) {
 	// Players and Guests see which model played each side and the battle's league, but
 	// no diagnostics.
 	for _, request := range []*http.Request{player, guest} {
-		raw, e := json.Marshal(battleResponseFor(request, run))
+		raw, e := json.Marshal(battleResponseFor(request, run, ""))
 		if e != nil || strings.Contains(string(raw), secret) || !strings.Contains(string(raw), `"modelIdentifier":"gpt-test"`) || !strings.Contains(string(raw), `"reasoningEffort":"high"`) || !strings.Contains(string(raw), `"name":"Autumn Cup"`) {
 			t.Fatal(string(raw), e)
 		}
 	}
 	tester := player.WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "tester", Role: authn.Tester}))
-	raw, e := json.Marshal(battleResponseFor(tester, run))
+	raw, e := json.Marshal(battleResponseFor(tester, run, ""))
 	if e != nil || !strings.Contains(string(raw), secret) {
 		t.Fatal("shared cache was mutated", string(raw), e)
 	}
@@ -115,7 +115,7 @@ func TestBattleResponsesExposeNextProduction(t *testing.T) {
 	for _, tt := range cases {
 		for _, role := range []authn.Role{authn.Player, authn.Tester} {
 			request := httptest.NewRequest("GET", "/v1/battles/battle", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "caller", Role: role}))
-			raw, err := json.Marshal(battleResponseFor(request, &tt.run))
+			raw, err := json.Marshal(battleResponseFor(request, &tt.run, ""))
 			if err != nil || !strings.Contains(string(raw), tt.want) {
 				t.Fatalf("%s as %s: %s %v", tt.name, role, raw, err)
 			}
@@ -128,7 +128,7 @@ func TestBattleResponsesReportTheUnitCapAndContestedTerritoryOnlyWhenSet(t *test
 	for _, role := range []authn.Role{authn.Player, authn.Tester} {
 		request := httptest.NewRequest("GET", "/v1/battles/battle", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "viewer", Role: role}))
 		read := func() map[string]any {
-			raw, err := json.Marshal(battleResponseFor(request, run))
+			raw, err := json.Marshal(battleResponseFor(request, run, ""))
 			var body map[string]any
 			if err == nil {
 				err = json.Unmarshal(raw, &body)
@@ -152,5 +152,33 @@ func TestBattleResponsesReportTheUnitCapAndContestedTerritoryOnlyWhenSet(t *test
 		if _, present := body["contestedTerritory"]; present {
 			t.Fatalf("%s reports contested territory for a ruleset without it", role)
 		}
+	}
+}
+
+func TestModelProfileListShowsEachRoleOnlyItsModels(t *testing.T) {
+	cli := ai.ModelProfile{
+		ID: "cli", Runtime: "cli", Model: "opus", ModelLabel: "opus", Available: true, AllowedRoles: []string{"admin", "tester", "player"},
+		ModelOptions: []ai.ModelOption{{ID: "haiku"}, {ID: "opus"}, {ID: "fable"}},
+		ModelRoles:   map[string][]string{"opus": {"admin", "tester"}, "fable": {"admin"}},
+	}
+	testerOnly := ai.ModelProfile{ID: "tester-only", Runtime: "cli", Model: "deep", ModelLabel: "deep", Available: true, AllowedRoles: []string{"tester", "player"},
+		ModelOptions: []ai.ModelOption{{ID: "deep"}}, ModelRoles: map[string][]string{"deep": {"tester"}}}
+	list := func(role authn.Role) string {
+		r := httptest.NewRequest("GET", "/v1/model-profiles", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "viewer", Role: role}))
+		raw, err := json.Marshal(visibleProfiles(r, []ai.ModelProfile{cli, testerOnly}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	player, tester := list(authn.Player), list(authn.Tester)
+	if !strings.Contains(player, `"modelLabel":"haiku"`) || !strings.Contains(player, `"modelOptions":[{"id":"haiku"}]`) || strings.Contains(player, "tester-only") {
+		t.Fatalf("player list: %s", player)
+	}
+	if !strings.Contains(tester, `"modelLabel":"opus"`) || !strings.Contains(tester, `"modelOptions":[{"id":"haiku"},{"id":"opus"}]`) || !strings.Contains(tester, "tester-only") {
+		t.Fatalf("tester list: %s", tester)
+	}
+	if admin := list(authn.Admin); !strings.Contains(admin, `{"id":"fable"}`) || strings.Contains(admin, "tester-only") {
+		t.Fatalf("admin list: %s", admin)
 	}
 }

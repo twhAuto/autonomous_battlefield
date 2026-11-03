@@ -61,6 +61,8 @@ registered_uid="$(KUBECONFIG="${stage}/kubeconfig" kubectl --context "battlefiel
   printf 'BF_DRIVER=%s\n' "${driver}"
   [[ "${driver}" != k3s ]] || printf 'BF_KUBELET_CA_FILE=kubelet-ca.crt\n'
   printf 'BF_DOCKER_HOST=%s\nBF_URL=%s\nBF_KUBECONFIG=kubeconfig\nBF_DISPOSABLE=0\n' "${endpoint}" "${TARGET_URL:-http://battlefield.localhost:8888}"
+  # The age public key that production pre-migration dumps are encrypted to.
+  [[ -z "${BACKUP_RECIPIENT:-}" ]] || printf 'BF_BACKUP_RECIPIENT=%s\n' "${BACKUP_RECIPIENT}"
 } >"${stage}/deployment.env"
 [[ "${driver}" != k3s ]] || install -m 600 "${ca_file}" "${stage}/kubelet-ca.crt"
 node "${project_dir}/scripts/lib/application-env.cjs" profile "${stage}/deployment.env" >/dev/null

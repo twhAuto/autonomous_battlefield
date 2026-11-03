@@ -634,11 +634,11 @@ func TestControllerSelectionFreezesModelAndEffort(t *testing.T) {
 	t.Setenv("SELECTION_CLI_AVAILABLE", "true")
 	registry := profile.NewCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true, Model: "fast", SupportedVersionPrefix: "codex-cli 0.155.", AvailabilityEnvironmentVariable: "SELECTION_CLI_AVAILABLE", ModelOptions: []ai.ModelOption{{ID: "fast", ReasoningEfforts: []string{"low"}}, {ID: "deep", ReasoningEfforts: []string{"high"}}}}})
 	s := &battleService{profiles: registry}
-	selected, err := s.resolveController(game.ControllerConfig{Type: "model", ProfileID: "cli", ModelIdentifier: "deep", ReasoningEffort: "high"})
+	selected, err := s.resolveController(context.Background(), game.ControllerConfig{Type: "model", ProfileID: "cli", ModelIdentifier: "deep", ReasoningEffort: "high"})
 	if err != nil || selected.ModelIdentifier != "deep" || selected.ReasoningEffort != "high" || selected.Provider != "codex-cli" {
 		t.Fatal(selected, err)
 	}
-	if err = s.authorizeController(authn.WithActor(context.Background(), authn.Actor{ID: "player", Role: authn.Player}), selected); !errors.Is(err, authn.ErrForbidden) {
+	if _, err = s.resolveController(authn.WithActor(context.Background(), authn.Actor{ID: "player", Role: authn.Player}), selected); !errors.Is(err, authn.ErrForbidden) {
 		t.Fatal("selection bypassed profile permissions", err)
 	}
 	for _, selection := range []game.ControllerConfig{
@@ -647,8 +647,65 @@ func TestControllerSelectionFreezesModelAndEffort(t *testing.T) {
 		{Type: "scripted", ModelIdentifier: "deep"},
 		{Type: "scripted", ReasoningEffort: "low"},
 	} {
-		if _, err := s.resolveController(selection); err == nil {
+		if _, err := s.resolveController(context.Background(), selection); err == nil {
 			t.Fatal("invalid selection accepted", selection)
 		}
+	}
+}
+
+func TestModelRolesGateBattleSelection(t *testing.T) {
+	t.Setenv("MODEL_ROLES_CLI_AVAILABLE", "true")
+	ids := serviceParticipantIDs
+	identities := [2]FactionIdentity{{ID: ids[0], Name: "A"}, {ID: ids[1], Name: "B"}}
+	factions := &battleFactionRepo{factions: map[string]*faction.Faction{ids[0]: {ID: ids[0], Name: "A"}, ids[1]: {ID: ids[1], Name: "B"}}}
+	base := profile.NewCatalog("cluster", []ai.ModelProfile{{
+		ID: "cli", DisplayName: "CLI", Provider: "claude-cli", Runtime: "cli", Scope: "local", Enabled: true, Model: "opus",
+		AvailabilityEnvironmentVariable: "MODEL_ROLES_CLI_AVAILABLE", SupportedVersionPrefix: "2.",
+		ModelOptions: []ai.ModelOption{{ID: "haiku"}, {ID: "opus", ReasoningEfforts: []string{"low"}}},
+	}})
+	policy := profile.AccessPolicy{Profiles: map[string]profile.Access{"cli": {Enabled: true, AllowedRoles: []string{"admin", "tester", "player"}, Models: map[string]profile.ModelAccess{
+		"opus": {AllowedRoles: []string{"tester"}},
+	}}}}
+	repository := &fakeBattleRepo{}
+	service := NewService(repository, factions, &fakeScenarioCatalog{resolved: serviceTestScenario(identities)}, 10_000, Options{Profiles: base.WithAccessPolicy(func() (profile.AccessPolicy, error) { return policy, nil })})
+	input := func(model string) CreateBattleInput {
+		return CreateBattleInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "castle-siege-v1", TickCount: 10, Participants: []ParticipantInput{
+			{FactionID: ids[0], Controller: game.ControllerConfig{Type: ai.ControllerModel, ProfileID: "cli", ModelIdentifier: model}},
+			{FactionID: ids[1], Controller: game.ControllerConfig{Type: ai.ControllerScripted}},
+		}}
+	}
+	as := func(role authn.Role) context.Context {
+		return authn.WithActor(context.Background(), authn.Actor{ID: string(role), Role: role})
+	}
+	for _, tt := range []struct {
+		role  authn.Role
+		model string
+		want  string
+	}{
+		{authn.Player, "haiku", "haiku"},
+		{authn.Player, "", "haiku"},
+		{authn.Tester, "opus", "opus"},
+		{authn.Tester, "", "opus"},
+	} {
+		if _, err := service.CreateBattle(as(tt.role), input(tt.model)); err != nil {
+			t.Fatalf("%s selecting %q: %v", tt.role, tt.model, err)
+		}
+		if got := repository.created.ScenarioSnapshot.Factions[0].Controller.ModelIdentifier; got != tt.want {
+			t.Fatalf("%s selecting %q froze %q, want %q", tt.role, tt.model, got, tt.want)
+		}
+	}
+	for _, role := range []authn.Role{authn.Player, authn.Admin} {
+		if err := service.ValidateBattle(as(role), input("opus")); !errors.Is(err, authn.ErrForbidden) {
+			t.Fatalf("%s selecting a disallowed model: %v, want permission denied", role, err)
+		}
+	}
+	if err := service.ValidateBattle(as(authn.Player), input("unconfigured")); !errors.Is(err, ErrModelProfileUnavailable) {
+		t.Fatalf("unconfigured model: %v, want unavailable", err)
+	}
+	policy.Profiles["cli"] = profile.Access{Enabled: true, AllowedRoles: []string{"admin", "tester", "player"}, Models: map[string]profile.ModelAccess{
+		"haiku": {AllowedRoles: []string{"tester"}}, "opus": {AllowedRoles: []string{"tester"}},
+	}}
+	if err := service.ValidateBattle(as(authn.Player), input("")); !errors.Is(err, authn.ErrForbidden) {
+		t.Fatalf("player without an allowed model: %v, want permission denied", err)
 	}
 }

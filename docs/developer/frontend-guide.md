@@ -14,18 +14,19 @@ The frontend is a React/Vite single-page application.
 | --- | --- |
 | [`app/App.tsx`](../../frontend/src/app/App.tsx) | Shared layout and route table |
 | [`features/auth/api/auth.ts`](../../frontend/src/features/auth/api/auth.ts) | Session discovery, login, and logout client |
+| [`features/profile`](../../frontend/src/features/profile) | Display-name rules, the signed-in name, the save request (`api/profile.ts`), the shared form, the first-sign-in prompt and the profile page |
 | [`shared/api/request.ts`](../../frontend/src/shared/api/request.ts) | API base URL, cancellation-preserving network error mapping, and opt-in unauthorized-session notifications |
 | [`features/factions/api/factions.ts`](../../frontend/src/features/factions/api/factions.ts) | Typed faction and ruleset requests |
 | [`features/battles/api/battles.ts`](../../frontend/src/features/battles/api/battles.ts) | Typed scenario, profile, battle, allowance, history, event, view, control, and decision requests |
 | [`features/factions/pages/CreateFactionPage.tsx`](../../frontend/src/features/factions/pages/CreateFactionPage.tsx) | Faction profile editor and background generator |
-| [`features/factions/pages/FactionsPage.tsx`](../../frontend/src/features/factions/pages/FactionsPage.tsx) | Faction registry and authorized edit links; deletion lives in the editor's Danger zone |
+| [`features/factions/pages/FactionsPage.tsx`](../../frontend/src/features/factions/pages/FactionsPage.tsx) | Faction registry with each faction's creator and authorized edit links; deletion lives in the editor's Danger zone |
 | [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario (default `frontier-siege`), participants, controllers, tick-limit selection, and the caller's battle allowance |
 | [`features/battles/components/ControllerSelect.tsx`](../../frontend/src/features/battles/components/ControllerSelect.tsx) | Scripted or model controller with dependent model and effort selectors (default Low effort), shared by battle and league setup |
 | [`features/battles/components/MapPreview.tsx`](../../frontend/src/features/battles/components/MapPreview.tsx) | Static terrain and castle-spawn preview of the selected scenario map |
-| [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status-filtered history table/cards, cursor navigation, refresh, and detail links |
+| [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status-filtered history table/cards with who started each battle, cursor navigation, refresh, and detail links |
 | [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Route-level composition, selected panel, and control actions |
 | [`features/auth/pages/LoginPage.tsx`](../../frontend/src/features/auth/pages/LoginPage.tsx) | Local-password login form used only in the development auth mode |
-| [`features/admin/pages/AdminSettingsPage.tsx`](../../frontend/src/features/admin/pages/AdminSettingsPage.tsx) | Persistent provider/profile switches, allowed roles, save/conflict states, and entry to read-only role preview |
+| [`features/admin/pages/AdminSettingsPage.tsx`](../../frontend/src/features/admin/pages/AdminSettingsPage.tsx) | Persistent provider/profile switches, allowed roles for each profile and for each of its model options, save/conflict states, and entry to read-only role preview |
 | [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization, movement routes, tracking arrows, attack outcomes, and accessible unit animation |
 | [`features/battles/components/PlayerStatusPanel.tsx`](../../frontend/src/features/battles/components/PlayerStatusPanel.tsx) | Null-safe spectator summaries, economy/building overview, and grouped living units |
 | [`features/battles/components/TypeStatistics.tsx`](../../frontend/src/features/battles/components/TypeStatistics.tsx) | After-action unit and building tables by type and the upgrade timeline; renders nothing for a result without per-type figures |
@@ -47,9 +48,9 @@ combines directory access with its Create faction action; the creation and
 editing routes keep the Factions navigation item active.
 
 Routes: `/` (Home), `/battles/new`, `/battles`, `/battles/:id`, `/factions`,
-`/factions/new`, `/factions/:id/edit`, `/leagues`, `/leagues/new`, `/leagues/:id`,
-`/analytics`, `/admin`, and `/admin/members`. League and statistics routes mount for
-every role. The league setup form at
+`/factions/new`, `/factions/:id/edit`, `/profile`, `/leagues`, `/leagues/new`,
+`/leagues/:id`, `/analytics`, `/admin`, and `/admin/members`. League and statistics
+routes mount for every role. The league setup form at
 `/leagues/new`, the start, cancel and disqualify actions, and the admin routes are only for
 Admins outside role preview; anyone else opening `/leagues/new` gets the not-found
 page. `/admin/members` also requires the session's `members` capability. Unknown
@@ -57,6 +58,17 @@ paths render a not-found page. Guests, including in Guest preview, get no Stage
 battle destination or creation links, the not-found page at `/battles/new`,
 `/factions/new` and `/factions/:id/edit`, and a view-only banner;
 `usePermissions().play` gates these, and `canManage` is false for them.
+
+A Player or Tester whose session has no `displayName` sees only the blocking
+**Choose your display name** screen, with a Log out action, until a name is saved;
+Admins, including in role preview, and Guests never see it. The form checks the
+[display-name rules](../architecture/api.md#display-names) before sending and shows
+the server's reason, including a taken name, when a save fails. The top bar shows
+**Signed in as** the display name, `Admin` or `Guest` beside Log out, and the mobile
+menu shows the same label instead of the account ID. For Players and Testers the
+label links to `/profile`, which mounts only for them and changes the name. Battle
+history rows and the battle header show **Started by** and faction cards
+**Created by** with the server's `ownerName`, and show nothing when it is absent.
 
 The shell shows the signed-out screen after a successful logout or an HTTP 401
 confirming that the session is no longer authenticated. An Access logout instead
@@ -292,7 +304,10 @@ recruitment and construction orders.
 ## Shared HTTP transport
 
 `shared/api/request.ts` accepts API paths and applies the configured base URL
-(`VITE_API_URL` in builds). The Vite development proxy defaults to
+(`VITE_API_URL` in builds). `vite.config.ts` rejects a `VITE_API_URL` that is not
+an HTTP(S) origin, because the image's
+[Content-Security-Policy](../architecture/system-architecture.md#browser-delivery)
+allows connections only to that origin. The Vite development proxy defaults to
 `http://localhost:8080`; set the server-only `DEV_API_PROXY_TARGET` in the frontend
 env files or shell to point it elsewhere. `createApiClient` preserves abort errors and wraps network failures in the feature's error type. Authentication disables global unauthorized notifications so login/session failures are handled locally. Feature clients, including faction ruleset discovery, use this common error handling and retain HTTP status messages; battle stop/pause/resume share one response mapper.
 
@@ -316,7 +331,10 @@ battle-only payloads remain in the battle client and UI state in `battles/types.
 It loads shared foundations, then shell and feature styles, and finally shared
 accessibility defaults to preserve their cross-feature cascade:
 
-- `shared/styles/base.css`: tokens, resets, common page/status elements.
+- `shared/styles/base.css`: tokens, resets, common page/status elements, and the
+  DM Mono and Manrope fonts from the `@fontsource` packages. The image's
+  Content-Security-Policy allows only same-origin scripts, styles, fonts and images,
+  so bundle any new asset instead of loading it from another site.
 - `shared/styles/forms.css`: shared forms and preview panels.
 - `shared/styles/accessibility.css`: cross-feature typography, focus, target sizes, and mobile form/page defaults, loaded last.
 - `shared/components/Emblem.css` and `ResponsivePreview.css`: reusable visuals.
@@ -334,6 +352,19 @@ and mobile Chromium. `frontend/e2e/fixtures.ts` intercepts the complete API
 boundary; unexpected requests fail the test. Use these fixtures to verify user
 journeys, role visibility, keyboard access and responsive layouts without a live
 backend or production mutations.
+
+A Content-Security-Policy violation reported by the browser also fails the test.
+The Vite server sends no policy, so to check a policy or asset change, serve the
+built image on the suite's port and run the suite from `frontend/`. Outside CI,
+Playwright reuses that server instead of starting Vite:
+
+```bash
+docker build -t battlefield-frontend-csp frontend
+docker run --rm -d --name battlefield-frontend-csp -p 127.0.0.1:4173:8080 \
+  -e API_UPSTREAM=127.0.0.1:9 battlefield-frontend-csp
+(cd frontend && npx playwright test)
+docker rm -f battlefield-frontend-csp
+```
 
 See [frontend commands](../../frontend/README.md#commands) for browser setup,
 coverage and reports, and [coverage gate details](ci.md#coverage-gate-details) for

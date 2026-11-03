@@ -51,7 +51,7 @@ func (d *fakeDB) QueryRow(_ context.Context, q string, args ...any) pgx.Row {
 func registry() *profile.Registry {
 	return profile.NewCatalog("cluster", []ai.ModelProfile{
 		{ID: "api", DisplayName: "API", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true},
-		{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true},
+		{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true, Model: "fast", ModelOptions: []ai.ModelOption{{ID: "fast"}, {ID: "deep"}}},
 	})
 }
 func request(h *Handler, method string, body any, role authn.Role) *httptest.ResponseRecorder {
@@ -140,5 +140,68 @@ func TestSettingsReadFailures(t *testing.T) {
 	db.raw = []byte("broken")
 	if request(h, "GET", nil, authn.Admin).Code != 503 {
 		t.Fatal("corrupt policy hidden")
+	}
+}
+
+func TestModelRolesValidation(t *testing.T) {
+	db := &fakeDB{raw: []byte(`{"providers":{},"profiles":{}}`)}
+	h := &Handler{Service: &Service{Repository: &Postgres{DB: db}, Profiles: registry()}}
+	var s Settings
+	if err := json.Unmarshal(request(h, "GET", nil, authn.Admin).Body.Bytes(), &s); err != nil {
+		t.Fatal(err)
+	}
+	profileRoles := []string{"admin", "tester"}
+	for _, tt := range []struct {
+		name    string
+		profile string
+		models  map[string]profile.ModelAccess
+		want    int
+	}{
+		{"subset of the profile's roles", "cli", map[string]profile.ModelAccess{"deep": {AllowedRoles: []string{"admin"}}}, 200},
+		{"empty list denies everyone", "cli", map[string]profile.ModelAccess{"deep": {AllowedRoles: []string{}}}, 200},
+		{"role the profile denies", "cli", map[string]profile.ModelAccess{"deep": {AllowedRoles: []string{"admin", "player"}}}, 400},
+		{"unknown model", "cli", map[string]profile.ModelAccess{"retired": {AllowedRoles: []string{"admin"}}}, 400},
+		{"missing role list", "cli", map[string]profile.ModelAccess{"deep": {}}, 400},
+		{"unknown role", "cli", map[string]profile.ModelAccess{"deep": {AllowedRoles: []string{"root"}}}, 400},
+		{"duplicate role", "cli", map[string]profile.ModelAccess{"deep": {AllowedRoles: []string{"admin", "admin"}}}, 400},
+		{"profile without model options", "api", map[string]profile.ModelAccess{"gpt": {AllowedRoles: []string{"admin"}}}, 400},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := s
+			policy.Policy.Profiles = map[string]profile.Access{"api": s.Policy.Profiles["api"], "cli": s.Policy.Profiles["cli"]}
+			policy.Policy.Profiles[tt.profile] = profile.Access{Enabled: true, AllowedRoles: profileRoles, Models: tt.models}
+			db.written = nil
+			if w := request(h, "PUT", policy, authn.Admin); w.Code != tt.want || (tt.want == 400) != (db.written == nil) {
+				t.Fatalf("status %d, written %s", w.Code, db.written)
+			}
+		})
+	}
+	s.Policy.Profiles["cli"] = profile.Access{Enabled: true, AllowedRoles: profileRoles, Models: map[string]profile.ModelAccess{"deep": {AllowedRoles: []string{"tester"}}}}
+	if w := request(h, "PUT", s, authn.Admin); w.Code != 200 || !bytes.Contains(db.written, []byte(`"models":{"deep":{"allowedRoles":["tester"]}}`)) {
+		t.Fatalf("model roles not persisted: %d %s", w.Code, db.written)
+	}
+}
+
+func TestStoredModelRolesReadBack(t *testing.T) {
+	db := &fakeDB{raw: []byte(`{"providers":{"codex-cli":true},"profiles":{"cli":{"enabled":true,"allowedRoles":["admin","player"],"models":{"deep":{"allowedRoles":["admin"]},"retired":{"allowedRoles":["player"]}}}}}`)}
+	h := &Handler{Service: &Service{Repository: &Postgres{DB: db}, Profiles: registry()}}
+	view, err := h.Service.Get(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	models := view.Policy.Profiles["cli"].Models
+	if len(models) != 1 || len(models["deep"].AllowedRoles) != 1 || models["deep"].AllowedRoles[0] != "admin" {
+		t.Fatalf("models=%+v", models)
+	}
+	if !h.Service.valid(view.Settings) {
+		t.Fatal("a policy read back from storage does not validate")
+	}
+	db.raw = []byte(`{"providers":{"codex-cli":true},"profiles":{"cli":{"enabled":true,"allowedRoles":["admin","player"]}}}`)
+	if view, err = h.Service.Get(context.Background()); err != nil || view.Policy.Profiles["cli"].Models != nil {
+		t.Fatalf("policy without model entries: %+v %v", view.Policy.Profiles["cli"], err)
+	}
+	raw, _ := json.Marshal(view.Policy)
+	if bytes.Contains(raw, []byte("models")) {
+		t.Fatalf("absent model entries were serialized: %s", raw)
 	}
 }

@@ -3,11 +3,11 @@ import { test as base, expect, type Route } from '@playwright/test'
 export const factionId = '11111111-1111-4111-8111-111111111111'
 export const rivalId = '22222222-2222-4222-8222-222222222222'
 export const battleId = '33333333-3333-4333-8333-333333333333'
-export const factions = [{ id: factionId, name: 'Amber', doctrine: 'Protect the castle.', background: '', ownerId: 'admin' }, { id: rivalId, name: 'Azure', doctrine: 'Advance.', background: '', ownerId: 'admin' }]
+export const factions = [{ id: factionId, name: 'Amber', doctrine: 'Protect the castle.', background: '', ownerId: 'admin', ownerName: 'Admin' }, { id: rivalId, name: 'Azure', doctrine: 'Advance.', background: '', ownerId: 'admin', ownerName: 'Admin' }]
 export function battleFixture(width = 15, height = 11) {
   const map = { kind: 'authored', width, height, rows: Array<string>(height).fill('.'.repeat(width)), castleSpawns: [{ x: 1, y: 1 }, { x: width - 2, y: height - 2 }], economySites: [[], []] }
   const state = { battleId, tick: 89, factions: factions.map(faction => ({ factionId: faction.id, gold: 100, goldEarned: 100, goldSpent: 0, goldLooted: 0 })), units: [], buildings: factions.map((faction, index) => ({ id: `${faction.id}:castle`, factionId: faction.id, type: 'castle', position: map.castleSpawns[index], health: index ? 0 : 300, maxHealth: 300, defense: 8, vision: 4, income: 10 })) }
-  return { id: battleId, ownerId: 'admin', scenarioId: 'castle-siege-v1', scenarioDigest: 'fixture', status: 'completed', paused: false, currentTick: 89, requestedTicks: 500, attempt: 1, participants: factions, map, state, result: { winnerFactionId: factionId, reason: 'castle_destroyed', ticksRun: 89, factions: [] } }
+  return { id: battleId, ownerId: 'admin', ownerName: 'Admin', scenarioId: 'castle-siege-v1', scenarioDigest: 'fixture', status: 'completed', paused: false, currentTick: 89, requestedTicks: 500, attempt: 1, participants: factions, map, state, result: { winnerFactionId: factionId, reason: 'castle_destroyed', ticksRun: 89, factions: [] } }
 }
 // Ten-tick segments of the completed fixture battle, each tick collecting income.
 function replayFixture(battle: ReturnType<typeof battleFixture>, tick: number) {
@@ -22,7 +22,8 @@ function replayFixture(battle: ReturnType<typeof battleFixture>, tick: number) {
   }
 }
 type CreatedBattle = { id: string; scenarioId: string; participants: { factionId: string; controller: { type: string; profileId?: string } }[]; tickCount: number }
-type FixtureState = { deleteFails: boolean; deleted: boolean; createFails: boolean; created: CreatedBattle | null; generation: Record<string, unknown>; writes: string[]; unexpected: string[]; width: number; height: number }
+type Session = { enabled: boolean; authenticated: boolean; mode?: string; actor: { id: string; role: string; displayName?: string } }
+type FixtureState = { session: Session; takenNames: string[]; deleteFails: boolean; deleted: boolean; createFails: boolean; created: CreatedBattle | null; generation: Record<string, unknown>; writes: string[]; unexpected: string[]; width: number; height: number }
 
 // Battle reads, kept out of the main router so each handler stays simple to read.
 function battleRoute(api: FixtureState, pathname: string, search: URLSearchParams): unknown {
@@ -40,10 +41,16 @@ function battleRoute(api: FixtureState, pathname: string, search: URLSearchParam
 }
 export const test = base.extend<{ api: FixtureState }>({
   api: [async ({ page }, use) => {
-    const api: FixtureState = { deleteFails: false, deleted: false, createFails: false, created: null, generation: { available: false, reason: 'Disabled by operator', remaining: 10, modelLabel: '', resetAt: '2099-01-01T00:00:00Z', retryAt: '' }, writes: [], unexpected: [], width: 15, height: 11 }
+    const api: FixtureState = { session: { enabled: true, authenticated: true, actor: { id: 'admin', role: 'admin' } }, takenNames: [], deleteFails: false, deleted: false, createFails: false, created: null, generation: { available: false, reason: 'Disabled by operator', remaining: 10, modelLabel: '', resetAt: '2099-01-01T00:00:00Z', retryAt: '' }, writes: [], unexpected: [], width: 15, height: 11 }
     // Mutating routes are kept separate so each handler stays simple to read.
     const writeRoute = async (route: Route, pathname: string, method: string) => {
       if (pathname === '/v1/auth/logout') return route.fulfill({ status: 204 })
+      if (pathname === '/v1/profile' && method === 'PUT') {
+        const displayName = (route.request().postDataJSON() as { displayName: string }).displayName.trim()
+        if (api.takenNames.includes(displayName.toLowerCase())) return route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'that display name is taken' } } })
+        api.session = { ...api.session, actor: { ...api.session.actor, displayName } }
+        return route.fulfill({ json: { displayName } })
+      }
       if (pathname === `/v1/factions/${factionId}` && method === 'DELETE') {
         if (api.deleteFails) return route.fulfill({ status: 500, body: 'Failed' })
         api.deleted = true
@@ -65,7 +72,7 @@ export const test = base.extend<{ api: FixtureState }>({
         const handled = await writeRoute(route, pathname, method)
         if (handled !== null) return handled
       }
-      if (pathname === '/v1/auth/session') return reply({ enabled: true, authenticated: true, actor: { id: 'admin', role: 'admin' } })
+      if (pathname === '/v1/auth/session') return reply(api.session)
       if (pathname === '/v1/factions') return reply({ factions: api.deleted ? [factions[1]] : factions })
       if (pathname === '/v1/faction-background-generations/options') return reply(api.generation)
       if (pathname === '/v1/scenarios') return reply({ scenarios: [{ id: 'castle-siege', rulesVersion: '3', rulesetId: 'battlefield', mapWidth: 15, mapHeight: 11, maximumTicks: 800, tickDuration: '1s', decisionIntervalTicks: 10, map: { kind: 'authored', width: 15, height: 11, rows: Array<string>(11).fill('..g....f....#..'), castleSpawns: [{ x: 1, y: 5 }, { x: 13, y: 5 }], economySites: [[], []] } }] })
@@ -76,8 +83,15 @@ export const test = base.extend<{ api: FixtureState }>({
       api.unexpected.push(`${method} ${pathname}`)
       return route.fulfill({ status: 404, body: 'Unexpected test request' })
     })
+    // The development server sends no Content-Security-Policy; against the frontend
+    // image, any page the policy would break fails its test here.
+    const violations: string[] = []
+    page.on('console', message => {
+      if (message.type() === 'error' && message.text().includes('Content Security Policy')) violations.push(message.text())
+    })
     await use(api)
     expect(api.unexpected).toEqual([])
+    expect(violations).toEqual([])
   }, { auto: true }],
 })
 export { expect }

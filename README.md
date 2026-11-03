@@ -35,6 +35,7 @@ production), Jenkins and SonarQube.
 - Run AI leagues (Admins start them; everyone can follow them), with group and knockout stages played in the background.
 - Compare models, factions, units, upgrades and maps across completed battles on the Statistics page.
 - Invite Players and Testers from the Members page, and manage model access by role.
+- Choose a display name on first sign-in; every battle and faction shows who started or created it, never an email.
 
 | League groups and live fixtures | Statistics across completed battles |
 | --- | --- |

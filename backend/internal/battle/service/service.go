@@ -350,10 +350,7 @@ func (s *battleService) resolveParticipants(ctx context.Context, participants []
 	var identities [2]FactionIdentity
 	var controllers [2]game.ControllerConfig
 	for index, participant := range participants {
-		if err := s.authorizeController(ctx, participant.Controller); err != nil {
-			return identities, controllers, err
-		}
-		controller, err := s.resolveController(participant.Controller)
+		controller, err := s.resolveController(ctx, participant.Controller)
 		if err != nil {
 			return identities, controllers, err
 		}
@@ -370,19 +367,7 @@ func (s *battleService) resolveParticipants(ctx context.Context, participants []
 	return identities, controllers, nil
 }
 
-func (s *battleService) authorizeController(ctx context.Context, controller game.ControllerConfig) error {
-	if controller.Type == ai.ControllerModel {
-		if _, hasActor := authn.ActorFromContext(ctx); hasActor {
-			p, e := s.profiles.Require(controller.ProfileID)
-			if e == nil && !profile.Allowed(ctx, p) {
-				return authn.ErrForbidden
-			}
-		}
-	}
-	return nil
-}
-
-func (s *battleService) resolveController(selected game.ControllerConfig) (game.ControllerConfig, error) {
+func (s *battleService) resolveController(ctx context.Context, selected game.ControllerConfig) (game.ControllerConfig, error) {
 	switch selected.Type {
 	case ai.ControllerScripted:
 		if selected.ProfileID != "" || selected.ModelIdentifier != "" || selected.ReasoningEffort != "" {
@@ -390,18 +375,32 @@ func (s *battleService) resolveController(selected game.ControllerConfig) (game.
 		}
 		return game.ControllerConfig{Type: ai.ControllerScripted}, nil
 	case ai.ControllerModel:
-		profile, err := s.profiles.Require(selected.ProfileID)
-		if err != nil {
-			return game.ControllerConfig{}, fmt.Errorf("%w: %q", ErrModelProfileUnavailable, selected.ProfileID)
-		}
-		model, effort, err := ai.ResolveModelSelection(profile, selected.ModelIdentifier, selected.ReasoningEffort)
-		if err != nil {
-			return game.ControllerConfig{}, fmt.Errorf("%w: %s", ErrModelProfileUnavailable, err)
-		}
-		return game.ControllerConfig{Type: ai.ControllerModel, ProfileID: profile.ID, Provider: profile.Provider, Runtime: profile.Runtime, ModelIdentifier: model, ReasoningEffort: effort}, nil
+		return s.resolveModelController(ctx, selected)
 	default:
 		return game.ControllerConfig{}, ErrInvalidBattle
 	}
+}
+
+// resolveModelController freezes a model selection. With an actor, the profile and the
+// model must be ones the actor's role may use, and an omitted model selects the first
+// the role may use when it may not use the configured one.
+func (s *battleService) resolveModelController(ctx context.Context, selected game.ControllerConfig) (game.ControllerConfig, error) {
+	p, err := s.profiles.Require(selected.ProfileID)
+	if err != nil {
+		return game.ControllerConfig{}, fmt.Errorf("%w: %q", ErrModelProfileUnavailable, selected.ProfileID)
+	}
+	if _, hasActor := authn.ActorFromContext(ctx); hasActor {
+		selectable, ok := profile.ForRole(ctx, p)
+		if !ok || (selected.ModelIdentifier != "" && !profile.ModelAllowed(ctx, p, selected.ModelIdentifier)) {
+			return game.ControllerConfig{}, authn.ErrForbidden
+		}
+		p = selectable
+	}
+	model, effort, err := ai.ResolveModelSelection(p, selected.ModelIdentifier, selected.ReasoningEffort)
+	if err != nil {
+		return game.ControllerConfig{}, fmt.Errorf("%w: %s", ErrModelProfileUnavailable, err)
+	}
+	return game.ControllerConfig{Type: ai.ControllerModel, ProfileID: p.ID, Provider: p.Provider, Runtime: p.Runtime, ModelIdentifier: model, ReasoningEffort: effort}, nil
 }
 
 func (s *battleService) GetFactionView(ctx context.Context, battleID, factionID string) (game.View, error) {

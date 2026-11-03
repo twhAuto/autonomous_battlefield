@@ -172,7 +172,7 @@ describe('App', () => {
 
   it.each(['admin', 'tester', 'player'] as const)('offers the %s main-menu destinations allowed by primary navigation', (role) => {
     render(<MemoryRouter><App initialSession={{
-      enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'test-user', role },
+      enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'test-user', role, displayName: 'Iron Duke' },
     }} /></MemoryRouter>)
     const menu = screen.getByRole('region', { name: 'Main menu' })
 
@@ -191,7 +191,7 @@ describe('App', () => {
       policy: { providers: {}, profiles: {} },
       models: [],
     })))
-    const playerSession: AuthSession = { enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'player', role: 'player' } }
+    const playerSession: AuthSession = { enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'player', role: 'player', displayName: 'Iron Duke' } }
     const { unmount } = render(<MemoryRouter initialEntries={['/admin']}><App initialSession={playerSession} /></MemoryRouter>)
     expect(screen.getByRole('heading', { name: 'This route is outside the mapped frontier.' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
@@ -858,7 +858,7 @@ it('uses Access reauthentication without offering the local password form', asyn
 
 it('prevents a Player from opening another person’s faction editor directly',async()=>{
  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({factions:[{id:firstId,name:'Shared',doctrine:'Defend',ownerId:'someone-else'}]}))))
- render(<MemoryRouter initialEntries={[`/factions/${firstId}/edit`]}><App initialSession={{enabled:true,authenticated:true,mode:'cloudflare',actor:{id:'friend',role:'player'}}}/></MemoryRouter>)
+ render(<MemoryRouter initialEntries={[`/factions/${firstId}/edit`]}><App initialSession={{enabled:true,authenticated:true,mode:'cloudflare',actor:{id:'friend',role:'player',displayName:'Friend'}}}/></MemoryRouter>)
  expect(await screen.findByText('You can only edit your own factions.')).toBeInTheDocument()
  expect(screen.queryByRole('button',{name:'SAVE FACTION'})).not.toBeInTheDocument()
 })

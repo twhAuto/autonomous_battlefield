@@ -139,6 +139,8 @@ export interface BattleLeague extends MatchPlace { id: string; name: string; fix
 
 export interface BattleRun {
   ownerId?: string
+  /** Who started the battle: their display name, Admin, or a neutral fallback; absent when names are unavailable. */
+  ownerName?: string
   league?: BattleLeague
   id: string
   scenarioId: string
@@ -383,6 +385,8 @@ export async function listDecisionHistory(id: string, attempt: number, signal?: 
 
 export interface BattleSummary {
   id: string
+  /** Who started the battle: their display name, Admin, or a neutral fallback; absent when names are unavailable. */
+  ownerName?: string
   scenarioId: string
   participants: BattleParticipant[]
   status: BattleStatus
