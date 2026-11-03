@@ -33,7 +33,8 @@ func checkScriptedProduction(t *testing.T, mapID string) {
 		scenario.Factions[i].Controller.Type = ai.ControllerScripted
 	}
 	scenario.Ruleset.Buildings.CastleHealth = 100000
-	job := testJob(30)
+	interval := uint64(scenario.DecisionIntervalTicks)
+	job := testJob(3 * interval)
 	job.Scenario = scenario
 	repo := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}}
 	worker, err := New(repo, repo, testWorkerConfig())
@@ -43,7 +44,7 @@ func checkScriptedProduction(t *testing.T, mapID string) {
 	if err = worker.process(context.Background(), job); err != nil {
 		t.Fatal(err)
 	}
-	if repo.completed == nil || repo.completed.Tick != 30 {
+	if repo.completed == nil || repo.completed.Tick != 3*interval {
 		t.Fatal("scripted battle did not finish")
 	}
 	windows := map[uint64]bool{}
@@ -53,7 +54,7 @@ func checkScriptedProduction(t *testing.T, mapID string) {
 		}
 		windows[record.TargetTick] = true
 	}
-	if !windows[0] || !windows[10] || !windows[20] || !windows[30] {
+	if !windows[0] || !windows[interval] || !windows[2*interval] || !windows[3*interval] {
 		t.Fatal("missing production windows", windows)
 	}
 }

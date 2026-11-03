@@ -96,7 +96,7 @@ func checkSentinelIsRecruited(t *testing.T, scenario game.Scenario, unitID strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	for range 10 {
+	for range scenario.DecisionIntervalTicks {
 		if _, err := match.Advance(); err != nil {
 			t.Fatal(err)
 		}

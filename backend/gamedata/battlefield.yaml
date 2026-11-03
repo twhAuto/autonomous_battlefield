@@ -1,7 +1,7 @@
 rulesetId: battlefield
 maximumTicks: 800
 tickDuration: 1s
-decisionIntervalTicks: 10
+decisionIntervalTicks: 20
 fallbackPlan:
   name: combined-arms
   spendOrder: [construction, upgrades, recruitment]

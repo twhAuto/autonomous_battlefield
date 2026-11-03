@@ -293,7 +293,7 @@ with matching files and previously recorded isolation evidence.
 3. Run `./scripts/ops/prepare-limited-production.sh`, which changes nothing live,
    then deploy the configuration through `main` with `APPLY_CONFIGURATION=true`.
    Keep initial profile access limited to administrators.
-4. Run one Codex-versus-Scripted battle. Check that the opening and tick 10 both
+4. Run one Codex-versus-Scripted battle. Check that the opening and tick 20 both
    have accepted plans with no fallback or error, and that CLI usage is eventually
    populated (token usage can arrive after acceptance). Check execution separately
    in the battle event stream.
