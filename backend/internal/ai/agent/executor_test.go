@@ -62,10 +62,11 @@ func (transport usageReportingTransport) RoundTrip(request *http.Request) (*http
 
 func (transport usageReportingTransport) claimResponse(request *http.Request) *http.Response {
 	var claimRequest struct {
-		ProfileIDs  []string `json:"profileIds"`
-		WaitSeconds int      `json:"waitSeconds"`
+		ProfileIDs        []string `json:"profileIds"`
+		WaitSeconds       int      `json:"waitSeconds"`
+		APIModelSelection bool     `json:"apiModelSelection"`
 	}
-	if json.NewDecoder(request.Body).Decode(&claimRequest) != nil || len(claimRequest.ProfileIDs) != 1 || claimRequest.ProfileIDs[0] != "profile" || claimRequest.WaitSeconds < 1 {
+	if json.NewDecoder(request.Body).Decode(&claimRequest) != nil || len(claimRequest.ProfileIDs) != 1 || claimRequest.ProfileIDs[0] != "profile" || claimRequest.WaitSeconds < 1 || !claimRequest.APIModelSelection {
 		return agentResponse(http.StatusBadRequest, "")
 	}
 	if transport.claims.Add(1) != 1 {

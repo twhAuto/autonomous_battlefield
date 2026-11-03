@@ -57,7 +57,7 @@ func (r *memoryRepository) SubmitDecisionPlan(_ context.Context, value ai.PlanSu
 func (r *memoryRepository) ResolveDecisionFallback(context.Context, string, int64, controller.PlanProposal, string, string) (bool, error) {
 	return true, r.err
 }
-func (r *memoryRepository) ClaimModelDecision(context.Context, string, []string, time.Duration) (ai.DecisionRecord, error) {
+func (r *memoryRepository) ClaimModelDecision(context.Context, string, []string, bool, time.Duration) (ai.DecisionRecord, error) {
 	return r.record, r.err
 }
 func (r *memoryRepository) FinishDecisionFailure(context.Context, string, string, ai.Usage, map[string]any) error {

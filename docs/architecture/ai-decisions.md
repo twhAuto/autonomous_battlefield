@@ -518,17 +518,18 @@ omitted effort keeps the model default (or the option's explicit
 `defaultReasoningEffort`). The backend validates both fields, freezes them in the
 scenario and decision row, and includes effort in retry-reuse matching. Workers
 validate against their own allowlist before execution; a removed option fails as
-`model_selection_unavailable`, rather than substituting another model. Antigravity
-exposes no effort controls.
+`model_selection_unavailable`, rather than substituting another model. The
+exception keeps API decisions running across `*_MODEL` rotation: an API decision
+with no frozen effort whose model is not a listed option, such as the previous
+environment model, runs the worker's current environment model. A listed option
+runs exactly as frozen, even when it was the environment model before a rotation.
+Antigravity exposes no effort controls.
 The setup page never leaves effort implicit: when the chosen model lists efforts
 it preselects `low` (or the first listed effort when `low` is absent) and submits
 it with the model identifier.
-An API decision frozen on the environment model with no effort runs the worker's
-current environment model, so rotating `*_MODEL` in the Secret changes it; a frozen
-model option runs exactly that option. Codex receives `model_reasoning_effort`,
-Claude CLI `--effort`, OpenAI `reasoning.effort`, Gemini
-`thinkingConfig.thinkingLevel` and the Claude API `output_config.effort`. The CLI
-model identifier is the requested identifier; aliases such as `sonnet` can resolve
+Codex receives `model_reasoning_effort`, Claude CLI `--effort`, OpenAI
+`reasoning.effort`, Gemini `thinkingConfig.thinkingLevel` and the Claude API
+`output_config.effort`. The CLI model identifier is the requested identifier; aliases such as `sonnet` can resolve
 to a new provider version and are not an immutable model-version guarantee.
 
 The shipped CLI catalog offers every model the Codex subscription lists:
@@ -555,7 +556,10 @@ API access and usage allowances depend on the account; these choices do not asse
 prices.
 
 The claim request carries `selectionVersion: 1`. An older worker receives HTTP 409
-before leasing a job, preventing it from silently ignoring frozen choices. See
+before leasing a job, preventing it from silently ignoring frozen choices. Workers
+that run API model options also send `apiModelSelection: true`; claims without it
+lease only CLI decisions, because such a worker would run an API decision on its
+environment model whatever the battle chose. See
 [worker rollout ordering](../operations/cli-worker.md#model-selection-rollout).
 
 Context timestamp recording is best-effort: a failed timing write is logged and

@@ -277,7 +277,7 @@ func (run jobRun) logFailure(ctx context.Context, category, outcome string, runE
 
 func (e *Executor) claim(ctx context.Context, profileIDs []string) (job, bool, error) {
 	payload, _ := json.Marshal(map[string]any{
-		"selectionVersion": 1, "workerId": e.WorkerID, "leaseSeconds": int(e.DecisionTimeout.Seconds()) + 5,
+		"selectionVersion": 1, "apiModelSelection": true, "workerId": e.WorkerID, "leaseSeconds": int(e.DecisionTimeout.Seconds()) + 5,
 		"waitSeconds": max(1, min(20, int(e.ClaimWait.Seconds()))), "profileIds": profileIDs, "jobTypes": []string{"battle_decision", "faction_background"},
 	})
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, e.serviceURL("/internal/agent/claim"), bytes.NewReader(payload))
@@ -363,8 +363,9 @@ func (e *Executor) runJob(parent context.Context, job job) {
 	e.finishJob(parent, ctx, jobRun{logger: logger, started: started, requestID: job.RequestID, profile: profile}, result, err)
 }
 
-// resolveJobProfile applies frozen model options. An API job frozen on its profile's
-// environment model, with no effort, runs the environment model the agent has now.
+// resolveJobProfile applies frozen model options. An API job with no effort whose
+// model is not an option, such as the previous environment model after rotation,
+// runs the environment model the agent has now.
 func resolveJobProfile(profile ai.ModelProfile, job job) (ai.ModelProfile, error) {
 	if job.ModelIdentifier == "" && job.ReasoningEffort == "" {
 		return profile, nil

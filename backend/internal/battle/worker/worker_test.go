@@ -523,7 +523,7 @@ func (r *decisionBattleRepository) ResolveDecisionFallback(_ context.Context, id
 	r.records[id] = record
 	return true, nil
 }
-func (r *decisionBattleRepository) ClaimModelDecision(context.Context, string, []string, time.Duration) (ai.DecisionRecord, error) {
+func (r *decisionBattleRepository) ClaimModelDecision(context.Context, string, []string, bool, time.Duration) (ai.DecisionRecord, error) {
 	return ai.DecisionRecord{}, ai.ErrNoDecision
 }
 func (r *decisionBattleRepository) FinishDecisionFailure(context.Context, string, string, ai.Usage, map[string]any) error {
