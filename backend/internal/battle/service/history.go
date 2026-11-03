@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"slices"
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
@@ -27,6 +28,7 @@ type BattleSummary struct {
 	OwnerName      string                     `json:"ownerName,omitempty"`
 	ID             string                     `json:"id"`
 	ScenarioID     string                     `json:"scenarioId"`
+	RulesVersion   string                     `json:"rulesVersion"`
 	Participants   []BattleParticipantSummary `json:"participants"`
 	Status         string                     `json:"status"`
 	Paused         bool                       `json:"paused"`
@@ -41,19 +43,31 @@ type BattleHistoryPage struct {
 	Battles    []BattleSummary `json:"battles"`
 	NextCursor *string         `json:"nextCursor"`
 }
+
+// BattleHistoryInput selects a history page; an empty Status or RulesVersion matches
+// every battle.
 type BattleHistoryInput struct {
-	Status string
-	Cursor string
-	Limit  int
+	Status       string
+	RulesVersion string
+	Cursor       string
+	Limit        int
 }
 type BattleHistoryCursor struct {
 	CreatedAt time.Time `json:"createdAt"`
 	ID        string    `json:"id"`
 }
 type BattleHistoryQuery struct {
-	Status string
-	Before *BattleHistoryCursor
-	Limit  int
+	Status       string
+	RulesVersion string
+	Before       *BattleHistoryCursor
+	Limit        int
+}
+
+// RulesVersions lists the rules versions battles have recorded, newest first, with
+// Current, the version new battles use, always among them.
+type RulesVersions struct {
+	Current  string   `json:"current"`
+	Versions []string `json:"versions"`
 }
 
 // ListBattles validates the filter and cursor, then fetches one extra summary to
@@ -65,10 +79,10 @@ func (s *battleService) ListBattles(ctx context.Context, input BattleHistoryInpu
 	default:
 		return page, ErrInvalidBattle
 	}
-	if input.Limit < 1 || input.Limit > 100 {
+	if input.Limit < 1 || input.Limit > 100 || len(input.RulesVersion) > game.MaxRulesVersionLength {
 		return page, ErrInvalidBattle
 	}
-	query := BattleHistoryQuery{Status: input.Status, Limit: input.Limit + 1}
+	query := BattleHistoryQuery{Status: input.Status, RulesVersion: input.RulesVersion, Limit: input.Limit + 1}
 	if input.Cursor != "" {
 		data, err := base64.RawURLEncoding.DecodeString(input.Cursor)
 		if err != nil || len(data) > 256 {
@@ -95,4 +109,25 @@ func (s *battleService) ListBattles(ctx context.Context, input BattleHistoryInpu
 		page.Battles = battles
 	}
 	return page, nil
+}
+
+// ListRulesVersions lists the recorded rules versions together with the current one,
+// newest first.
+func (s *battleService) ListRulesVersions(ctx context.Context) (RulesVersions, error) {
+	versions, err := s.battles.ListRulesVersions(ctx)
+	if err != nil {
+		return RulesVersions{}, err
+	}
+	result := RulesVersions{Versions: versions}
+	if summaries := s.catalog.Summaries(); len(summaries) > 0 {
+		result.Current = summaries[0].RulesVersion
+		if !slices.Contains(result.Versions, result.Current) {
+			result.Versions = append(result.Versions, result.Current)
+		}
+	}
+	if result.Versions == nil {
+		result.Versions = []string{}
+	}
+	slices.SortFunc(result.Versions, game.CompareRulesVersions)
+	return result, nil
 }

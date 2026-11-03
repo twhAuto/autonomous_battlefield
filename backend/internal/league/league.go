@@ -7,6 +7,7 @@ package league
 import (
 	"crypto/sha256"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -69,18 +70,20 @@ type League struct {
 	CompletedAt *time.Time
 }
 
-// Summary is a league in a list: no entrants or fixtures, only progress and champion.
+// Summary is a league in a list: no entrants or fixtures, only progress, champion and
+// the rules versions its battles ran on, newest first.
 type Summary struct {
-	ID           string
-	OwnerID      string
-	Name         string
-	Status       string
-	GroupCount   int
-	Champion     *int
-	ChampionName *string
-	Settled      int
-	CreatedAt    time.Time
-	CompletedAt  *time.Time
+	ID            string
+	OwnerID       string
+	Name          string
+	Status        string
+	GroupCount    int
+	Champion      *int
+	ChampionName  *string
+	Settled       int
+	RulesVersions []string
+	CreatedAt     time.Time
+	CompletedAt   *time.Time
 }
 
 // Settings are the battle options every fixture of a league shares.
@@ -131,8 +134,9 @@ type Fixture struct {
 }
 
 // BattleOutcome is the part of a fixture's current battle that the league scores and
-// shows: its status and tick progress, then its result once completed.
+// shows: its rules version, status and tick progress, then its result once completed.
 type BattleOutcome struct {
+	RulesVersion    string
 	Status          string
 	CurrentTick     int64
 	RequestedTicks  int64
@@ -177,6 +181,20 @@ func MatchName(stage string, round, tie int) string {
 // Settled reports whether a fixture will produce no further battles.
 func (f Fixture) Settled() bool {
 	return f.Status == FixtureCompleted || f.Status == FixtureVoid || f.Status == FixtureCancelled || f.Status == FixtureForfeited
+}
+
+// RulesVersions lists the rules versions of the fixtures' battles, newest first. Fixtures
+// create their battles from the live catalog as they start, so a league that spans a
+// gameplay release has more than one.
+func (l *League) RulesVersions() []string {
+	versions := []string{}
+	for _, f := range l.Fixtures {
+		if f.Battle != nil && f.Battle.RulesVersion != "" && !slices.Contains(versions, f.Battle.RulesVersion) {
+			versions = append(versions, f.Battle.RulesVersion)
+		}
+	}
+	slices.SortFunc(versions, game.CompareRulesVersions)
+	return versions
 }
 
 // Score returns a completed fixture's result. Void, cancelled and unfinished fixtures

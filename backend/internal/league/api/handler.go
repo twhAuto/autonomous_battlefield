@@ -88,14 +88,14 @@ func (h *Handler) ListLeagues(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = parsed
 	}
-	summaries, err := h.leagues.ListLeagues(r.Context(), limit)
+	summaries, err := h.leagues.ListLeagues(r.Context(), leagueservice.ListQuery{Limit: limit, RulesVersion: r.URL.Query().Get("rulesVersion")})
 	if writeError(w, r, err, "league_list_failed", "could not list leagues") {
 		return
 	}
 	items := make([]summaryJSON, 0, len(summaries))
 	for _, s := range summaries {
 		item := summaryJSON{ID: s.ID, OwnerID: s.OwnerID, Name: s.Name, Status: s.Status, GroupCount: s.GroupCount, EntrantCount: s.GroupCount * league.GroupSize,
-			Progress: progressJSON{Settled: s.Settled, Total: league.TotalFixtures(s.GroupCount)}, CreatedAt: s.CreatedAt, CompletedAt: s.CompletedAt}
+			Progress: progressJSON{Settled: s.Settled, Total: league.TotalFixtures(s.GroupCount)}, RulesVersions: nonNil(s.RulesVersions), CreatedAt: s.CreatedAt, CompletedAt: s.CompletedAt}
 		if s.Champion != nil && s.ChampionName != nil {
 			item.Champion = &championJSON{Entrant: *s.Champion, FactionName: *s.ChampionName}
 		}
@@ -201,16 +201,25 @@ type schedulingJSON struct {
 }
 
 type summaryJSON struct {
-	ID           string        `json:"id"`
-	OwnerID      string        `json:"ownerId"`
-	Name         string        `json:"name"`
-	Status       string        `json:"status"`
-	GroupCount   int           `json:"groupCount"`
-	EntrantCount int           `json:"entrantCount"`
-	Champion     *championJSON `json:"champion"`
-	Progress     progressJSON  `json:"progress"`
-	CreatedAt    time.Time     `json:"createdAt"`
-	CompletedAt  *time.Time    `json:"completedAt"`
+	ID            string        `json:"id"`
+	OwnerID       string        `json:"ownerId"`
+	Name          string        `json:"name"`
+	Status        string        `json:"status"`
+	GroupCount    int           `json:"groupCount"`
+	EntrantCount  int           `json:"entrantCount"`
+	Champion      *championJSON `json:"champion"`
+	Progress      progressJSON  `json:"progress"`
+	RulesVersions []string      `json:"rulesVersions"`
+	CreatedAt     time.Time     `json:"createdAt"`
+	CompletedAt   *time.Time    `json:"completedAt"`
+}
+
+// nonNil keeps an empty list a JSON array.
+func nonNil(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
 }
 
 type championJSON struct {

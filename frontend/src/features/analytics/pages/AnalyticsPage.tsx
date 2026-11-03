@@ -61,10 +61,12 @@ export function AnalyticsPage() {
           {leagueId && <Link className="compact-action" to={`/leagues/${encodeURIComponent(leagueId)}`}>← BACK TO LEAGUE</Link>}</div>
       </section>
       <form className="analytics-filters" aria-label="Statistics filters" onSubmit={event => event.preventDefault()}>
-        <label>League <select value={leagueId} onChange={event => setFilter('leagueId', event.target.value)}>
+        <label>Battles <select value={leagueId} onChange={event => setFilter('leagueId', event.target.value)}>
           <option value="">All battles</option>
-          {leagueId && !leagues.some(league => league.id === leagueId) && <option value={leagueId}>Selected league</option>}
-          {leagues.map(league => <option key={league.id} value={league.id}>{league.name}</option>)}
+          <optgroup label="Leagues">
+            {leagueId && !leagues.some(league => league.id === leagueId) && <option value={leagueId}>Selected league</option>}
+            {leagues.map(league => <option key={league.id} value={league.id}>{league.name}</option>)}
+          </optgroup>
         </select></label>
         <label><input type="checkbox" checked={allRules} onChange={event => setFilter('rules', event.target.checked ? 'all' : '')} /> Every rules version</label>
         <label><input type="checkbox" checked={excludeFallback} onChange={event => setFilter('fallback', event.target.checked ? 'exclude' : '')} /> Leave out battles with scripted fallbacks</label>

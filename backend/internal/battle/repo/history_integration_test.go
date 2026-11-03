@@ -1,4 +1,5 @@
-// Exercises history queries and reversible history-index migration against PostgreSQL.
+// Exercises history queries, rules-version filtering and listing, and the reversible
+// history-index migration against PostgreSQL.
 
 package repo
 
@@ -35,6 +36,35 @@ func TestBattleHistoryAgainstPostgres(t *testing.T) {
 	checkHistoryStatusFilters(t, repo, ids)
 	checkHistoryIgnoresFactionRegistry(t, tx, repo, scenario.Factions[0].ID)
 	checkHistoryCursorIgnoresNewerBattles(t, tx, repo, scenario, when, ids)
+	checkHistoryRulesVersions(t, tx, repo, scenario, when)
+}
+
+// checkHistoryRulesVersions adds a battle on another rules version: each version filter
+// returns only its own battles, still newest first, and the listing names both.
+func checkHistoryRulesVersions(t *testing.T, tx pgx.Tx, repo *Postgres, scenario battle.Scenario, when time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	scenario.RulesVersion = "2"
+	newerID := "00000000-0000-0000-0000-000000000009"
+	createHistoryBattle(t, repo, scenario, newerID)
+	mustExec(t, tx, "UPDATE battle_runs SET created_at=$2 WHERE id=$1", newerID, when.Add(2*time.Second))
+	rows, err := repo.ListBattles(ctx, battleservice.BattleHistoryQuery{RulesVersion: "2", Limit: 100})
+	if err != nil || len(rows) != 1 || rows[0].ID != newerID || rows[0].RulesVersion != "2" {
+		t.Fatalf("version 2 rows=%+v err=%v", rows, err)
+	}
+	rows, err = repo.ListBattles(ctx, battleservice.BattleHistoryQuery{RulesVersion: "1", Status: "completed", Limit: 100})
+	if err != nil || len(rows) != 1 || rows[0].RulesVersion != "1" {
+		t.Fatalf("version 1 completed rows=%+v err=%v", rows, err)
+	}
+	rows, err = repo.ListBattles(ctx, battleservice.BattleHistoryQuery{RulesVersion: "1", Limit: 100})
+	if err != nil || len(rows) != 8 {
+		t.Fatalf("version 1 rows=%d err=%v", len(rows), err)
+	}
+	versions, err := repo.ListRulesVersions(ctx)
+	slices.SortFunc(versions, battle.CompareRulesVersions)
+	if err != nil || !slices.Equal(versions, []string{"2", "1"}) {
+		t.Fatalf("versions=%v err=%v", versions, err)
+	}
 }
 
 // seedHistory creates seven battles, one per status (two of them paused), all at the
@@ -249,5 +279,43 @@ func TestBattleHistoryCursorStaysIndexConditionInGenericPlans(t *testing.T) {
 	text := plan.String()
 	if !strings.Contains(text, "battle_runs_history_idx") || !strings.Contains(text, "Index Cond: (ROW(created_at, id) <") {
 		t.Fatalf("history cursor is not an index condition in the generic plan:\n%s", text)
+	}
+}
+
+// The rules-version statement must keep both the version and the cursor as index
+// conditions in generic plans, so an old version's pages do not scan newer battles.
+func TestBattleHistoryRulesVersionStaysIndexConditionInGenericPlans(t *testing.T) {
+	ctx, db := integrationDatabase(t)
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(context.Background())
+	for _, statement := range []string{
+		"SET LOCAL plan_cache_mode = force_generic_plan",
+		"SET LOCAL enable_seqscan = off",
+		"SET LOCAL enable_sort = off",
+		"PREPARE version_plan(text, timestamptz, uuid, int, text) AS " + listBattlesByVersionSQL,
+	} {
+		if _, err := tx.Exec(ctx, statement); err != nil {
+			t.Fatal(statement, err)
+		}
+	}
+	var plan strings.Builder
+	rows, err := tx.Query(ctx, "EXPLAIN (COSTS OFF) EXECUTE version_plan('', now(), gen_random_uuid(), 26, '13')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var line string
+		if rows.Scan(&line) != nil {
+			t.Fatal("scan plan line")
+		}
+		plan.WriteString(line + "\n")
+	}
+	rows.Close()
+	text := plan.String()
+	if !strings.Contains(text, "battle_runs_rules_version_history_idx") || !strings.Contains(text, "rules_version = $5") || !strings.Contains(text, "ROW(created_at, id) <") || strings.Contains(text, "Filter: (rules_version") {
+		t.Fatalf("rules version or cursor is not an index condition in the generic plan:\n%s", text)
 	}
 }

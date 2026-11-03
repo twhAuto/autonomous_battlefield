@@ -169,6 +169,8 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
   .event-console__actions > span { margin-left: 0; }
 }
 .history-toolbar, .history-pagination { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1rem 0; }
+.history-toolbar { flex-wrap: wrap; }
+.history-filters { display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; }
 .history-toolbar label { display: flex; align-items: center; gap: .75rem; }
 .history-toolbar select { font: inherit; padding: .5rem; background: var(--ink); color: inherit; border: 1px solid currentColor; }
 .history-table { width: 100%; border-collapse: collapse; text-align: left; }

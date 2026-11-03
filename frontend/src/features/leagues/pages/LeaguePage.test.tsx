@@ -11,7 +11,7 @@ function sampleLeague(change: Partial<League> = {}): League {
   const names = ['Amber', 'Basalt', 'Cinder', 'Dusk', 'Ember', 'Frost', 'Gale', 'Haze']
   return {
     id: 'league-1', ownerId: 'admin', name: 'Autumn cup', status: 'running', groupCount: 2,
-    settings: { scenarioIds: ['frontier-siege'], tickCount: 500 }, champion: null, progress: { settled: 1, total: 13 },
+    settings: { scenarioIds: ['frontier-siege'], tickCount: 500 }, champion: null, progress: { settled: 1, total: 13 }, rulesVersions: ['13'],
     // Gale has lost two group matches, so it alone can no longer win.
     entrants: names.map((factionName, index) => ({ index, group: index % 2 ? 'B' : 'A', factionId: `f${index}`, factionName,
       controller: index === 0 ? { type: 'model', modelIdentifier: 'sonnet', reasoningEffort: 'low' } : { type: 'scripted' }, eliminated: index === 6, disqualification: null })),
@@ -42,6 +42,7 @@ it('shows group tables and matches, the bracket and fixtures', async () => {
   vi.mocked(fetch).mockImplementation(async () => reply(200, sampleLeague()))
   show(false)
   expect(await screen.findByRole('heading', { name: 'Autumn cup' })).toBeInTheDocument()
+  expect(screen.getByText(/ticks per battle/)).toHaveTextContent('500 ticks per battle · rules v13 · 1 of 13 fixtures settled')
   const rows = within(screen.getByRole('table', { name: 'Group A standings' })).getAllByRole('row')
   expect(rows[1]).toHaveTextContent(/^1stAmbersonnet · low20$/)
   expect(rows[2]).toHaveTextContent(/^2ndCinder/)
@@ -106,6 +107,16 @@ it('names the champion of a completed league and offers Admins a copy of its set
   expect(screen.queryByRole('button', { name: 'CANCEL LEAGUE' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'DISQUALIFY ENTRANT' })).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'START AGAIN →' })).toHaveAttribute('href', '/leagues/new?from=league-1')
+})
+
+it('names every rules version a league spans and none before its first battle', async () => {
+  vi.mocked(fetch).mockResolvedValueOnce(reply(200, sampleLeague({ status: 'completed', rulesVersions: ['13', '12'] })))
+  const view = show()
+  expect(await screen.findByText(/ticks per battle/)).toHaveTextContent('· rules v13, v12 ·')
+  view.unmount()
+  vi.mocked(fetch).mockResolvedValueOnce(reply(200, sampleLeague({ status: 'completed', rulesVersions: [] })))
+  show()
+  expect(await screen.findByText(/ticks per battle/)).not.toHaveTextContent('rules')
 })
 
 it('disqualifies a picked entrant after confirmation and records who did it and why', async () => {

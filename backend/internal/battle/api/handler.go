@@ -76,6 +76,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/battles", h.CreateBattle)
 	mux.HandleFunc("GET /v1/battles", h.ListBattles)
 	mux.HandleFunc("GET /v1/battles/allowance", h.GetAllowance)
+	mux.HandleFunc("GET /v1/battles/rules-versions", h.ListRulesVersions)
 	mux.HandleFunc("GET /v1/battles/{id}", h.GetBattle)
 	mux.HandleFunc("POST /v1/battles/{id}/stop", h.StopBattle)
 	mux.HandleFunc("POST /v1/battles/{id}/pause", h.PauseBattle)
