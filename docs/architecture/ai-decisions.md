@@ -184,8 +184,12 @@ This deterministic order lengthens the reusable prefix of prefetched prompts.
 Tool-fetch sessions still send a changing request ID before receiving context, so
 ordering the tool response cannot move its reference data into the initial shared
 prefix. Ordering is not evidence of provider cache hits: provider message boundaries,
-cache controls and CLI-managed serialization still apply. Measure reported cached
-input separately; provider-specific cache configuration remains separate work.
+cache controls and CLI-managed serialization still apply, so measure reported cached
+input separately. Only the Claude API adapter sets cache controls. It marks the end
+of the decision instructions, so the tools, system prompt and instructions that every
+decision repeats are cached, and uses automatic caching at the end of each request,
+so a decision's next tool-loop turn reads its earlier turns from the cache. OpenAI
+and Gemini requests carry no cache controls.
 
 Only the owning faction's name, doctrine and optional background enter its decision
 context, observation hash and provenance; opponent doctrines never do. They arrive

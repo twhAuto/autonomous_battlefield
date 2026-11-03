@@ -372,3 +372,23 @@ func TestProvidersSendReasoningEffortOnlyWhenSet(t *testing.T) {
 		}
 	}
 }
+
+// Only Claude caches explicitly; a shared prefix leaves OpenAI and Gemini requests
+// byte for byte as they were.
+func TestSharedPrefixLeavesOpenAIAndGeminiUnchanged(t *testing.T) {
+	bodies := map[int][2]string{}
+	for _, shared := range []int{0, 3} {
+		var openAI, gemini []byte
+		capture := func(target *[]byte) *http.Client {
+			return clientWith(http.StatusOK, `{}`, func(request *http.Request) { *target, _ = io.ReadAll(request.Body) })
+		}
+		turn := providerRequest()
+		turn.Messages[0].SharedPrefixBytes = shared
+		_, _ = (&OpenAI{Client: capture(&openAI)}).NextTurn(context.Background(), turn)
+		_, _ = (&Gemini{Client: capture(&gemini)}).NextTurn(context.Background(), turn)
+		bodies[shared] = [2]string{string(openAI), string(gemini)}
+	}
+	if bodies[0] != bodies[3] || bodies[0][0] == "" || bodies[0][1] == "" {
+		t.Fatalf("shared prefix changed a request: %v", bodies)
+	}
+}

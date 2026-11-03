@@ -36,13 +36,15 @@ func (p *Anthropic) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.
 	}
 	// Current Claude models reject a forced tool_choice, so the default auto choice
 	// applies and the prompt requires the tool call. Thinking keeps each model's
-	// default, which is adaptive on every offered model.
+	// default, which is adaptive on every offered model. Automatic caching marks the
+	// end of each request, so the next turn of the tool loop reads it back.
 	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(p.Model),
-		MaxTokens: int64(turn.MaxTokens),
-		System:    []anthropic.TextBlockParam{{Text: turn.SystemPrompt}},
-		Messages:  messages,
-		Tools:     tools,
+		Model:        anthropic.Model(p.Model),
+		MaxTokens:    int64(turn.MaxTokens),
+		System:       []anthropic.TextBlockParam{{Text: turn.SystemPrompt}},
+		Messages:     messages,
+		Tools:        tools,
+		CacheControl: anthropic.NewCacheControlEphemeralParam(),
 	}
 	if p.ReasoningEffort != "" {
 		params.OutputConfig = anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffort(p.ReasoningEffort)}
@@ -123,11 +125,22 @@ func anthropicMessages(messages []ai.Message) ([]anthropic.MessageParam, error) 
 			params = append(params, anthropic.NewAssistantMessage(blocks...))
 		default:
 			flush()
-			params = append(params, anthropic.NewUserMessage(anthropic.NewTextBlock(message.Content)))
+			params = append(params, anthropic.NewUserMessage(anthropicUserBlocks(message)...))
 		}
 	}
 	flush()
 	return params, nil
+}
+
+// anthropicUserBlocks sends a message's shared prefix as its own cached block, so
+// later decisions read the tools, system prompt and that prefix from the cache.
+func anthropicUserBlocks(message ai.Message) []anthropic.ContentBlockParamUnion {
+	shared := message.SharedPrefixBytes
+	if shared <= 0 || shared >= len(message.Content) {
+		return []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(message.Content)}
+	}
+	prefix := anthropic.TextBlockParam{Text: message.Content[:shared], CacheControl: anthropic.NewCacheControlEphemeralParam()}
+	return []anthropic.ContentBlockParamUnion{{OfText: &prefix}, anthropic.NewTextBlock(message.Content[shared:])}
 }
 
 // anthropicAssistantBlocks repeats a Claude turn's own content unchanged, because a

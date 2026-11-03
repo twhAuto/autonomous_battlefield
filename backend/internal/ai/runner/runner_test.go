@@ -450,6 +450,9 @@ func TestAPIRunnerKeepsToolCallsStructured(t *testing.T) {
 	if len(messages) != 4 {
 		t.Fatalf("messages=%+v", messages)
 	}
+	if messages[0].SharedPrefixBytes == 0 || messages[0].SharedPrefixBytes >= len(messages[0].Content) {
+		t.Fatalf("decision prompt shares no prefix: %d of %d bytes", messages[0].SharedPrefixBytes, len(messages[0].Content))
+	}
 	assistant, first, second := messages[1], messages[2], messages[3]
 	if assistant.Role != "assistant" || assistant.Content != "reading" || string(assistant.ProviderContent) != `[{"type":"thinking"}]` || len(assistant.ToolCalls) != 2 ||
 		assistant.ToolCalls[0].ID != "call_0_0" || assistant.ToolCalls[1].ID != "provider-id" {
