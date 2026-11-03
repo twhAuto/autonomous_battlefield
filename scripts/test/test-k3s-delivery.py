@@ -13,6 +13,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND = 'ghcr.io/test/backend@sha256:' + 'a' * 64
+# age's documented example public key; the fake age below only checks it is passed.
+RECIPIENT = 'age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p'
 FRONTEND = 'ghcr.io/test/frontend@sha256:' + 'b' * 64
 
 
@@ -43,7 +45,8 @@ class DeliveryTests(unittest.TestCase):
         self.ca = self.directory / 'ca.pem'
         self.ca.write_bytes(Path(self.ca_bundle).read_bytes())
         self.profile.write_text('BF_ENV=production\nBF_DRIVER=k3s\nBF_CONTEXT=fixture\nBF_CLUSTER=node\nBF_UID=uid\n'
-                                'BF_URL=https://play.example.com\nBF_KUBECONFIG=kubeconfig\nBF_KUBELET_CA_FILE=ca.pem\n')
+                                'BF_URL=https://play.example.com\nBF_KUBECONFIG=kubeconfig\nBF_KUBELET_CA_FILE=ca.pem\n'
+                                'BF_BACKUP_RECIPIENT=' + RECIPIENT + '\n')
         (self.directory / '.env').write_text('POSTGRES_DB=battlefield\nPOSTGRES_USER=battlefield\nPOSTGRES_PASSWORD=synthetic\n'
             'DATABASE_URL=postgres://battlefield:synthetic@battlefield-postgres:5432/battlefield\nBATTLEFIELD_AUTH_MODE=cloudflare\n'
             'BATTLEFIELD_ACCESS_ISSUER=https://fixture.cloudflareaccess.com\nBATTLEFIELD_ACCESS_AUDIENCE=' + 'c'*64 + '\n'
@@ -55,6 +58,12 @@ class DeliveryTests(unittest.TestCase):
         self.bins = self.directory / 'bin'
         self.bins.mkdir()
         self.command('kind', 'raise SystemExit("Kind must never be called for K3s")')
+        # Stands in for age: the reversed bytes behind a header prove no plaintext reaches disk.
+        self.command('age', '''
+if os.environ.get('AGE_FAIL'): sys.exit(1)
+assert args==['--encrypt','--recipient',RECIPIENT], args
+sys.stdout.buffer.write(b'age-encryption.org/v1\\n'+sys.stdin.buffer.read()[::-1])
+''', {'RECIPIENT': RECIPIENT})
         self.command('git', 'print("f"*40)')
         self.command('docker', '''
 if 'verify' in args:
@@ -208,6 +217,36 @@ elif 'apply' in args and '-f' in args and args[args.index('-f')+1]=='-': sys.std
                 self.assertTrue(sessions)
                 self.assertNotIn('query',sessions[0].split('from pg_stat_activity')[0])
 
+    def test_backup_is_encrypted_and_keeps_only_the_newest_three_dumps(self):
+        backups=self.directory/'backups'
+        backups.mkdir(mode=0o700)
+        older=['pre-migration-20260101T000000Z.aaaaaa.dump.age','pre-migration-20260102T000000Z.bbbbbb.dump.age',
+               'pre-migration-20260103T000000Z.cccccc.dump.age']
+        for name in [*older,'pre-migration-20251201T000000Z.dddddd.dump','notes.txt']:
+            (backups/name).write_text('old')
+        result=self.run_script('deploy.sh','f'*40)
+        remaining=sorted(path.name for path in backups.iterdir())
+        dumps=[name for name in remaining if name.endswith('.dump.age')]
+        self.assertEqual(len(dumps),3,remaining)
+        self.assertEqual(dumps[:2],older[1:])
+        self.assertEqual(sorted(set(remaining)-set(dumps)),['notes.txt'])
+        latest=backups/dumps[2]
+        self.assertEqual(latest.read_bytes(),b'age-encryption.org/v1\n'+b'synthetic dump\n'[::-1])
+        self.assertEqual(latest.stat().st_mode & 0o777,0o600)
+        self.assertIn(f'Database backup verified and encrypted: {latest}',result.stdout)
+        self.assertTrue(any('battlefield-migrate' in c for c in self.calls))
+
+    def test_backup_without_a_recipient_or_with_failed_encryption_refuses_migration(self):
+        profile=self.profile.read_text()
+        for name,settings,message in (('missing recipient',{},'BF_BACKUP_RECIPIENT in the deployment profile is not an age public key'),
+                                      ('failed encryption',{'AGE_FAIL':'1'},'age could not encrypt the dump')):
+            with self.subTest(name):
+                self.profile.write_text(profile if settings else profile.replace('BF_BACKUP_RECIPIENT='+RECIPIENT+'\n',''))
+                result=self.run_script('deploy.sh','f'*40,ok=False,**settings)
+                self.assertIn(f'Database backup failed: {message}; refusing migration.',result.stderr)
+                self.assertFalse(any('battlefield-migrate' in c for c in self.calls))
+                self.assertEqual(list((self.directory/'backups').iterdir()) if (self.directory/'backups').exists() else [],[])
+
     def test_recovery_requires_matching_database_and_keeps_uid_guard(self):
         self.run_script('production-recovery.sh','record','f'*40)
         record=json.loads((self.directory/'recovery.json').read_text())
@@ -294,9 +333,10 @@ elif 'apply' in args and '-f' in args and args[args.index('-f')+1]=='-': sys.std
     def test_registration_reuses_platform_without_docker_and_refuses_overwrite(self):
         target=self.directory/'registration'
         settings=dict(BATTLEFIELD_CONFIG_DIR=str(target),BATTLEFIELD_ENV_FILE=str(target/'deployment.env'),
-                      KUBELET_CA_FILE=str(self.ca),TARGET_URL='https://play.example.com')
+                      KUBELET_CA_FILE=str(self.ca),TARGET_URL='https://play.example.com',BACKUP_RECIPIENT=RECIPIENT)
         self.run_script('setup-environment.sh','production','default','k3s',**settings)
         self.assertIn('BF_DRIVER=k3s',(target/'deployment.env').read_text())
+        self.assertIn('BF_BACKUP_RECIPIENT='+RECIPIENT+'\n',(target/'deployment.env').read_text())
         self.assertEqual((target/'kubelet-ca.crt').read_bytes(),self.ca.read_bytes())
         self.assertFalse(any(c[0] in ('docker','kind') for c in self.calls))
         before=(target/'deployment.env').read_bytes()
