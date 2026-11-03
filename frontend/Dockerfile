@@ -28,6 +28,11 @@ RUN apk upgrade --no-cache \
 ENV API_UPSTREAM=battlefield-api:8080
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 
+# The Content-Security-Policy allows browser connections to the origin the bundle calls.
+# An empty value keeps them on this origin, behind the /v1 proxy.
+ARG VITE_API_URL=""
+ENV CSP_API_ORIGIN=${VITE_API_URL}
+
 # The private Jenkins workspace uses umask 0077; runtime permissions must not
 # depend on the checkout owner or mode. These files contain no secrets.
 COPY --chown=101:101 --chmod=0644 nginx-main.conf /etc/nginx/nginx.conf

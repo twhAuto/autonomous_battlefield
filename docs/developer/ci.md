@@ -210,7 +210,8 @@ contacting a deployment. Production k6 and ZAP are described under
 Both PR and main deployment-script checks run
 `./scripts/test/test-frontend-image.sh`: it copies tracked frontend inputs into a
 private temporary context with files `0600` and directories `0700`, builds the
-actual Dockerfile, verifies startup, and proves an unreadable template is rejected.
+actual Dockerfile, verifies startup, and proves that an unreadable template and a
+Content-Security-Policy allowing scripts from any source are rejected.
 It needs Docker with BuildKit and access to the configured base-image/package
 registries; it uses the default daemon-backed builder and removes its child image
 before the parent and temporary files. It deliberately runs for every PR/main
@@ -224,7 +225,9 @@ and the production writable paths in temporary filesystems. It publishes no port
 uses no application credentials and disables container networking. Its resolver
 input is pinned to loopback so host DNS changes cannot invalidate this isolated
 check. It checks all three Kubernetes probes, the built index and its JavaScript/CSS entry assets over
-loopback HTTP. PR/local image builds invoke it after building the frontend; main
+loopback HTTP. The index must hold no inline script or style, and it and every
+entry asset must carry the expected Content-Security-Policy, whose `connect-src`
+adds the image's `CSP_API_ORIGIN` when set. PR/local image builds invoke it after building the frontend; main
 pulls and checks the scanned frontend digest before signing or rollout. Failures
 print Docker diagnostics and bounded container logs and remove only that check's
 container. The published-image gate removes digest references it pulled solely for

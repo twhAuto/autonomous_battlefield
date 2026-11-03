@@ -3,12 +3,29 @@
 
 import argparse
 from html.parser import HTMLParser
+import json
 import signal
 import subprocess
 import sys
 import time
 from urllib.parse import urlsplit
 import uuid
+
+# The Content-Security-Policy every response must carry; connect-src also lists the
+# image's CSP_API_ORIGIN when the build names a separate API.
+SELF, NONE = "'self'", "'none'"
+POLICY = {
+    "default-src": [SELF],
+    "script-src": [SELF],
+    "style-src": [SELF],
+    "font-src": [SELF, "data:"],
+    "img-src": [SELF, "data:"],
+    "connect-src": [SELF],
+    "frame-ancestors": [NONE],
+    "object-src": [NONE],
+    "base-uri": [SELF],
+    "form-action": [SELF],
+}
 
 
 class Assets(HTMLParser):
@@ -20,7 +37,9 @@ class Assets(HTMLParser):
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         path = None
-        if tag == "script" and attrs.get("src"):
+        if tag == "style" or (tag == "script" and not attrs.get("src")):
+            raise ValueError("Frontend index must not contain inline scripts or styles, which the Content-Security-Policy blocks")
+        if tag == "script":
             path = attrs["src"]
             self.has_script = True
         elif tag == "link" and {"stylesheet", "modulepreload"}.intersection(attrs.get("rel", "").split()):
@@ -34,6 +53,41 @@ class Assets(HTMLParser):
 
 def docker(*args, timeout=30, check=True):
     return subprocess.run(["docker", *args], capture_output=True, timeout=timeout, check=check)
+
+
+def expected_policy(image):
+    env = json.loads(docker("image", "inspect", "--format", "{{json .Config.Env}}", image).stdout)
+    origin = next((item.split("=", 1)[1] for item in env if item.startswith("CSP_API_ORIGIN=")), "").strip()
+    return {**POLICY, "connect-src": POLICY["connect-src"] + ([origin] if origin else [])}
+
+
+def parse_policy(header):
+    directives = {}
+    for directive in filter(None, (part.strip() for part in header.split(";"))):
+        name, *sources = directive.split()
+        if name in directives:
+            raise ValueError("Content-Security-Policy repeats " + name)
+        directives[name] = sources
+    return directives
+
+
+def served_policy(name, path):
+    # BusyBox wget -S prints the response headers to stderr.
+    response = docker("exec", name, "wget", "-q", "-S", "-T", "2", "-O", "/dev/null",
+                      "http://127.0.0.1:8080" + path, timeout=5).stderr.decode("utf-8", "replace")
+    headers = [line.split(":", 1)[1].strip() for line in response.splitlines()
+               if line.strip().lower().startswith("content-security-policy:")]
+    if len(headers) != 1:
+        raise RuntimeError("Expected one Content-Security-Policy header on " + path)
+    return parse_policy(headers[0])
+
+
+def check_policy(name, image, paths):
+    required = expected_policy(image)
+    for path in paths:
+        served = served_policy(name, path)
+        if served != required:
+            raise RuntimeError("Unexpected Content-Security-Policy on " + path + ": " + json.dumps(served))
 
 
 def verify(image):
@@ -78,7 +132,8 @@ def verify(image):
             expected = docker("exec", name, "cat", "/usr/share/nginx/html" + path).stdout
             if not expected or get(path).stdout != expected:
                 raise RuntimeError("Frontend did not serve built asset: " + path)
-        print("Frontend image passed startup, liveness, readiness, index and asset checks as UID 101.")
+        check_policy(name, image, ["/", *sorted(assets.paths)])
+        print("Frontend image passed startup, liveness, readiness, index, asset and Content-Security-Policy checks as UID 101.")
     except (subprocess.SubprocessError, OSError, RuntimeError, ValueError) as error:
         print("Frontend image verification failed: " + str(error), file=sys.stderr)
         if getattr(error, "stderr", None):

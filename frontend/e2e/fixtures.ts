@@ -83,8 +83,15 @@ export const test = base.extend<{ api: FixtureState }>({
       api.unexpected.push(`${method} ${pathname}`)
       return route.fulfill({ status: 404, body: 'Unexpected test request' })
     })
+    // The development server sends no Content-Security-Policy; against the frontend
+    // image, any page the policy would break fails its test here.
+    const violations: string[] = []
+    page.on('console', message => {
+      if (message.type() === 'error' && message.text().includes('Content Security Policy')) violations.push(message.text())
+    })
     await use(api)
     expect(api.unexpected).toEqual([])
+    expect(violations).toEqual([])
   }, { auto: true }],
 })
 export { expect }
