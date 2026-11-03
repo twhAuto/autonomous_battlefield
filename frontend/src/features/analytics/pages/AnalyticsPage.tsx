@@ -29,7 +29,8 @@ export function AnalyticsPage() {
   // The way back follows where the page was opened from, not the league filter.
   const backToLeague = originLeague(location.state)
   const leagueId = params.get('leagueId') ?? ''
-  const rulesVersion = params.get('rulesVersion') ?? ''
+  // Links made before the Rules dropdown say rules=all for every version.
+  const rulesVersion = params.get('rulesVersion') ?? (params.get('rules') === 'all' ? 'all' : '')
   const excludeFallback = params.get('fallback') === 'exclude'
   const [report, setReport] = useState<AnalyticsReport | null>(null)
   const [leagues, setLeagues] = useState<LeagueSummary[]>([])
@@ -59,6 +60,7 @@ export function AnalyticsPage() {
 
   function setFilter(name: string, value: string) {
     const next = new URLSearchParams(params)
+    if (name === 'rulesVersion') next.delete('rules')
     if (value) next.set(name, value)
     else next.delete(name)
     setParams(next, { state: location.state })

@@ -112,6 +112,23 @@ it('treats a URL naming the current rules version as the default', async () => {
   expect(optionNames(rules)).toEqual(['All versions', 'v9 (current)', 'v8'])
 })
 
+it('reads an older rules=all link as every version until the rules filter changes', async () => {
+  serve()
+  const user = userEvent.setup()
+  show('/analytics?rules=all&fallback=exclude')
+  await screen.findByText('Win rate by controller')
+  const rules = screen.getByRole('combobox', { name: 'Rules' })
+  expect(rules).toHaveDisplayValue('All versions')
+  expect(analyticsCalls().at(-1)).toContain('rulesVersion=all&excludeFallback=true')
+  await screen.findByRole('option', { name: 'v8' })
+  await user.selectOptions(rules, '8')
+  expect(lastSearch).toBe('?fallback=exclude&rulesVersion=8')
+  await user.selectOptions(rules, '')
+  expect(lastSearch).toBe('?fallback=exclude')
+  expect(rules).toHaveDisplayValue('v9 (current)')
+  expect(analyticsCalls().at(-1)).toMatch(/\/v1\/analytics\?excludeFallback=true$/)
+})
+
 it('keeps the current, every and chosen rules version when versions cannot load', async () => {
   serve(undefined, () => reply(500, {}))
   show('/analytics?rulesVersion=7')
