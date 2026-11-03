@@ -1,5 +1,5 @@
 {
-  "agentConcurrency": null,
+  "agentConcurrency": 4,
   "models": {
     "codex-subscription-local": "gpt-5.6-luna",
     "claude-subscription-local": "sonnet",
