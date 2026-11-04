@@ -11,6 +11,7 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
 )
 
 func (w *Worker) Ready() bool { return w.ready.Load() && !w.shuttingDown.Load() }
@@ -19,14 +20,14 @@ func pausedTickResult(err error) (string, bool, error) {
 	if errors.Is(err, context.Canceled) {
 		return "", false, nil
 	}
-	return "error", true, err
+	return metrics.BattleError, true, err
 }
 
 func requeueOutcome(err error) (string, error) {
 	if errors.Is(err, context.Canceled) {
-		return "requeued", err
+		return metrics.BattleRequeued, err
 	}
-	return "error", err
+	return metrics.BattleError, err
 }
 
 func (w *Worker) persistTickAndRequeue(ctx context.Context, lease queue.Lease, transition game.Transition) error {

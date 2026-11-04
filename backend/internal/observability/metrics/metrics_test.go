@@ -11,7 +11,75 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+// A labelled series that first appears at 1 shows no increase to rate() or increase().
+// Initialisation must create each one at 0, so its first event counts.
+func TestInitSeriesStartEveryKnownLabelAtZero(t *testing.T) {
+	for _, collector := range []interface{ Reset() }{engineClaims, engineBattlesProcessed, engineBattleDuration, resultCacheOperations} {
+		collector.Reset()
+	}
+	families := map[string]int{
+		"battlefield_engine_battle_claims_total":                2,
+		"battlefield_engine_battles_processed_total":            len(battleOutcomes),
+		"battlefield_engine_battle_processing_duration_seconds": len(battleOutcomes),
+		"battlefield_result_cache_operations_total":             5,
+	}
+	for family := range families {
+		if series := exposedSeries(t, family); len(series) != 0 {
+			t.Fatalf("%s exposed %v before initialisation", family, series)
+		}
+	}
+
+	InitEngineSeries()
+	InitResultCacheSeries()
+	for family, want := range families {
+		series := exposedSeries(t, family)
+		if len(series) != want {
+			t.Errorf("%s: %d series after initialisation, want %d: %v", family, len(series), want, series)
+		}
+		for labels, value := range series {
+			if value != 0 {
+				t.Errorf("%s{%s} starts at %v, want 0", family, labels, value)
+			}
+		}
+	}
+
+	ObserveEngineBattle(BattleFailed, time.Second)
+	if got := exposedSeries(t, "battlefield_engine_battles_processed_total")["outcome="+BattleFailed]; got != 1 {
+		t.Fatalf("first failure moved the series to %v, want 1", got)
+	}
+}
+
+// exposedSeries gathers one metric family, mapping each series' labels to its counter
+// value or, for a histogram, its sample count.
+func exposedSeries(t *testing.T, name string) map[string]float64 {
+	t.Helper()
+	families, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	series := map[string]float64{}
+	for _, family := range families {
+		if family.GetName() != name {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			var labels []string
+			for _, pair := range metric.GetLabel() {
+				labels = append(labels, pair.GetName()+"="+pair.GetValue())
+			}
+			value := metric.GetCounter().GetValue()
+			if histogram := metric.GetHistogram(); histogram != nil {
+				value = float64(histogram.GetSampleCount())
+			}
+			series[strings.Join(labels, ",")] = value
+		}
+	}
+	return series
+}
 
 func TestApplicationMetricsAreRecordedAndExposed(t *testing.T) {
 	ObserveHTTPRequest(http.MethodGet, "", http.StatusNotFound, 2*time.Millisecond)
