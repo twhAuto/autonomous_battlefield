@@ -137,12 +137,15 @@ lifecycle probes and metrics scrapes bypass request instrumentation.
 | `battlefield_result_cache_operations_total` | Counter | API completed-battle Redis cache operations by `operation` (`get`, `set`) and `outcome` (`hit`, `miss`, `stored`, `error`). The API falls back to PostgreSQL on any cache miss or failure, so a rising `error` count is the only sign of an unhealthy cache. Recorded only when a Redis URL is configured. |
 
 The Prometheus Go client also publishes standard `go_*`, `process_*`, and
-`promhttp_*` metrics. Route labels use Go HTTP patterns such as
-`GET /v1/battles/{id}` rather than raw paths, or `unmatched` when no route matches.
-Method labels keep the nine standard HTTP methods and record any other method a
-client sends as `other`. Battle IDs, faction IDs, request
-IDs, pod names, and worker IDs are intentionally absent from application metric
-labels to avoid unbounded time-series cardinality. Prometheus adds pod identity
+`promhttp_*` metrics. Route labels use the registered Go HTTP pattern that the
+request matches, such as `GET /v1/battles/{id}`, rather than its raw path. A request
+that authentication or authorization rejects keeps its route's label, so a 401 or 403
+counts against the route it was sent to; only a request no route matches is labelled
+`unmatched`. The API server span records the same pattern as `http.route`. Method
+labels keep the nine standard HTTP methods and record any other method a client
+sends as `other`. Battle IDs, faction IDs, request IDs, pod names, and worker IDs
+are intentionally absent from application metric labels to avoid unbounded
+time-series cardinality. Prometheus adds pod identity
 only as the `scrape_pod` target label, which stays distinct from kube-state-metrics'
 `pod` label for the workload being described.
 

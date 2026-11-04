@@ -73,6 +73,16 @@ func HTTPHandler(operation string, handler http.Handler) http.Handler {
 	return otelhttp.NewHandler(handler, operation)
 }
 
+// RecordHTTPRoute sets the matched route pattern as http.route on the current server
+// span. The HTTP instrumentation reads the pattern when the span starts, before any
+// route has matched, so the router supplies it once known. An empty route is ignored.
+func RecordHTTPRoute(ctx context.Context, route string) {
+	if route == "" {
+		return
+	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("http.route", route))
+}
+
 func HTTPClient(base http.RoundTripper) *http.Client {
 	if base == nil {
 		base = http.DefaultTransport
