@@ -18,6 +18,20 @@ import (
 // 10 to 20 minutes. Longer battles, with custom tick counts or user pauses, fall in +Inf.
 var engineBattleDurationBuckets = []float64{1, 5, 15, 30, 60, 120, 300, 600, 900, 1200, 1800, 2700, 3600, 5400, 7200, 9000}
 
+// Battle processing outcomes. Every attempt the engine claims ends with exactly one.
+const (
+	BattleCompleted = "completed"
+	BattleFailed    = "failed"
+	BattleError     = "error"
+	BattleLeaseLost = "lease_lost"
+	BattleRequeued  = "requeued"
+)
+
+var battleOutcomes = []string{BattleCompleted, BattleFailed, BattleError, BattleLeaseLost, BattleRequeued}
+
+// resultCacheOutcomes lists the outcomes each result-cache operation records.
+var resultCacheOutcomes = map[string][]string{"get": {"hit", "miss", "error"}, "set": {"stored", "error"}}
+
 var (
 	httpRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "battlefield",
@@ -151,6 +165,30 @@ func ObserveEngineClaim(reclaimed bool) {
 func ObserveEngineBattle(outcome string, duration time.Duration) {
 	engineBattlesProcessed.WithLabelValues(outcome).Inc()
 	engineBattleDuration.WithLabelValues(outcome).Observe(duration.Seconds())
+}
+
+// InitEngineSeries creates every claim and battle outcome series at zero. A labelled
+// series otherwise appears only with its first event, already at 1, and rate() and
+// increase() see no change from it. Created at zero, a series counts every event after
+// Prometheus first scrapes it; an event before that first scrape is still missed.
+func InitEngineSeries() {
+	for _, reclaimed := range []bool{false, true} {
+		engineClaims.WithLabelValues(strconv.FormatBool(reclaimed))
+	}
+	for _, outcome := range battleOutcomes {
+		engineBattlesProcessed.WithLabelValues(outcome)
+		engineBattleDuration.WithLabelValues(outcome)
+	}
+}
+
+// InitResultCacheSeries creates every result-cache operation and outcome series at zero,
+// for the reason given on InitEngineSeries.
+func InitResultCacheSeries() {
+	for operation, outcomes := range resultCacheOutcomes {
+		for _, outcome := range outcomes {
+			resultCacheOperations.WithLabelValues(operation, outcome)
+		}
+	}
 }
 
 // ObserveEngineTick counts one advanced battle tick.

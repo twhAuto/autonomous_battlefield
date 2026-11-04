@@ -117,7 +117,7 @@ release action. See [contributor CI](docs/developer/ci.md) for the checks and
 ```bash
 ./scripts/ci/lint-go.sh
 ./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
-(cd frontend && npm ci && npm test -- --coverage && npm run build)
+(cd frontend && npm ci --ignore-scripts && npm test -- --coverage && npm run build)
 (cd frontend && npx playwright install chromium && npm run test:e2e)
 ```
 

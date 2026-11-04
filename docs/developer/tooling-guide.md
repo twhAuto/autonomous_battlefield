@@ -79,10 +79,10 @@ production-to-test renames.
   `test-frontend-image.sh` builds the real Dockerfile from private-permission inputs.
 - `test-doc-links.py` fails on a tracked Markdown link to a missing file or heading
   anchor (GitHub slug rules); external URLs, code and HTML comments are skipped.
-- `test-base-image-pins.py` requires every Dockerfile base image to be pinned by
-  digest under a `# Base image: name:tag` comment; `scripts/ops/check-base-image-pins.py`
+- `test-base-image-pins.py` requires every Dockerfile base image, CI tool image and
+  third-party workload image to be pinned by digest; `scripts/ops/check-base-image-pins.py`
   reports stale pins on demand. See the
-  [supply-chain runbook](../operations/supply-chain-runbook.md#base-image-pins).
+  [supply-chain runbook](../operations/supply-chain-runbook.md#image-pins).
 - `scripts/ops/ghcr-retention-report.sh` inventories package versions and protected
   digests without deleting registry data; `test-retention-report.py` covers failed
   collection and interrupted swaps. See the

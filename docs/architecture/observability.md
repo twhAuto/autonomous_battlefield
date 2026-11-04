@@ -120,8 +120,16 @@ The API and engine expose `/metrics` on their existing operational ports. The
 endpoint remains available during startup and graceful shutdown so a failed
 dependency does not hide process diagnostics.
 
-HTTP request series appear only after a replica handles application traffic;
-lifecycle probes and metrics scrapes bypass request instrumentation.
+A labelled counter or histogram series that first appears already at 1 shows no
+increase to `rate()` or `increase()`. The engine therefore creates every claim and
+outcome series at zero when its worker starts, and the API creates every result-cache
+series at zero when a Redis URL is configured. Every event after Prometheus first
+scrapes those zeros counts in dashboards, SLIs and alerts; an event before that first
+scrape of a restarted process, such as the immediate claim of a battle requeued
+during shutdown, is still missed. HTTP request series cannot be listed in advance:
+each method, route and status series appears with its first request, so that first
+request after a replica starts is invisible to `rate()` and `increase()`. Lifecycle
+probes and metrics scrapes bypass request instrumentation.
 
 | Metric | Type | Meaning |
 | --- | --- | --- |

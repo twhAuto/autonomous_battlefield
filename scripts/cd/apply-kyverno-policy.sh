@@ -42,12 +42,21 @@ awk -v key_file="${public_key}" -v backend="${policy_backend}" -v frontend="${po
 ' "${template}" >"${policy}"
 
 if [[ "${CLUSTER_DRIVER:-kind}" == kind ]]; then
+  # Apply only the reviewed release manifest: a replaced release asset fails here.
+  kyverno_manifest="${runtime_dir}/kyverno-install.yaml"
+  curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+    --output "${kyverno_manifest}" \
+    "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/install.yaml"
+  if ! printf '%s  %s\n' "${KYVERNO_INSTALL_SHA256:?KYVERNO_INSTALL_SHA256 is required}" "${kyverno_manifest}" |
+    sha256sum --check --status; then
+    echo "Kyverno ${KYVERNO_VERSION} install manifest does not match KYVERNO_INSTALL_SHA256." >&2
+    exit 1
+  fi
   kubectl --context "${kube_context}" apply \
     --server-side \
     --force-conflicts \
     --field-manager=battlefield-jenkins \
-    -f \
-    "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/install.yaml"
+    -f "${kyverno_manifest}"
 fi
 if ! kubectl --context "${kube_context}" wait \
   --namespace kyverno \
