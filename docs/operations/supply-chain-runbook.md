@@ -59,10 +59,13 @@ decision; the report is advisory, not an automated retention policy.
 
 ## Image pins
 
-Every third-party image that a build, CI stage or deployment runs is pinned by
-digest. A moved upstream tag, or an image retagged in the shared Jenkins agent's
-Docker cache by another build, therefore cannot change what runs, and rebuilding an
-old revision uses the same content:
+Dockerfile base images, CI tool images and the images in the `infra/deploy`
+Kubernetes manifests are pinned by digest. A moved upstream tag, or an image
+retagged in the shared Jenkins agent's Docker cache by another build, therefore
+cannot change what they run, and rebuilding an old revision uses the same content.
+Images that the Langfuse Helm chart selects (`infra/deploy/langfuse/values.yaml`)
+and the local Compose files (`infra/local/compose.yaml`, `infra/sonarqube/compose.yaml`)
+are referenced by tag and are not covered:
 
 - Every `FROM` in `backend/Dockerfile` and `frontend/Dockerfile` names its base
   image by digest only (`name@sha256:<digest>`). The line above records the tag the

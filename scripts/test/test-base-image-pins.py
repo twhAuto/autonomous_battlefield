@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require every third-party image that builds, CI or deployments run to be pinned by digest.
+"""Require Dockerfile base images, CI tool images and Kubernetes manifest images to be pinned by digest.
 
 A tag alone can move to different content between pulls, and a local `docker tag` on a
 shared agent can replace a cached one, so:
