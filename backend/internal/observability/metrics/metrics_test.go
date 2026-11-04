@@ -6,6 +6,8 @@ package metrics
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -46,6 +48,28 @@ func TestApplicationMetricsAreRecordedAndExposed(t *testing.T) {
 		if !strings.Contains(response.Body.String(), metric) {
 			t.Fatalf("metrics output does not contain %q", metric)
 		}
+	}
+}
+
+// The longest default battle (backend/gamedata/battlefield.yaml with the deployed
+// decision timeout): 800 one-second ticks, plus a 3-minute wait at each of the 40
+// decision windows that open every 20 ticks.
+const longestDefaultBattle = 800*time.Second + 40*3*time.Minute
+
+func TestBattleDurationBucketsCoverTheLongestDefaultBattle(t *testing.T) {
+	// A label of its own, so other tests' observations cannot satisfy the check.
+	ObserveEngineBattle("longest-default", longestDefaultBattle)
+
+	response := httptest.NewRecorder()
+	Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	bucket := regexp.MustCompile(`(?m)^battlefield_engine_battle_processing_duration_seconds_bucket\{outcome="longest-default",le="([^"]+)"\} (\d+)$`)
+	matches := bucket.FindAllStringSubmatch(response.Body.String(), -1)
+	if len(matches) < 2 {
+		t.Fatalf("battle duration buckets are not exposed: %q", matches)
+	}
+	top, count := matches[len(matches)-2][1], matches[len(matches)-2][2] // the last finite bucket, before +Inf
+	if bound, err := strconv.ParseFloat(top, 64); err != nil || bound < longestDefaultBattle.Seconds() || count != "1" {
+		t.Fatalf("top finite bucket le=%s holds %s battles; want a bound of at least %v holding the longest default battle", top, count, longestDefaultBattle)
 	}
 }
 
