@@ -112,7 +112,7 @@ stop reconciliation. Restored Jenkins homes must include their matching
 
 Fresh repository/assurance jobs are created with Job DSL and **disabled** until
 an operator deliberately enables them after reviewing the credentials and target.
-The repository definition discovers `main` and PRs; assurance uses trusted main
+The repository definition discovers `main` and same-repository PRs; assurance uses trusted main
 and runs only on demand. Existing jobs keep their current trigger and
 disabled state. Seeding itself never starts a build. Existing platform jobs stay
 manual plan/apply/verify jobs; controller maintenance has no Jenkins job.

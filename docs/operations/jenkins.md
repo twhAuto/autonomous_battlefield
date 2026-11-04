@@ -44,8 +44,9 @@ change; ordinary adoption preserves existing identities.
 
 CI bootstrap seeds the repository and assurance jobs with Job DSL. New jobs start
 **disabled** until an operator enables them after reviewing their credentials and
-target. Bootstrap never re-seeds an existing job, so if a Jenkinsfile moves, update
-that job's **Script Path** by hand.
+target. Bootstrap never re-seeds an existing job, so when a job definition changes,
+such as a moved Jenkinsfile or different PR discovery, update that job's
+configuration by hand to match it.
 
 | Job | Definition | Trigger | Purpose |
 | --- | --- | --- | --- |
@@ -56,7 +57,8 @@ that job's **Script Path** by hand.
 ### Repository job
 
 The Multibranch job uses the `github-app-battlefield` credential and builds only
-`main` and `PR-N` heads. It merges each origin PR with its current target, and it
+`main` and `PR-N` heads. It discovers PRs only from branches in this repository,
+never from forks. It merges each origin PR with its current target, and it
 excludes branches that are also filed as PRs. Pushes to `dev` and work branches
 therefore build nothing. A merged `dev` head is covered by its PR's last build when
 `git rev-parse MERGE^{tree}` equals `git merge-tree --write-tree TARGET HEAD`, where
@@ -167,9 +169,10 @@ host access, so mistakes or malicious code can affect production. Stage-scoped
 credentials and main-only delivery still apply, but a PR-editable Jenkinsfile and
 inherited Multibranch credentials are not a security boundary.
 
-Limit automatic PR builds to trusted repository authors, keep builds off the
-controller's built-in node, and do not run untrusted fork PRs. Revisit isolation
-before accepting untrusted contributors: a separate CI VM and Docker daemon,
+Only accounts that can push to the repository can start a PR build, because the
+[repository job](#repository-job) never discovers fork PRs. Keep builds off the
+controller's built-in node. Revisit isolation before accepting contributors without
+push access: a separate CI VM and Docker daemon,
 delivery credentials scoped to trusted jobs, and controller-enforced node access.
 A second label or executor on this host would not provide that isolation.
 
