@@ -16,7 +16,7 @@ import (
 )
 
 // A labelled series that first appears at 1 shows no increase to rate() or increase().
-// Initialisation must create each one at 0, so its first event counts.
+// Initialisation must create each one at 0, so an event after the first scrape counts.
 func TestInitSeriesStartEveryKnownLabelAtZero(t *testing.T) {
 	for _, collector := range []interface{ Reset() }{engineClaims, engineBattlesProcessed, engineBattleDuration, resultCacheOperations} {
 		collector.Reset()

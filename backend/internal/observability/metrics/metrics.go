@@ -169,8 +169,8 @@ func ObserveEngineBattle(outcome string, duration time.Duration) {
 
 // InitEngineSeries creates every claim and battle outcome series at zero. A labelled
 // series otherwise appears only with its first event, already at 1, and rate() and
-// increase() see no change from it: the first claim and the first outcome of each kind
-// after an engine restart would be missing from dashboards, SLIs and alerts.
+// increase() see no change from it. Created at zero, a series counts every event after
+// Prometheus first scrapes it; an event before that first scrape is still missed.
 func InitEngineSeries() {
 	for _, reclaimed := range []bool{false, true} {
 		engineClaims.WithLabelValues(strconv.FormatBool(reclaimed))
