@@ -7,15 +7,21 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
+	"go.opentelemetry.io/otel"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestRequestLoggingRecordsResponseAndCorrelationID(t *testing.T) {
@@ -27,7 +33,7 @@ func TestRequestLoggingRecordsResponseAndCorrelationID(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte("ok"))
-	}), logger)
+	}), nil, logger)
 
 	request := httptest.NewRequest(http.MethodPost, "/v1/battles", nil)
 	request.Header.Set("X-Request-ID", "request-123")
@@ -51,7 +57,7 @@ func TestRequestLoggingGeneratesRequestID(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&output, nil))
 	handler := requestLogging(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
-	}), logger)
+	}), nil, logger)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/factions", nil))
 	if response.Header().Get("X-Request-ID") == "" {
@@ -64,7 +70,7 @@ func TestRequestLoggingHandlesNilLoggerAndStatusLevels(t *testing.T) {
 		handler := requestLogging(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(status)
 			w.WriteHeader(http.StatusTeapot)
-		}), nil)
+		}), nil, nil)
 		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	}
 }
@@ -99,7 +105,7 @@ func TestRequestMetricsUseNormalizedRoutePattern(t *testing.T) {
 	mux.HandleFunc("GET /v1/battles/{id}", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	handler := requestLogging(mux, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+	handler := requestLogging(mux, mux, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
 	handler.ServeHTTP(
 		httptest.NewRecorder(),
 		httptest.NewRequest(http.MethodGet, "/v1/battles/battle-specific-id", nil),
@@ -116,6 +122,86 @@ func TestRequestMetricsUseNormalizedRoutePattern(t *testing.T) {
 	}
 }
 
+// Router middleware hands the mux a copy of the request, and authentication rejects
+// some requests before the mux sees them. Neither may cost a request its route in
+// the metric label or on the server span.
+func TestRouteLabelSurvivesMiddlewareAndEarlyRejection(t *testing.T) {
+	spans := tracetest.NewSpanRecorder()
+	provider := tracesdk.NewTracerProvider(tracesdk.WithSpanProcessor(spans))
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previous)
+		_ = provider.Shutdown(context.Background())
+	})
+	routes := routeFunc(func(mux *http.ServeMux) {
+		mux.HandleFunc("GET /v1/route-labels/{id}", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	})
+
+	for _, test := range []struct {
+		name    string
+		allowed bool
+		path    string
+		code    int
+		route   string
+	}{
+		{"authenticated", true, "/v1/route-labels/battle-1", http.StatusOK, "GET /v1/route-labels/{id}"},
+		{"rejected before routing", false, "/v1/route-labels/battle-2", http.StatusUnauthorized, "GET /v1/route-labels/{id}"},
+		{"unregistered", true, "/v1/route-labels-missing", http.StatusNotFound, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			authenticate := func(next http.Handler) http.Handler {
+				return authn.RequireAuthentication(true, auditAuthenticator{test.allowed}, next)
+			}
+			handler := tracing.HTTPHandler("test.api", NewRouterWithMiddleware([]Middleware{authenticate}, routes))
+			label := test.route
+			if label == "" {
+				label = "unmatched"
+			}
+			series := fmt.Sprintf(`battlefield_http_server_requests_total{code="%d",method="GET",route="%s"}`, test.code, label)
+			before := requestCount(t, series)
+
+			if code := serve(handler, http.MethodGet, test.path).Code; code != test.code {
+				t.Fatalf("status = %d, want %d", code, test.code)
+			}
+			if delta := requestCount(t, series) - before; delta != 1 {
+				t.Fatalf("%s increased by %v, want 1", series, delta)
+			}
+			ended := spans.Ended()
+			if route := spanAttribute(ended[len(ended)-1], "http.route"); route != test.route {
+				t.Fatalf("span http.route = %q, want %q", route, test.route)
+			}
+		})
+	}
+}
+
+// requestCount reads one HTTP request counter series from the metrics endpoint, or 0
+// when the series does not exist yet.
+func requestCount(t *testing.T, series string) float64 {
+	t.Helper()
+	response := httptest.NewRecorder()
+	metrics.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	for _, line := range strings.Split(response.Body.String(), "\n") {
+		if value, found := strings.CutPrefix(line, series+" "); found {
+			count, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return count
+		}
+	}
+	return 0
+}
+
+func spanAttribute(span tracesdk.ReadOnlySpan, key string) string {
+	for _, attribute := range span.Attributes() {
+		if string(attribute.Key) == key {
+			return attribute.Value.AsString()
+		}
+	}
+	return ""
+}
+
 type auditAuthenticator struct {
 	allowed bool
 }
@@ -130,7 +216,7 @@ func TestRequestLoggingUsesVerifiedActorAcrossMiddleware(t *testing.T) {
 		handler := requestLogging(authn.RequireAuthentication(true, auditAuthenticator{allowed}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// A denied ownership check must still identify the authenticated caller.
 			w.WriteHeader(http.StatusForbidden)
-		})), slog.New(slog.NewJSONHandler(&output, nil)))
+		})), nil, slog.New(slog.NewJSONHandler(&output, nil)))
 		request := httptest.NewRequest(http.MethodDelete, "/v1/factions/other", nil)
 		request.Header.Set("Cf-Access-Authenticated-User-Email", "forged@example.com")
 		request.Header.Set("X-Actor-ID", "forged-admin")
@@ -164,7 +250,7 @@ func TestCloudflareFailureLogDoesNotExposeCredentials(t *testing.T) {
 	request.Header.Set("Cf-Access-Client-Secret", "secret-client-secret")
 	request.AddCookie(&http.Cookie{Name: "CF_Authorization", Value: "secret-cookie"})
 	response := httptest.NewRecorder()
-	requestLogging(mux, logger).ServeHTTP(response, request)
+	requestLogging(mux, mux, logger).ServeHTTP(response, request)
 	if response.Code != 401 {
 		t.Fatal(response.Code)
 	}

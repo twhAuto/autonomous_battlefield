@@ -32,7 +32,7 @@ func NewRouterWithMiddleware(middlewares []Middleware, registrars ...RouteRegist
 	for index := len(middlewares) - 1; index >= 0; index-- {
 		handler = middlewares[index](handler)
 	}
-	return requestLogging(handler, slog.Default())
+	return requestLogging(handler, mux, slog.Default())
 }
 
 // unmatchedAPIRoutes gives unknown /v1 routes the JSON error envelope. ServeMux would

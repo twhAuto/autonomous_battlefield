@@ -17,7 +17,7 @@ func TestErrorEnvelopeCarriesTheMiddlewareRequestID(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	handler := requestLogging(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, r, http.StatusInternalServerError, "could not load battle")
-	}), logger)
+	}), nil, logger)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/v1/battles/1", nil)
