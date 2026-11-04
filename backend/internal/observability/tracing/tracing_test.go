@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"go.opentelemetry.io/otel"
@@ -111,6 +112,32 @@ func TestHTTPInstrumentation(t *testing.T) {
 	if client := HTTPClient(nil); client.Transport == nil {
 		t.Fatal("HTTPClient(nil) has no transport")
 	}
+}
+
+func TestRecordHTTPRouteSetsTheRouteOnlyWhenKnown(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := tracesdk.NewTracerProvider(tracesdk.WithSpanProcessor(recorder))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	for _, route := range []string{"GET /v1/battles/{id}", ""} {
+		ctx, span := provider.Tracer("test").Start(context.Background(), "request")
+		RecordHTTPRoute(ctx, route)
+		span.End()
+		ended := recorder.Ended()
+		var recorded []string
+		for _, attribute := range ended[len(ended)-1].Attributes() {
+			if attribute.Key == "http.route" {
+				recorded = append(recorded, attribute.Value.AsString())
+			}
+		}
+		want := []string{route}
+		if route == "" {
+			want = nil
+		}
+		if !slices.Equal(recorded, want) {
+			t.Fatalf("route %q recorded %q", route, recorded)
+		}
+	}
+	RecordHTTPRoute(context.Background(), "GET /v1/battles/{id}") // no span: must not panic
 }
 
 // productionSampler mirrors ConfigureTracing with a ratio that never samples, so any

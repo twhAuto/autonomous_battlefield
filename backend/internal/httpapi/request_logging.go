@@ -16,13 +16,18 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/requestid"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 // clientRequestID limits caller-supplied correlation IDs to characters that are safe to
 // echo and log; anything else is replaced with a generated ID.
 var clientRequestID = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
 
-func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
+// requestLogging logs and measures each request. routes is the router's mux: the
+// route label comes from asking it which pattern the request matches, because the
+// pattern the mux sets while serving lands on whichever request copy reached it, and
+// requests rejected before routing (401, 403) never reach it at all.
+func requestLogging(next http.Handler, routes *http.ServeMux, logger *slog.Logger) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -40,7 +45,9 @@ func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
 		response := &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(response, r)
 		duration := time.Since(started)
-		metrics.ObserveHTTPRequest(r.Method, r.Pattern, response.status, duration)
+		route := routePattern(routes, r)
+		metrics.ObserveHTTPRequest(r.Method, route, response.status, duration)
+		tracing.RecordHTTPRoute(r.Context(), route)
 
 		// Probes never reach this middleware: LifecycleHandler answers them first.
 		level := slog.LevelInfo
@@ -100,6 +107,15 @@ func (w *loggingResponseWriter) Write(payload []byte) (int, error) {
 // Unwrap allows http.ResponseController to reach optional interfaces exposed
 // by the original writer.
 func (w *loggingResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// routePattern reports the registered pattern that matches r, or "" when none does.
+func routePattern(routes *http.ServeMux, r *http.Request) string {
+	if routes == nil {
+		return ""
+	}
+	_, pattern := routes.Handler(r)
+	return pattern
+}
 
 func acceptedRequestID(candidate string) string {
 	if clientRequestID.MatchString(candidate) {
