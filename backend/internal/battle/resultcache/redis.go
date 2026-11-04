@@ -42,6 +42,7 @@ func New(url string, ttl, timeout time.Duration) (*Cache, error) {
 	options.PoolTimeout = timeout
 	options.ContextTimeoutEnabled = true
 	options.MaxRetries = -1
+	metrics.InitResultCacheSeries()
 	return &Cache{client: redis.NewClient(options), ttl: ttl, timeout: timeout}, nil
 }
 

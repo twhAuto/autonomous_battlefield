@@ -74,6 +74,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	go w.sweepExpiredBattles(expiryCtx, expiryDone)
 	defer func() { cancelExpiry(); <-expiryDone }()
 
+	metrics.InitEngineSeries()
 	w.ready.Store(true)
 	metrics.SetEngineReady(true)
 	metrics.SetEngineSlots(w.config.Concurrency)
@@ -172,10 +173,10 @@ func (w *Worker) processClaimedBattle(ctx context.Context, job *queue.Job, slot 
 func (w *Worker) process(ctx context.Context, job *queue.Job) (resultErr error) {
 	started := time.Now()
 	ctx = context.WithValue(ctx, battleStartedKey{}, started)
-	outcome := "error"
+	outcome := metrics.BattleError
 	defer func() {
 		if errors.Is(resultErr, queue.ErrLeaseLost) {
-			outcome = "lease_lost"
+			outcome = metrics.BattleLeaseLost
 		}
 		metrics.ObserveEngineBattle(outcome, time.Since(started))
 	}()
@@ -184,7 +185,7 @@ func (w *Worker) process(ctx context.Context, job *queue.Job) (resultErr error) 
 	if err != nil {
 		resultErr = w.failInvalidScenario(ctx, job.Lease, err)
 		if resultErr == nil {
-			outcome = "failed"
+			outcome = metrics.BattleFailed
 		}
 		return resultErr
 	}
@@ -232,7 +233,7 @@ func (w *Worker) runTick(ctx context.Context, lease queue.Lease, simulation *gam
 		return outcome, true, err
 	}
 	if err != nil {
-		return "error", true, err
+		return metrics.BattleError, true, err
 	}
 	pausedFor, err := w.waitWhilePaused(ctx, lease)
 	if err != nil {
@@ -264,7 +265,7 @@ func (w *Worker) persistRunningTick(ctx context.Context, lease queue.Lease, simu
 		return outcome, true, err
 	}
 	if err := w.repository.SaveTick(ctx, lease, transition, w.config.LeaseDuration); err != nil {
-		return "error", true, err
+		return metrics.BattleError, true, err
 	}
 	if ctx.Err() != nil {
 		outcome, err := requeueOutcome(w.requeueAfterCancellation(ctx, lease))
@@ -276,7 +277,7 @@ func (w *Worker) persistRunningTick(ctx context.Context, lease queue.Lease, simu
 			if errors.Is(err, context.Canceled) {
 				return "", false, nil
 			}
-			return "error", true, err
+			return metrics.BattleError, true, err
 		}
 	}
 	return "", false, nil
@@ -305,7 +306,7 @@ func (w *Worker) completeBattle(ctx context.Context, lease queue.Lease, transiti
 	completeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.config.ShutdownTimeout)
 	defer cancel()
 	if err := w.repository.CompleteBattle(completeCtx, lease, transition); err != nil {
-		return "error", err
+		return metrics.BattleError, err
 	}
 	var winner any
 	if transition.Result.WinnerFactionID != nil {
@@ -319,5 +320,5 @@ func (w *Worker) completeBattle(ctx context.Context, lease queue.Lease, transiti
 		"winner_faction_id", winner,
 		"reason", transition.Result.Reason,
 	)
-	return "completed", nil
+	return metrics.BattleCompleted, nil
 }

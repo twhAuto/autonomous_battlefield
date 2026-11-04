@@ -12,12 +12,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/briefing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
 )
 
 func TestWorkerCompletesClaimedBattle(t *testing.T) {
@@ -45,6 +47,71 @@ func TestWorkerCompletesClaimedBattle(t *testing.T) {
 			t.Fatalf("logs do not contain %q: %s", message, logs.String())
 		}
 	}
+}
+
+// BattlefieldEngineProcessingFailure alerts on lease_lost, so a battle whose lease is
+// lost while saving a tick must be recorded as lease_lost, not as a generic error.
+func TestLostLeaseIsRecordedAsLeaseLost(t *testing.T) {
+	worker, err := New(&fakeBattleRepository{saveErr: queue.ErrLeaseLost}, nil, testWorkerConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := processedOutcomes(t)
+	if err := worker.process(context.Background(), testJob(100)); !errors.Is(err, queue.ErrLeaseLost) {
+		t.Fatalf("process() error = %v, want queue.ErrLeaseLost", err)
+	}
+	after := processedOutcomes(t)
+	for _, outcome := range []string{metrics.BattleLeaseLost, metrics.BattleError} {
+		want := before[outcome]
+		if outcome == metrics.BattleLeaseLost {
+			want++
+		}
+		if after[outcome] != want {
+			t.Errorf("%s: %v attempts, want %v", outcome, after[outcome], want)
+		}
+	}
+}
+
+// Shutdown cancels the context: a cancelled pause wait keeps the battle running until
+// the tick boundary requeues it, and a cancelled requeue records requeued. Any other
+// failure ends the attempt as error, which the processing-failure alert counts.
+func TestCancellationAndFailureOutcomes(t *testing.T) {
+	failure := errors.New("database unavailable")
+	if outcome, finished, err := pausedTickResult(context.Canceled); outcome != "" || finished || err != nil {
+		t.Errorf("cancelled pause = %q, %v, %v; want the battle to continue", outcome, finished, err)
+	}
+	if outcome, finished, err := pausedTickResult(failure); outcome != metrics.BattleError || !finished || !errors.Is(err, failure) {
+		t.Errorf("failed pause = %q, %v, %v; want error, finished", outcome, finished, err)
+	}
+	if outcome, err := requeueOutcome(context.Canceled); outcome != metrics.BattleRequeued || !errors.Is(err, context.Canceled) {
+		t.Errorf("cancelled requeue = %q, %v; want requeued", outcome, err)
+	}
+	if outcome, err := requeueOutcome(failure); outcome != metrics.BattleError || !errors.Is(err, failure) {
+		t.Errorf("failed requeue = %q, %v; want error", outcome, err)
+	}
+}
+
+// processedOutcomes reads battlefield_engine_battles_processed_total by outcome.
+func processedOutcomes(t *testing.T) map[string]float64 {
+	t.Helper()
+	families, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := map[string]float64{}
+	for _, family := range families {
+		if family.GetName() != "battlefield_engine_battles_processed_total" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			for _, label := range metric.GetLabel() {
+				if label.GetName() == "outcome" {
+					counts[label.GetValue()] = metric.GetCounter().GetValue()
+				}
+			}
+		}
+	}
+	return counts
 }
 
 func TestWorkerRequeuesAtTickBoundaryOnCancellation(t *testing.T) {
