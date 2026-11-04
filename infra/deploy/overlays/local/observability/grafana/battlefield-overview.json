@@ -192,7 +192,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "1 - (sum(increase(battlefield_engine_battles_processed_total{component=\"engine\",outcome=~\"failed|error|lease_lost\"}[30d])) / clamp_min(sum(increase(battlefield_engine_battles_processed_total{component=\"engine\"}[30d])), 1))",
+          "expr": "1 - ((sum(increase(battlefield_engine_battles_processed_total{component=\"engine\",outcome=~\"failed|error|lease_lost\"}[30d])) or vector(0)) / clamp_min(sum(increase(battlefield_engine_battles_processed_total{component=\"engine\",outcome=~\"completed|failed|error|lease_lost\"}[30d])), 1))",
           "instant": true,
           "legendFormat": "Success",
           "range": false,
@@ -201,7 +201,7 @@
       ],
       "title": "Battle processing SLI (30d / 99%)",
       "type": "stat",
-      "description": "Share of battle processing attempts that did not fail. The denominator is every attempt, so graceful requeues during a deploy cannot inflate the ratio."
+      "description": "Share of completed, failed, error and lease-lost processing attempts that did not fail. Graceful-shutdown requeues are excluded: ownership was handed back safely, and counting them as successes would raise the ratio."
     },
     {
       "datasource": {
@@ -218,11 +218,11 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
+                "color": "green",
                 "value": null
               },
               {
-                "color": "green",
+                "color": "red",
                 "value": 1
               }
             ]
@@ -255,15 +255,16 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(up{job=\"battlefield-pods\"})",
+          "expr": "sum(clamp_min(sum by (target) (label_replace(max by (deployment) (kube_deployment_spec_replicas{namespace=\"battlefield\",deployment=~\"battlefield-(api|engine)\"}), \"target\", \"$1\", \"deployment\", \"battlefield-(.*)\")) - sum by (target) (label_replace(up{job=\"battlefield-pods\",component=~\"api|engine\"} == 1, \"target\", \"$1\", \"component\", \"(.*)\")) or sum by (target) (label_replace(max by (deployment) (kube_deployment_spec_replicas{namespace=\"battlefield\",deployment=~\"battlefield-(api|engine)\"}), \"target\", \"$1\", \"deployment\", \"battlefield-(.*)\")), 0))",
           "instant": true,
-          "legendFormat": "Targets up",
+          "legendFormat": "Missing targets",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Application metrics targets up",
-      "type": "stat"
+      "title": "Missing API and engine targets",
+      "type": "stat",
+      "description": "API and engine replicas their Deployments expect that have no healthy metrics target: a replica that is down, not yet Running or cannot be scraped. Each component is counted separately, so extra API pods during a rollout cannot hide a missing engine. Shows no data while kube-state-metrics is unavailable."
     },
     {
       "datasource": {
@@ -624,7 +625,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 8,
+        "w": 6,
         "x": 0,
         "y": 22
       },
@@ -651,6 +652,71 @@
         }
       ],
       "title": "Engine workers ready",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "battlefield-prometheus"
+      },
+      "description": "Share of the engine's battle slots that are running a battle. At 100% the engine is saturated and new battles wait in the queue until a slot frees.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Busy slots",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 22
+      },
+      "id": 24,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(battlefield_engine_active_battles{component=\"engine\"}) / clamp_min(sum(battlefield_engine_battle_slots{component=\"engine\"}), 1)",
+          "legendFormat": "Busy slots",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Engine slot usage",
       "type": "timeseries"
     },
     {
@@ -687,8 +753,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 8,
-        "x": 8,
+        "w": 6,
+        "x": 12,
         "y": 22
       },
       "id": 22,
@@ -751,8 +817,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 8,
-        "x": 16,
+        "w": 6,
+        "x": 18,
         "y": 22
       },
       "id": 23,
