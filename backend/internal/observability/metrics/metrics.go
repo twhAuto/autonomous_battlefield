@@ -12,6 +12,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// engineBattleDurationBuckets (seconds) run from failures in the first seconds to the
+// longest default battle: 800 one-second ticks plus the 3-minute decision timeout at
+// each of its 40 windows, about 8,000 s. They are densest around typical battles of
+// 10 to 20 minutes. Longer battles, with custom tick counts or user pauses, fall in +Inf.
+var engineBattleDurationBuckets = []float64{1, 5, 15, 30, 60, 120, 300, 600, 900, 1200, 1800, 2700, 3600, 5400, 7200, 9000}
+
 var (
 	httpRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "battlefield",
@@ -43,7 +49,7 @@ var (
 		Subsystem: "engine",
 		Name:      "battle_processing_duration_seconds",
 		Help:      "Wall-clock time spent processing a claimed battle by outcome.",
-		Buckets:   prometheus.ExponentialBuckets(0.1, 2, 11),
+		Buckets:   engineBattleDurationBuckets,
 	}, []string{"outcome"})
 	engineTicks = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "battlefield",
