@@ -16,11 +16,9 @@ multibranchPipelineJob('autonomous-battlefield') {
                     configuredByUrl(false)
                     traits {
                         gitHubBranchDiscovery { strategyId(1) }
+                        // Only same-repository PRs build: every build runs PR code on the
+                        // shared production agent, so fork PRs are never discovered.
                         gitHubPullRequestDiscovery { strategyId(1) }
-                        gitHubForkDiscovery {
-                            strategyId(2)
-                            trust { gitHubTrustPermissions() }
-                        }
                         headRegexFilter { regex('^(main|PR-[0-9]+)$') }
                     }
                 }

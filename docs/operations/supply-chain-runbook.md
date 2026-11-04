@@ -57,15 +57,32 @@ registry versions. Treat missing
 cluster or rollback evidence as incomplete inventory before making any deletion
 decision; the report is advisory, not an automated retention policy.
 
-## Base-image pins
+## Image pins
 
-Every `FROM` in `backend/Dockerfile` and `frontend/Dockerfile` names its base image
-by digest only (`name@sha256:<digest>`), so rebuilding an old revision uses the same
-base content. The line above records the tag the digest was resolved from, as
-`# Base image: name:tag`. Tag and digest are not combined on the `FROM` line:
-Docker ignores the tag there, and SonarQube's `docker:S8431` rejects it.
+Dockerfile base images, CI tool images and the images in the `infra/deploy`
+Kubernetes manifests are pinned by digest. A moved upstream tag, or an image
+retagged in the shared Jenkins agent's Docker cache by another build, therefore
+cannot change what they run, and rebuilding an old revision uses the same content.
+Images that the Langfuse Helm chart selects (`infra/deploy/langfuse/values.yaml`)
+and the local Compose files (`infra/local/compose.yaml`, `infra/sonarqube/compose.yaml`)
+are referenced by tag and are not covered:
+
+- Every `FROM` in `backend/Dockerfile` and `frontend/Dockerfile` names its base
+  image by digest only (`name@sha256:<digest>`). The line above records the tag the
+  digest was resolved from, as `# Base image: name:tag`. Tag and digest are not
+  combined on the `FROM` line: Docker ignores the tag there, and SonarQube's
+  `docker:S8431` rejects it.
+- Every `*_IMAGE` in `scripts/ci/tool-versions.env` and every third-party `image:`
+  in the `infra/deploy` manifests is `name:tag@sha256:<digest>`. The tool images
+  include Cosign, Syft, ORAS and Crane, which receive the signing key and registry
+  credentials. Images built from this repository are exempt: deployments replace
+  them with signed digests that admission verifies.
+- The kind cluster applies Kyverno's release manifest only when its SHA-256 matches
+  `KYVERNO_INSTALL_SHA256` in `tool-versions.env`.
+
 `scripts/test/test-base-image-pins.py`, part of `scripts/test/test-deployment.sh`,
-fails on an unpinned base image or a missing or mismatched tag comment.
+fails on any unpinned image above or on a missing or mismatched base-image tag
+comment.
 
 Nothing updates the digests automatically. Refresh them when
 `scripts/ci/scan-published-images.sh` reports a fixable vulnerability in a base
@@ -74,12 +91,15 @@ image, when moving to a new tag, and at least monthly:
 1. Run `scripts/ops/check-base-image-pins.py` on a machine with Docker Buildx and
    registry access. It resolves each recorded tag's multi-platform index digest
    (`docker buildx imagetools inspect name:tag`) and prints `CURRENT` or `STALE`
-   for every pin without editing files. It exits 1 if any pin is stale and 2 if a
-   tag cannot be resolved. It is an on-demand check, not a scheduled job.
-2. Replace the digest on the `FROM` line, and the tag in the comment above it if
-   moving to a new tag.
+   for every Dockerfile, tool and manifest pin without editing files. It exits 1 if
+   any pin is stale and 2 if a tag cannot be resolved. It is an on-demand check,
+   not a scheduled job.
+2. Replace the digest, and the tag if moving to a new one; `docker buildx
+   imagetools inspect name:tag` prints a new tag's digest. When changing
+   `KYVERNO_VERSION`, set `KYVERNO_INSTALL_SHA256` to the `sha256sum` of that
+   release's `install.yaml`.
 3. Run `./scripts/test/test-deployment.sh`, then raise the change as a normal PR
-   so Jenkins rebuilds and rescans both images.
+   so Jenkins rebuilds and rescans the images.
 
 ## Signing-key rotation
 

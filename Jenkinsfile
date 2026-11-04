@@ -5,7 +5,7 @@
 // Shared step bodies keep the pull-request and main checks identical.
 def frontendChecks() {
     dir('frontend') {
-        sh 'npm ci'
+        sh 'npm ci --ignore-scripts'
         sh 'npm test -- --coverage'
         sh 'npm run build'
         sh 'npx playwright install chromium'

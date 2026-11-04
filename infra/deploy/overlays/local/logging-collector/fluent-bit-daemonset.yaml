@@ -33,7 +33,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: fluent-bit
-          image: cr.fluentbit.io/fluent/fluent-bit:4.2.3
+          image: cr.fluentbit.io/fluent/fluent-bit:4.2.3@sha256:a5761fa961cb22dd0875883a4d446b1acd99d4935d77358aa9f50ee177e44fe2
           imagePullPolicy: IfNotPresent
           args:
             - --config=/fluent-bit/etc/fluent-bit.conf

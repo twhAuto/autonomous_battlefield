@@ -97,8 +97,12 @@ diagnosing a failure. Agent setup and credentials are in
 ### Pinned tools and registry access
 
 Security scanners, Kubeconform, Conftest, Syft, Cosign, ORAS, k6 and ZAP run from
-the versions pinned in `scripts/ci/tool-versions.env`, which is also the default
-Trivy pin for local image scans (`TRIVY_IMAGE` overrides it locally). The
+the images pinned by digest in `scripts/ci/tool-versions.env`
+([image pins](../operations/supply-chain-runbook.md#image-pins)), which is also the
+default Trivy pin for local image scans (`TRIVY_IMAGE` overrides it locally).
+Frontend dependencies install with `npm ci --ignore-scripts` in the pipeline and the
+frontend image, so no dependency's install script runs; a dependency that needs one
+fails there. The
 source-security stage owns the shared manifest rendering, schema checks and policy
 checks on both PR and `main` builds; the deployment-script checks exercise
 staging, component selection and scanner launchers separately.
@@ -242,7 +246,7 @@ committing the intended source so the worktree is clean:
 ```bash
 ./scripts/ci/lint-go.sh
 ./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
-(cd frontend && npm ci && npm test -- --coverage && npm run build)
+(cd frontend && npm ci --ignore-scripts && npm test -- --coverage && npm run build)
 BUILD_NUMBER=1 ./scripts/ci/build-images.sh
 ./scripts/ci/scan-images.sh "$(git rev-parse HEAD)"
 ROLLBACK_ON_FAILURE=1 ./scripts/cd/deploy.sh "$(git rev-parse HEAD)"

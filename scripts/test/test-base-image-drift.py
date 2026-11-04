@@ -64,6 +64,21 @@ class BaseImageDriftTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn('UNRESOLVED backend/Dockerfile:5 alpine:3.23', result.stderr)
 
+    def test_tool_and_workload_pins_are_checked(self):
+        (self.root / 'scripts/ci').mkdir(parents=True)
+        (self.root / 'scripts/ci/tool-versions.env').write_text(
+            f'GOVULNCHECK_VERSION=v1.1.4\nCOSIGN_IMAGE=ghcr.io/sigstore/cosign:v3@{PINNED}\n')
+        manifest = self.root / 'infra/deploy/overlays/local/grafana.yaml'
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(f'        - image: "grafana/grafana:13@{PINNED}"\n          image: autonomous-battlefield-backend:dev\n')
+        result = self.run_check({'golang:1.26-alpine': PINNED, 'alpine:3.23': PINNED,
+                                 'ghcr.io/sigstore/cosign:v3': PINNED, 'grafana/grafana:13': MOVED})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('CURRENT    scripts/ci/tool-versions.env:2 ghcr.io/sigstore/cosign:v3', result.stdout)
+        self.assertIn(f'STALE      infra/deploy/overlays/local/grafana.yaml:1 grafana/grafana:13 pinned {PINNED}, tag now {MOVED}',
+                      result.stdout)
+        self.assertEqual(result.stdout.count('CURRENT'), 3)
+
     def test_no_pins_fails(self):
         (self.root / 'backend/Dockerfile').write_text('FROM scratch\n')
         self.assertEqual(self.run_check({}).returncode, 2)
