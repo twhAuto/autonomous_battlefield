@@ -317,7 +317,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "count(kube_pod_container_status_last_terminated_reason{namespace=\"battlefield\",reason=\"OOMKilled\"} == 1) or vector(0)",
+          "expr": "count(max by (pod, container) (kube_pod_container_status_last_terminated_reason{namespace=\"battlefield\",reason=\"OOMKilled\"} == 1)) or 0 * count(kube_pod_info{namespace=\"battlefield\"})",
           "instant": true,
           "legendFormat": "OOM-killed containers",
           "range": false,
@@ -326,7 +326,7 @@
       ],
       "title": "OOM-killed containers",
       "type": "stat",
-      "description": "Containers whose most recent termination was an out-of-memory kill. A container stays counted until it next terminates for another reason or its pod is replaced."
+      "description": "Containers whose most recent termination was an out-of-memory kill. A container stays counted until it next terminates for another reason or its pod is replaced. Shows no data while kube-state-metrics is unavailable."
     },
     {
       "datasource": {

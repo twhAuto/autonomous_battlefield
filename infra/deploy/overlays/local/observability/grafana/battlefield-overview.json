@@ -255,7 +255,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(clamp_min(sum by (target) (label_replace(kube_deployment_spec_replicas{namespace=\"battlefield\",deployment=~\"battlefield-(api|engine)\"}, \"target\", \"$1\", \"deployment\", \"battlefield-(.*)\")) - sum by (target) (label_replace(up{job=\"battlefield-pods\",component=~\"api|engine\"} == 1, \"target\", \"$1\", \"component\", \"(.*)\")) or sum by (target) (label_replace(kube_deployment_spec_replicas{namespace=\"battlefield\",deployment=~\"battlefield-(api|engine)\"}, \"target\", \"$1\", \"deployment\", \"battlefield-(.*)\")), 0))",
+          "expr": "sum(clamp_min(sum by (target) (label_replace(max by (deployment) (kube_deployment_spec_replicas{namespace=\"battlefield\",deployment=~\"battlefield-(api|engine)\"}), \"target\", \"$1\", \"deployment\", \"battlefield-(.*)\")) - sum by (target) (label_replace(up{job=\"battlefield-pods\",component=~\"api|engine\"} == 1, \"target\", \"$1\", \"component\", \"(.*)\")) or sum by (target) (label_replace(max by (deployment) (kube_deployment_spec_replicas{namespace=\"battlefield\",deployment=~\"battlefield-(api|engine)\"}), \"target\", \"$1\", \"deployment\", \"battlefield-(.*)\")), 0))",
           "instant": true,
           "legendFormat": "Missing targets",
           "range": false,
