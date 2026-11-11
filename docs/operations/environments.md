@@ -29,13 +29,13 @@ Validate application configuration and tunnel rendering without public activatio
 ./scripts/ops/prepare-limited-production.sh
 ```
 
-Jenkins `main` delivery uses verified registry image digests, the production
-profile on its agent, and the private production `.env`. For delivery, Jenkins
-holds the registry, signing, Access service-token and stage-scoped kubeconfig
-credentials, but no database credential. For a change only to production `.env`, run the `main`
-pipeline with `APPLY_CONFIGURATION=true`.
+Jenkins `main` delivery uses verified registry image digests and the production
+profile on its agent. Jenkins holds the registry, signing, Access service-token,
+stage-scoped kubeconfig and production `.env` credentials, but no separate database
+credential. For a change only to production `.env`, follow
+[production application configuration](jenkins.md#production-application-configuration).
 Deployment extracts auth settings into a private temporary file while keeping
-`BATTLEFIELD_AUTH_SECRET_FILE` pointed at the registered production `.env`, so
+`BATTLEFIELD_AUTH_SECRET_FILE` pointed at the production `.env`, so
 child policy-installation commands can repeat environment identity checks.
 
 ## Activate public access

@@ -62,6 +62,15 @@ class SecretTests(unittest.TestCase):
     def test_reads_a_valid_production_secret(self):
         self.assertEqual(worker.production_worker_secret(self.env('X=1\nBATTLEFIELD_AGENT_SECRET=' + SECRET + '\n')), SECRET)
 
+    def test_bound_application_file_replaces_the_profile_default(self):
+        bound = self.env('BATTLEFIELD_AGENT_SECRET=' + SECRET + '\n')
+        with mock.patch.dict(os.environ, {'BATTLEFIELD_APPLICATION_FILE': str(bound)}):
+            self.assertEqual(load('cli_worker_bound', ROOT / 'scripts/infra/cli-worker.py').production_worker_secret(), SECRET)
+        with mock.patch.dict(os.environ, {'BATTLEFIELD_CLI_HOME': '/operator'}):
+            os.environ.pop('BATTLEFIELD_APPLICATION_FILE', None)
+            self.assertEqual(load('cli_worker_profile', ROOT / 'scripts/infra/cli-worker.py').PRODUCTION_ENV,
+                             Path('/operator/.config/autonomous-battlefield/production/.env'))
+
     def test_rejects_missing_short_placeholder_retired_and_duplicate_values(self):
         for content in ('X=1\n', 'BATTLEFIELD_AGENT_SECRET=short\n',
                         'BATTLEFIELD_AGENT_SECRET=replace-with-at-least-32-random-characters\n',

@@ -355,8 +355,15 @@ def playbook(args, data, report, server):
 
 
 def worker_secret(args, data, config, server):
-    """The production worker secret, read on the host; the CLI guest uses the same value."""
+    """The production worker secret; the CLI guest uses the same value.
+
+    BATTLEFIELD_APPLICATION_FILE names the production application file on this machine.
+    Without it the file beside the host's production profile is read on the host.
+    """
     worker = load('cli_worker', ROOT / 'scripts/infra/cli-worker.py')
+    bound = os.environ.get('BATTLEFIELD_APPLICATION_FILE')
+    if bound:
+        return worker.production_worker_secret(server.private_file(bound))
     path = config['host']['home'] + '/' + PRODUCTION_ENV
     if args.local:
         return worker.production_worker_secret(path)

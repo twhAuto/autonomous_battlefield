@@ -55,7 +55,12 @@ battlefield_env_load() {
   export BATTLEFIELD_ENV_FILE="${config}"
   local application_file
   if [[ "${DEPLOY_ENV}" == dev ]]; then
+    [[ -z "${BATTLEFIELD_APPLICATION_FILE:-}" ]] || { battlefield_env_error 'BATTLEFIELD_APPLICATION_FILE selects the production application file; dev uses the project-root .env.'; return 1; }
     application_file="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)/.env"
+  elif [[ -n "${BATTLEFIELD_APPLICATION_FILE:-}" ]]; then
+    # Jenkins binds the production application file as a credential, so no copy stays on its agent.
+    [[ "${BATTLEFIELD_APPLICATION_FILE}" == /* && -f "${BATTLEFIELD_APPLICATION_FILE}" ]] || { battlefield_env_error 'BATTLEFIELD_APPLICATION_FILE must be the absolute path of an existing file.'; return 1; }
+    application_file="${BATTLEFIELD_APPLICATION_FILE}"
   else
     application_file="$(cd -- "$(dirname -- "${config}")" && pwd)/.env"
   fi

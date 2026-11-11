@@ -12,7 +12,7 @@ YAML file and process environment at startup.
 
 | Source | Consumer | Selection and responsibility |
 | --- | --- | --- |
-| Application `.env` | Deployment scripts | Dev uses the project-root file; production uses the file beside its deployment profile. Supplies credentials and environment-specific settings using [`.env.example`](../../.env.example). Exported application credentials do not override this file during deployment. |
+| Application `.env` | Deployment scripts | Dev uses the project-root file; production uses the file that `BATTLEFIELD_APPLICATION_FILE` names, or else `.env` beside its deployment profile. Supplies credentials and environment-specific settings using [`.env.example`](../../.env.example). Exported application credentials do not override this file during deployment. |
 | `deployment.env` | Deployment scripts | `DEPLOY_ENV` selects `dev` or `production`; `BATTLEFIELD_ENV_FILE` can select another profile for that environment. Pins deployment identity and infrastructure endpoints using the [deployment template](../../infra/deploy/environments/deployment.env.example). |
 | Backend YAML, such as [`backend/config.yaml`](../../backend/config.yaml) | API, engine, agent and AI gateway binaries | `-config` selects one file; the default is `config.yaml` relative to the process working directory. Defines listeners, timeouts, limits and model profiles. It is not merged with a deployment profile. |
 | Kubernetes `battlefield-config` ConfigMap | Backend pods | Supplies the YAML mounted at `/etc/battlefield/config.yaml`, selected by the pod's `-config` argument. Its source is the [deployment ConfigMap](../../infra/deploy/base/infrastructure/configmap.yaml), not the local `backend/config.yaml`. |
@@ -46,6 +46,8 @@ Production:
 └── tunnel-credentials.json
 ```
 
+A machine that sets `BATTLEFIELD_APPLICATION_FILE`, such as the Jenkins agent, keeps
+no `.env` in this directory.
 `kubelet-ca.crt` is the trusted kubelet serving CA for production monitoring, and
 `recovery.json` is the verified-release record that Jenkins writes after each
 successful delivery; never edit it by hand.
@@ -67,6 +69,9 @@ The [environment resolver](../../scripts/lib/deployment-environment.sh) verifies
 the selected environment and the registered `kube-system` namespace UID before
 deployment. It rejects conflicting cluster, URL, secret-file and image-source
 overrides. Jenkins may bind its deployment kubeconfig; the live UID must still match.
+Jenkins also binds the production application file through
+`BATTLEFIELD_APPLICATION_FILE`, an absolute path that the resolver accepts only for
+production.
 
 ## Secret rendering and restart behavior
 

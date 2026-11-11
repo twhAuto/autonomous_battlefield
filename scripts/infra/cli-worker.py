@@ -41,7 +41,8 @@ def load(name, path):
 
 HOME = Path(os.environ.get('BATTLEFIELD_CLI_HOME', str(Path.home())))
 CLI_CONFIG = HOME / '.config/autonomous-battlefield/server/cli.json'
-PRODUCTION_ENV = HOME / '.config/autonomous-battlefield/production/.env'
+# Jenkins binds the production application file; elsewhere it sits beside the production profile.
+PRODUCTION_ENV = Path(os.environ.get('BATTLEFIELD_APPLICATION_FILE') or HOME / '.config/autonomous-battlefield/production/.env')
 AUTOMATION_KEY = HOME / '.ssh/battlefield-cli-automation'
 GUEST = 'vm-admin@192.168.234.2'
 DOMAIN = 'battlefield-agent'

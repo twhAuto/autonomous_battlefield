@@ -106,9 +106,13 @@ separate reviewed workflow. Deleting ownership markers bypasses this protection
 and is unsupported.
 
 The worker's `BATTLEFIELD_AGENT_SECRET` is not taken from the Vault. Bootstrap
-substitutes the value from the host's production `.env`
-(`~/.config/autonomous-battlefield/production/.env`), read on the host and passed to
-Ansible in a private vars file. [`battlefield-platform/cli`](cli-worker.md) applies
+substitutes the value from the production `.env` and passes it to Ansible in a
+private vars file. Set `BATTLEFIELD_APPLICATION_FILE` to a private copy (mode 600)
+on the machine that runs bootstrap; without it, bootstrap reads
+`~/.config/autonomous-battlefield/production/.env` on the host, which a host that
+also runs the Jenkins agent
+[does not keep](jenkins.md#production-application-configuration).
+[`battlefield-platform/cli`](cli-worker.md) applies
 the same substitution and updates the ownership marker, so a secret rotation
 reaches the worker without breaking these checks.
 
