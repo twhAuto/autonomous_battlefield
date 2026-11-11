@@ -53,7 +53,8 @@ def main():
     args = parser.parse_args()
     os.umask(0o077)
     deployment = Path(os.environ['BATTLEFIELD_ENV_FILE'])
-    application = deployment.parent / '.env'
+    # The environment resolver exports the production application file it selected.
+    application = Path(os.environ['BATTLEFIELD_SECRET_FILE'])
     if args.output:
         prepare(application, deployment, args.output)
     else:

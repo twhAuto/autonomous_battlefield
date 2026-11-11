@@ -216,8 +216,10 @@ and stays there. Keep the master copy of `.env` outside the agent host. To chang
 setting, edit that copy, upload it over the credential's file in **Manage Jenkins →
 Credentials**, then run the `main` pipeline with `APPLY_CONFIGURATION`.
 
-The credential keeps these values away from code that reads files as the agent
-user. It does not stop a build that edits its own Jenkinsfile; see
+The credential removes the standing copy from the agent user's home; it does not
+isolate the file. While a delivery or CLI worker job has it bound, a build running
+on another of the agent's executors can read the temporary copy, and a build can
+bind the credential by editing its own Jenkinsfile; see
 [shared CI and production agent](#shared-ci-and-production-agent).
 
 ### CI service identity
