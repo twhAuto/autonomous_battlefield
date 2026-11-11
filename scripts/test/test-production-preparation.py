@@ -1,9 +1,14 @@
 """Offline checks for consolidated production configuration and tunnel rendering."""
+import contextlib
 import importlib.util
+import io
 import json
+import os
 from pathlib import Path
+import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('prep', ROOT/'scripts/ops/prepare-limited-production.py')
@@ -41,6 +46,19 @@ class PreparationTests(unittest.TestCase):
             self.assertEqual(len(rendered['items']),2)
             self.assertTrue((output/'network-policies.json').exists())
             self.assertNotIn('private',json.dumps(rendered))
+
+    def test_main_reads_the_resolved_application_file_not_one_beside_the_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            app, profile, _ = self.fixture(directory)
+            selected = directory/'bound'/'application.env'
+            selected.parent.mkdir()
+            app.rename(selected)
+            resolved = {'BATTLEFIELD_ENV_FILE': str(profile), 'BATTLEFIELD_SECRET_FILE': str(selected)}
+            with mock.patch.dict(os.environ, resolved), mock.patch.object(sys, 'argv', ['prepare']), contextlib.redirect_stdout(io.StringIO()) as output:
+                prep.main()
+            self.assertIn('validated', output.getvalue())
+            self.assertFalse(app.exists())
 
     def test_routes_the_configured_guest_hostname(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -32,6 +32,7 @@ pipeline {
                 lock(resource: 'battlefield-production-platform') {
                     // GHCR reads the worker binary from the backend image production runs.
                     withCredentials([file(credentialsId: 'host-sudo-password', variable: 'PLATFORM_SUDO_PASSWORD'),
+                                     file(credentialsId: 'battlefield-production-application-env', variable: 'BATTLEFIELD_APPLICATION_FILE'),
                                      usernamePassword(credentialsId: 'battlefield-ghcr', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
                         script {
                             def action = params.ACTION == 'verify' ? 'verify' : 'plan'

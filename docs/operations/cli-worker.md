@@ -69,7 +69,7 @@ Apply repairs only what is needed:
 - **`install-host-units`:** installs `battlefield-cli-vm-start.service`, which starts the VM after libvirt and the host firewall are ready and retries for two minutes. It also installs `battlefield-mcp-bridge-watchdog.service`, which restarts the bridge after three failed gateway checks.
 - **`start-vm`:** starts the VM and waits for SSH.
 - **`restart-bridge`:** restarts `battlefield-mcp-bridge`. Its `kubectl port-forward` stays bound to the gateway pod it started with, so it stops working after every gateway rollout until restarted. The watchdog does this automatically once installed.
-- **`sync-worker-secret`:** replaces only the `BATTLEFIELD_AGENT_SECRET` line of `/etc/battlefield-agent/worker.env` with the value from `~/.config/autonomous-battlefield/production/.env`. It also updates the bootstrap ownership marker's fingerprint for that file and restarts `battlefield-worker`.
+- **`sync-worker-secret`:** replaces only the `BATTLEFIELD_AGENT_SECRET` line of `/etc/battlefield-agent/worker.env` with the value from the production `.env`, which Jenkins binds from its [`battlefield-production-application-env` credential](jenkins.md#production-application-configuration). It also updates the bootstrap ownership marker's fingerprint for that file and restarts `battlefield-worker`.
 - **`restart-worker`:** restarts an inactive or unhealthy worker.
 - **`enable-worker`:** re-enables a worker that is running but disabled, so it survives a reboot.
 - **`resume-worker`:** resumes claims on a worker that an interrupted run left draining.
@@ -206,7 +206,8 @@ Codex model with the new release, then merge, promote and run `apply`.
 ## Secret rotation
 
 `BATTLEFIELD_AGENT_SECRET` in the production `.env` is the single source of truth.
-After rotating it, run the main delivery (application pods) and then `apply` on this
+After rotating it and [updating the Jenkins credential](jenkins.md#production-application-configuration),
+run the main delivery (application pods) and then `apply` on this
 job (CLI worker). The CLI bootstrap uses the same value, so its ownership checks stay
 consistent with the job's changes.
 

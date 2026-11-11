@@ -193,6 +193,7 @@ is the authoritative input schema.
 | `battlefield-cosign-public-key` | secret file | Reviewed public verification key |
 | `battlefield-production-kubeconfig` | secret file | Dedicated production kubeconfig; bound only during rollout or an explicit assurance load |
 | `battlefield-production-access-service-token` | secret file | Restricted CI service identity; bound only for production smoke, load and authenticated response capture |
+| `battlefield-production-application-env` | secret file | Production application `.env`; bound only during rollout and CLI worker checks and repairs |
 | `sonarqube-battlefield-token` | secret text | SonarQube analysis |
 
 The assurance job's `provider-eval` mode also uses `battlefield-openai-api-key` or
@@ -202,11 +203,24 @@ folder holds its own credentials; see [platform jobs](platform-jobs.md#managed-c
 
 ### Production application configuration
 
-The agent reads `~/.config/autonomous-battlefield/production/.env` for database,
-authentication, provider and integration settings; the adjacent `deployment.env`
-identifies the cluster. Keep both private. The application file is parsed as
-literal data, and Jenkins binds no separate database credential. After editing
-only `.env`, run the `main` pipeline with `APPLY_CONFIGURATION`.
+The `battlefield-production-application-env` credential holds the production
+application `.env`: database, authentication, provider and integration settings.
+Rollout, the CLI worker check and the [CLI worker job](cli-worker.md) bind it as
+`BATTLEFIELD_APPLICATION_FILE`; pull-request stages never do. The file is parsed as
+literal data, and Jenkins binds no separate database credential.
+
+Keep no `.env`, and no backup copy of one, in the agent user's home: every build,
+pull requests included, runs as that user and can read its files. The agent's
+`~/.config/autonomous-battlefield/production/deployment.env` identifies the cluster
+and stays there. Keep the master copy of `.env` outside the agent host. To change a
+setting, edit that copy, upload it over the credential's file in **Manage Jenkins →
+Credentials**, then run the `main` pipeline with `APPLY_CONFIGURATION`.
+
+The credential removes the standing copy from the agent user's home; it does not
+isolate the file. While a delivery or CLI worker job has it bound, a build running
+on another of the agent's executors can read the temporary copy, and a build can
+bind the credential by editing its own Jenkinsfile; see
+[shared CI and production agent](#shared-ci-and-production-agent).
 
 ### CI service identity
 

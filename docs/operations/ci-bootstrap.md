@@ -137,7 +137,7 @@ these files with the same `seal` command above before `ci-plan`/`ci-apply`.
 | `github-app-battlefield` | `{"type":"githubApp","appId":"NUMERIC_ID","privateKey":"PEM_CONTENT"}` |
 | `battlefield-ghcr` | `{"type":"usernamePassword","username":"LOGIN","password":"TOKEN"}` |
 | `battlefield-cosign-password` | `{"type":"string","value":"PASSPHRASE"}` |
-| `battlefield-cosign-key`, `battlefield-cosign-public-key`, `battlefield-production-kubeconfig`, `battlefield-production-access-service-token` | `{"type":"file","value":"FILE_CONTENT"}` |
+| `battlefield-cosign-key`, `battlefield-cosign-public-key`, `battlefield-production-kubeconfig`, `battlefield-production-access-service-token`, `battlefield-production-application-env` | `{"type":"file","value":"FILE_CONTENT"}` |
 | `host-inventory`, `host-inputs`, `host-vault-password`, `host-sudo-password` | The same file shape, installed only in the owned `battlefield-platform` folder; `host-inputs` must already be Ansible Vault ciphertext |
 
 Keep this JSON and each input file outside Git, mode `0600`. Values are file
