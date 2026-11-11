@@ -62,13 +62,24 @@ if [[ "$1 $2" == 'get kubeconfig' ]]; then echo fixture; fi
     profile(); run()
     for override in [dict(DEPLOY_ENV='invalid'),dict(KUBERNETES_CONTEXT='battlefield-production'),dict(KIND_CLUSTER_NAME='other'),
                      dict(KUBERNETES_NAMESPACE='other'),dict(DOCKER_HOST='tcp://remote:2375'),dict(TEST_UID='wrong'),
-                     dict(IMAGE_SOURCE='registry'),dict(BATTLEFIELD_AUTH_SECRET_FILE='/production/auth'),dict(TARGET_URL='http://production')]:
+                     dict(IMAGE_SOURCE='registry'),dict(BATTLEFIELD_AUTH_SECRET_FILE='/production/auth'),dict(TARGET_URL='http://production'),
+                     dict(BATTLEFIELD_APPLICATION_FILE=str(kube))]:
         run(ok=False,no_mutation=True,**override)
     profile(BF_DOCKER_HOST='tcp://remote:2375');run(ok=False,no_mutation=True)
     profile();run(ok=False,no_mutation=True,BATTLEFIELD_ENV_FILE=str(tmp/'missing'))
     profile('production');run(DEPLOY_ENV='production')
     run(ok=False,no_mutation=True,DEPLOY_ENV='production',IMAGE_SOURCE='local')
     run(ok=False,no_mutation=True,DEPLOY_ENV='production',ENFORCE_SUPPLY_CHAIN_POLICY='0')
+    # Production reads a bound application file, else the one beside its profile.
+    bound=tmp/'bound.env'; bound.touch()
+    def application(**env):
+        show=['bash','-c','source "$1"; battlefield_env_load && printf "%s\n" "$BATTLEFIELD_SECRET_FILE" "$BATTLEFIELD_AI_SECRET_FILE" "$BATTLEFIELD_AUTH_SECRET_FILE"','_',str(helper)]
+        return set(subprocess.run(show,env=clean|dict(DEPLOY_ENV='production')|env,capture_output=True,text=True,check=True).stdout.split())
+    assert application() == {str(tmp/'.env')}
+    assert application(BATTLEFIELD_APPLICATION_FILE=str(bound)) == {str(bound)}
+    for refused in [dict(BATTLEFIELD_APPLICATION_FILE=str(tmp/'unbound.env')),dict(BATTLEFIELD_APPLICATION_FILE='bound.env'),
+                    dict(BATTLEFIELD_APPLICATION_FILE=str(bound),BATTLEFIELD_SECRET_FILE=str(tmp/'.env'))]:
+        run(ok=False,no_mutation=True,DEPLOY_ENV='production',**refused)
     run(['bash',str(root/'scripts/cd/deploy-local.sh')],ok=False,no_mutation=True,DEPLOY_ENV='production')
     run(['bash',str(root/'scripts/ops/run-kind-failure-drills.sh')],ok=False,no_mutation=True,DEPLOY_ENV='production',RUN_DESTRUCTIVE_KIND_DRILLS='I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS')
     run(['bash',str(fixture/'scripts/cd/rollback.sh'),'a'*40,'b'*40],ok=False,no_mutation=True,DEPLOY_ENV='production',error='requires both exact image digests')
@@ -122,6 +133,7 @@ cluster_deploy_rollback_application
     assert main < rollout < pipeline.index("credentials('battlefield-production-kubeconfig')")
     assert "branch 'main'" in pipeline[main:rollout]
     assert 'battlefield-production-kubeconfig' not in pipeline[:rollout]
+    assert 'battlefield-production-application-env' in pipeline[rollout:] and 'battlefield-production-application-env' not in pipeline[:rollout]
     # AI gateway readiness pings PostgreSQL; the probe must outlast that ping deadline.
     gateway_probe=re.search(r'readinessProbe: \{httpGet: \{path: /readyz, port: http\}.*timeoutSeconds: (\d+)\}',
         (root/'infra/deploy/base/application/ai-gateway-deployment.yaml').read_text())

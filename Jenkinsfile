@@ -335,6 +335,7 @@ pipeline {
                     environment {
                         DEPLOY_ENV = 'production'
                         KUBECONFIG = credentials('battlefield-production-kubeconfig')
+                        BATTLEFIELD_APPLICATION_FILE = credentials('battlefield-production-application-env')
                     }
                     stages {
                         stage('Validate CI credentials') {
@@ -439,6 +440,10 @@ pipeline {
                     }
                 }
                 stage('CLI worker check') {
+                    // The worker's secret is compared with the production application file.
+                    environment {
+                        BATTLEFIELD_APPLICATION_FILE = credentials('battlefield-production-application-env')
+                    }
                     steps {
                         // Read-only. A down or out-of-sync CLI worker marks the build unstable but
                         // never fails delivery or triggers rollback; repair it with battlefield-platform/cli.

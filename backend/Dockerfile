@@ -25,7 +25,7 @@ RUN CGO_ENABLED=0 go build \
     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/ai-gateway ./cmd/aigateway
 
 # Base image: alpine:3.23
-FROM alpine@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0
+FROM alpine@sha256:469c9ea410b9215eaee7976ba6c0639039b444be8e5d638f7abbada189971eb2
 
 RUN apk upgrade --no-cache \
     && apk add --no-cache ca-certificates \

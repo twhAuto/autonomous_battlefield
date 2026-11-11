@@ -41,6 +41,7 @@ CREDENTIALS = {
     'battlefield-cosign-key': 'file', 'battlefield-cosign-password': 'string',
     'battlefield-cosign-public-key': 'file', 'battlefield-production-kubeconfig': 'file',
     'battlefield-production-access-service-token': 'file',
+    'battlefield-production-application-env': 'file',
 }
 FOLDER_CREDENTIALS = ('host-inventory', 'host-inputs', 'host-vault-password', 'host-sudo-password')
 

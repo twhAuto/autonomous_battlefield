@@ -28,7 +28,10 @@ Access Organizations/Identity Providers/Groups Read (Edit also works), Access
 Service Tokens Read (Edit also works), and Zone DNS Edit/Zone Read restricted to
 the intended account and zone. An API token cannot recover an existing connector
 secret or an issued Access service-token secret. Capture requires the retained
-production profile and connector JSON on the registered host.
+production profile, connector JSON and application `.env` in the registered host's
+production directory. A host that keeps its `.env` as a
+[Jenkins credential](jenkins.md#production-application-configuration) needs a
+private copy placed there for the capture and removed afterwards.
 
 Account creation, domain/registrar ownership, external identity-provider setup and
 interactive sign-in remain manual prerequisites. Existing referenced identity

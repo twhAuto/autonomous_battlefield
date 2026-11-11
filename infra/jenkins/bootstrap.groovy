@@ -59,6 +59,7 @@ def expected = [
     'battlefield-cosign-public-key': FileCredentialsImpl,
     'battlefield-production-kubeconfig': FileCredentialsImpl,
     'battlefield-production-access-service-token': FileCredentialsImpl,
+    'battlefield-production-application-env': FileCredentialsImpl,
     'sonarqube-battlefield-token': StringCredentialsImpl
 ]
 def globalStore = SystemCredentialsProvider.getInstance().getStore()

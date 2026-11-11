@@ -243,6 +243,21 @@ class CLIBootstrapTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'update workflow'):
                 boundary.inspect_files(files, marker, {'machine_id': 'a'*32})
 
+    def test_worker_secret_prefers_the_bound_application_file(self):
+        secret = 'a' * 64
+        calls = []
+        server = types.SimpleNamespace(private_file=Path, remote_python=lambda *arguments: calls.append(arguments) or secret + '\n')
+        with tempfile.TemporaryDirectory() as directory:
+            bound = Path(directory) / 'application.env'
+            bound.write_text('BATTLEFIELD_AGENT_SECRET=' + secret + '\n')
+            with patch.dict(os.environ, {'BATTLEFIELD_APPLICATION_FILE': str(bound)}):
+                self.assertEqual(cli.worker_secret(types.SimpleNamespace(local=False), {}, config(), server), secret)
+            self.assertEqual(calls, [])
+            with patch.dict(os.environ):
+                os.environ.pop('BATTLEFIELD_APPLICATION_FILE', None)
+                self.assertEqual(cli.worker_secret(types.SimpleNamespace(local=False), {}, config(), server), secret)
+            self.assertEqual(json.loads(calls[0][2]), {'path': '/home/operator/.config/autonomous-battlefield/production/.env'})
+
     def test_unknown_conflicting_file_is_not_adopted_or_written(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(boundary, 'safe_components', side_effect=Path):
             target = Path(directory) / 'unit'; marker = Path(directory) / 'marker'
