@@ -76,9 +76,10 @@ Only `main` builds on its own. The job's property strategy suppresses automatic
 SCM triggering for every head except `^main$`, so a scan creates the `PR-N` job
 for a new PR and records new commits on it, but starts no build.
 [GitHub Actions](../developer/ci.md#pull-request-verification) verifies PRs into
-`dev` instead, away from this host. To build a PR on Jenkins, use
-**Build with Parameters** on its `PR-N` job (a plain build request is rejected
-because the job takes parameters). Do that for each `dev`→`main` promotion PR,
+`dev` instead, away from this host. To build a PR on Jenkins, open its `PR-N` job
+and use **Build Now** for the job's first build, then **Build with Parameters**
+for later ones: the job learns its parameters from the Jenkinsfile during the first
+build, and from then on rejects a plain build request. Do that for each `dev`→`main` promotion PR,
 whose required checks only Jenkins publishes, and for any other PR when you want
 the SonarQube gate or GitHub Actions is unavailable. Read the diff first: the
 build runs that PR's Jenkinsfile and scripts on the

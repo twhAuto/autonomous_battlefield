@@ -84,7 +84,10 @@ and runs five jobs in parallel, each calling the scripts the Jenkins stages use:
 - Local image builds, frontend container startup/static-asset verification and
   vulnerability scans, without publication or production credentials.
 
-A newer commit on the pull request cancels the run in progress. The workflow has no
+A run starts when a pull request into `dev` is opened or reopened and when a commit
+is pushed to it; a newer commit cancels the run in progress. Changing a pull
+request's target to `dev` starts no run, so after retargeting one, push a commit or
+close and reopen it. The workflow has no
 SonarQube analysis, because the server is reachable only on the private network.
 `scripts/test/test-workflow-policy.py` keeps every workflow on the `pull_request`
 trigger, a read-only token, hosted runners and actions pinned by commit.
