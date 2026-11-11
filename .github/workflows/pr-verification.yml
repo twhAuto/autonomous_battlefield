@@ -1,7 +1,8 @@
-# Verifies pull requests into dev on GitHub-hosted runners, so pull-request code never
-# runs on the production host. Each job calls the scripts behind the Jenkins PR stages.
-# SonarQube, publishing, signing and delivery stay in Jenkins, which holds their
-# credentials. The workflow reads no secret and its token can only read the repository.
+# Verifies pull requests into dev on GitHub-hosted runners, alongside the Jenkins PR
+# build and independent of the project's own host. Each job calls the scripts behind
+# the Jenkins PR stages. SonarQube, publishing, signing and delivery stay in Jenkins,
+# which holds their credentials. The workflow reads no secret and its token can only
+# read the repository.
 name: PR verification
 
 on:

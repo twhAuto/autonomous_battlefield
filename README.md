@@ -135,7 +135,7 @@ subjects and pull-request titles refer to those tickets, so their links are not
 publicly viewable. Agents follow [AGENTS.md](AGENTS.md) and the repository
 [skills](.agents/skills/). Each substantive pull request gets one advisory review
 from the other agent ([cross-review](docs/developer/cross-review.md)) and must pass
-[its checks](docs/developer/ci.md#pull-request-verification) before the author merges it. The
+the Jenkins pipeline before the author merges it. The
 [AI-assisted development policy](docs/developer/ai-development-policy.md) sets what
 each pull request records and which changes need human approval.
 

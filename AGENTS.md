@@ -12,10 +12,10 @@
 - Run the applicable checks before opening a PR, including
   `./scripts/ci/lint-go.sh` for backend changes (gofmt, vet and SonarQube's
   cognitive-complexity limit) and `./scripts/test/test-deployment.sh` for
-  deployment changes. GitHub Actions verifies PRs into `dev`; Jenkins builds a PR
-  on the shared `battlefield-production` agent only when the user starts it, which
-  each promotion PR into `main` needs. Skipped or queued jobs and stages are not
-  verification.
+  deployment changes. Jenkins verifies PRs
+  on the shared `battlefield-production` agent by design, and GitHub Actions also
+  verifies PRs into `dev` on GitHub-hosted runners. Skipped or queued jobs and
+  stages are not verification.
 
 ## Project tracking
 

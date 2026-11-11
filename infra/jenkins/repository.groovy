@@ -16,22 +16,10 @@ multibranchPipelineJob('autonomous-battlefield') {
                     configuredByUrl(false)
                     traits {
                         gitHubBranchDiscovery { strategyId(1) }
-                        // Fork PRs are never discovered: a Jenkins build runs PR code on
-                        // the shared production agent.
+                        // Only same-repository PRs build: every build runs PR code on the
+                        // shared production agent, so fork PRs are never discovered.
                         gitHubPullRequestDiscovery { strategyId(1) }
                         headRegexFilter { regex('^(main|PR-[0-9]+)$') }
-                    }
-                }
-            }
-            // Only main builds on its own. A PR-N job exists for every same-repository
-            // PR but builds only when an operator starts it; GitHub Actions verifies PRs.
-            strategy {
-                allBranchesSame {
-                    props {
-                        suppressAutomaticTriggering {
-                            strategy('NONE')
-                            triggeredBranchesRegex('^main$')
-                        }
                     }
                 }
             }
