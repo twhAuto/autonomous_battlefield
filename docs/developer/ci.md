@@ -4,17 +4,25 @@ Use this guide to understand pull-request checks, diagnose failures and reproduc
 checks locally. Controller, agent, credential and production-delivery procedures
 are in [Jenkins operations](../operations/jenkins.md).
 
-The repository owns its pipeline in `Jenkinsfile`. GitHub stores the source;
-the local Jenkins Multibranch job discovers branches and pull requests through
-periodic scans, checks out the exact commit, and executes the pipeline on an
-agent. A public Jenkins installation can use a GitHub webhook instead.
+Two systems run the checks. GitHub Actions verifies every pull request into `dev`
+on GitHub-hosted runners, using the
+[PR verification workflow](../../.github/workflows/pr-verification.yml). Jenkins
+runs the pipeline in `Jenkinsfile` on the project's own agent: it delivers `main`,
+and it builds a pull request only when an operator starts that build. The local
+Jenkins Multibranch job discovers branches and pull requests through periodic
+scans and checks out the exact commit. A public Jenkins installation can use a
+GitHub webhook instead.
 
 ```text
-Pull request targeting dev or main
+Pull request targeting dev
           |
-          `--> lint, test with coverage, publish a GitHub Coverage check,
-               pass the SonarQube quality gate, render, build immutable
-               images, and scan
+          `--> GitHub Actions: lint, test with coverage, source security,
+               deployment checks, build images, and scan
+
+Pull request built on Jenkins (operator-started; required for main)
+          |
+          `--> the same checks, plus a GitHub Coverage check and the
+               SonarQube quality gate
 
 Merge into main
           |
@@ -33,17 +41,18 @@ nested stages. Within an active `Main delivery` run, image and deployment stages
 can still appear as skipped when the changed-component classifier determines
 that they are unnecessary; those skips are intentional and remain visible.
 
-PRs targeting `dev` or `main`, main delivery and assurance all run on the shared
+Main delivery, assurance and operator-started PR builds run on the shared
 `battlefield-production` agent; see the
 [shared-agent tradeoff](../operations/jenkins.md#shared-ci-and-production-agent).
-Pushes to `dev` and work branches run no pipeline: a merged `dev` head is first
-built by the next `dev`→`main` promotion PR.
+Pull-request code reaches that agent only when an operator starts the build.
+Pushes to `dev` and work branches run no pipeline: Jenkins first builds a merged
+`dev` head on the next `dev`→`main` promotion PR.
 
 Only `main` is protected. Its ruleset requires a pull request and the `Jenkins` and
 `Coverage` checks, and blocks direct pushes; Jenkins sees a `main` update rather
 than a distinct "PR merged" event, so that rule is what makes a `main` update
 equivalent to an approved merge. `dev` has no ruleset: work branches still open
-pull requests into `dev`, but Jenkins results there are advisory and maintainers
+pull requests into `dev`, but the check results there are advisory and maintainers
 may push directly. See [branch protection](../operations/jenkins.md#main-branch-protection).
 
 Work branches start from the latest fetched `origin/dev` and open PRs into `dev`
@@ -61,17 +70,32 @@ git push origin dev
 
 ## Pull-request verification
 
-For a pull request targeting `dev` or `main`, the pipeline performs:
+Every pull request into `dev` runs the PR verification workflow on GitHub-hosted
+runners. Its token can only read the repository and it reads no secret, so it can
+run code nobody has reviewed. It checks out the pull request merged with its target
+and runs five jobs in parallel, each calling the scripts the Jenkins stages use:
 
-1. Clean checkout of the exact GitHub commit.
-2. Parallel Go lint, isolated PostgreSQL-backed tests (coverage and race checks),
-   frontend coverage/build, source security and policy validation, fuzz smoke,
-   deterministic AI evaluation, and deployment-script checks.
-3. Publication of the GitHub `Coverage` check.
-4. SonarQube preview-project analysis and quality-gate enforcement for the exact
-   PR checkout.
-5. Local image builds, frontend container startup/static-asset verification and
-   vulnerability scans, without publication or production credentials.
+- Go lint, isolated PostgreSQL-backed tests (coverage and race checks), fuzz smoke
+  and deterministic AI evaluation.
+- Source security and policy validation.
+- Frontend coverage, build and browser tests. The Playwright report is a run
+  artifact, kept for three days.
+- Deployment-script checks.
+- Local image builds, frontend container startup/static-asset verification and
+  vulnerability scans, without publication or production credentials.
+
+A newer commit on the pull request cancels the run in progress. The workflow has no
+SonarQube analysis, because the server is reachable only on the private network.
+`scripts/test/test-workflow-policy.py` keeps every workflow on the `pull_request`
+trigger, a read-only token, hosted runners and actions pinned by commit.
+
+A Jenkins PR build runs the same checks in the `PR verification` stages, plus two
+more: it publishes the GitHub `Coverage` check, and it enforces the SonarQube quality
+gate on a preview project for the exact PR checkout. Jenkins builds a pull request
+only when an operator [starts the build](../operations/jenkins.md#repository-job).
+A `dev`→`main` promotion PR needs one, because the `main` ruleset requires the
+`Jenkins` and `Coverage` checks. Start one for a pull request into `dev` to get the
+SonarQube gate before merging, or when GitHub Actions is unavailable.
 
 Backend integration packages run concurrently against the disposable PostgreSQL
 database. Migration fixtures use the same advisory lock as startup, including

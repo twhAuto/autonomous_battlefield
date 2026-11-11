@@ -50,17 +50,18 @@ configuration by hand to match it.
 
 | Job | Definition | Trigger | Purpose |
 | --- | --- | --- | --- |
-| `autonomous-battlefield` (Multibranch) | [`repository.groovy`](../../infra/jenkins/repository.groovy), `Jenkinsfile` | Periodic repository scan every 2 minutes | PR verification for PRs into `dev` or `main`, and delivery of `main` |
+| `autonomous-battlefield` (Multibranch) | [`repository.groovy`](../../infra/jenkins/repository.groovy), `Jenkinsfile` | Periodic repository scan every 2 minutes for `main`; PR builds are operator-started | Delivery of `main`, and PR verification on request |
 | `battlefield-assurance` | [`assurance.groovy`](../../infra/jenkins/assurance.groovy), `infra/jenkins/Jenkinsfile.assurance` on trusted `main` | Manual only | Modes `offline`, `load`, `failure-drills`, `provider-eval` and `aws-promotion` |
 | `battlefield-platform/*` | [Platform jobs](platform-jobs.md) | Manual only | Reviewed host, VM, K3s and CLI worker plan/apply/verify |
 
 ### Repository job
 
-The Multibranch job uses the `github-app-battlefield` credential and builds only
-`main` and `PR-N` heads. It discovers PRs only from branches in this repository,
+The Multibranch job uses the `github-app-battlefield` credential and has jobs only
+for `main` and `PR-N` heads. It discovers PRs only from branches in this repository,
 never from forks. It merges each origin PR with its current target, and it
 excludes branches that are also filed as PRs. Pushes to `dev` and work branches
-therefore build nothing. A merged `dev` head is covered by its PR's last build when
+therefore build nothing. A merged `dev` head is covered by its PR's last Jenkins
+build, if it had one, when
 `git rev-parse MERGE^{tree}` equals `git merge-tree --write-tree TARGET HEAD`, where
 `MERGE` is the merge commit on `dev` and `TARGET` and `HEAD` are the commits named in
 that build's
@@ -71,14 +72,22 @@ periodic scan discovers new PRs and commits. Run **Scan Repository Now** on the 
 to pick up a change sooner. Add a webhook only after Jenkins has an authenticated,
 HTTPS-protected address that GitHub can reach.
 
-A scan builds a PR when it first appears and whenever its head commit changes; a
-newer target-branch commit alone starts no build. A PR that conflicts with its
-target gets no `PR-N` job until the conflict is resolved and a scan runs, so check
-the PR's mergeability before looking for a missing build. To rebuild without a new
-commit, use **Build with Parameters** on the `PR-N` job (a plain build request is
-rejected because the job takes parameters); the rebuild reuses the previous build's
-revisions. Before treating a green build as evidence, compare the revision it built
-with the current PR head and target tip.
+Only `main` builds on its own. The job's property strategy suppresses automatic
+SCM triggering for every head except `^main$`, so a scan creates the `PR-N` job
+for a new PR and records new commits on it, but starts no build.
+[GitHub Actions](../developer/ci.md#pull-request-verification) verifies PRs into
+`dev` instead, away from this host. To build a PR on Jenkins, use
+**Build with Parameters** on its `PR-N` job (a plain build request is rejected
+because the job takes parameters). Do that for each `dev`→`main` promotion PR,
+whose required checks only Jenkins publishes, and for any other PR when you want
+the SonarQube gate or GitHub Actions is unavailable. Read the diff first: the
+build runs that PR's Jenkinsfile and scripts on the
+[shared agent](#shared-ci-and-production-agent).
+
+A PR that conflicts with its target gets no `PR-N` job until the conflict is
+resolved and a scan runs, so check the PR's mergeability before looking for a
+missing job. Before treating a green build as evidence, compare the revision it
+built with the current PR head and target tip.
 
 Each `PR-N` child job numbers its builds independently, and the `Jenkinsfile`
 keeps the last 20 builds of each active job. Closed PRs become orphaned child jobs,
@@ -163,18 +172,19 @@ deployment or drill jobs.
 ### Shared CI and production agent
 
 Every Jenkinsfile runs on this one agent. That is a deliberate tradeoff for a small
-project with trusted build authors. PR scripts and dependency installers run with
-access to the shared host and its Docker daemon, which is effectively privileged
-host access, so mistakes or malicious code can affect production. Stage-scoped
-credentials and main-only delivery still apply, but a PR-editable Jenkinsfile and
-inherited Multibranch credentials are not a security boundary.
+project with trusted build authors. A PR build's scripts and dependency installers
+run with access to the shared host and its Docker daemon, which is effectively
+privileged host access, so mistakes or malicious code can affect production.
+Stage-scoped credentials and main-only delivery still apply, but a PR-editable
+Jenkinsfile and inherited Multibranch credentials are not a security boundary.
 
-Only accounts that can push to the repository can start a PR build, because the
-[repository job](#repository-job) never discovers fork PRs. Keep builds off the
-controller's built-in node. Revisit isolation before accepting contributors without
-push access: a separate CI VM and Docker daemon,
-delivery credentials scoped to trusted jobs, and controller-enforced node access.
-A second label or executor on this host would not provide that isolation.
+The boundary is who starts a PR build. The [repository job](#repository-job) never
+discovers fork PRs and never builds a PR on its own, so PR code runs here only after
+someone with Jenkins access starts that build. Opening a PR, or pushing to one, runs
+it on GitHub-hosted runners only. Keep builds off the controller's built-in node.
+Running unreviewed PR builds on Jenkins again would need a separate CI VM and Docker
+daemon, delivery credentials scoped to trusted jobs, and controller-enforced node
+access. A second label or executor on this host would not provide that isolation.
 
 ## Credentials
 
@@ -309,13 +319,13 @@ To create the app for a new installation:
 ### `main` branch protection
 
 Only `main` is protected. `dev` intentionally has no ruleset, so maintainers can
-push to it directly; Jenkins and SonarQube still run on PRs into `dev`, but their
-results there are advisory. In **Settings > Rules > Rulesets**, the `main` ruleset
+push to it directly; GitHub Actions verifies PRs into `dev`, but its results there
+are advisory. In **Settings > Rules > Rulesets**, the `main` ruleset
 should:
 
 1. require a pull request before merging and block direct pushes;
 2. require the Jenkins PR result named `Jenkins`, which includes the SonarQube
-   gate;
+   gate and exists only after an operator builds the PR on Jenkins;
 3. require the separate `Coverage` check;
 4. require the branch to be up to date before merging, when that fits the merge
    strategy.

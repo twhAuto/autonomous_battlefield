@@ -1,0 +1,131 @@
+# Verifies pull requests into dev on GitHub-hosted runners, so pull-request code never
+# runs on the production host. Each job calls the scripts behind the Jenkins PR stages.
+# SonarQube, publishing, signing and delivery stay in Jenkins, which holds their
+# credentials. The workflow reads no secret and its token can only read the repository.
+name: PR verification
+
+on:
+  pull_request:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+# A newer commit on the same pull request replaces the run in progress.
+concurrency:
+  group: pr-verification-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  GO_COVERAGE_MIN: '80'
+
+jobs:
+  backend:
+    name: Backend lint, tests, fuzz and AI evaluation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Go lint
+        run: ./scripts/ci/lint-go.sh
+      - name: Backend tests and coverage
+        run: ./scripts/test/with-test-postgres.sh ./scripts/test/test-backend.sh
+      - name: Fuzz smoke
+        run: FUZZ_SECONDS=5 ./scripts/test/fuzz-smoke.sh
+      - name: Deterministic AI evaluation
+        run: ./scripts/test/test-ai-evals.sh
+
+  security:
+    name: Source security and policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      # Full history: the secret scan covers every commit since the target branch.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Source security and policy
+        env:
+          CHANGE_TARGET: ${{ github.base_ref }}
+        run: ./scripts/ci/security-and-policy.sh
+
+  frontend:
+    name: Frontend tests, build and browser tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --ignore-scripts
+      - name: Unit tests and coverage
+        run: npm test -- --coverage
+      - run: npm run build
+      - name: Install the browser
+        run: npx playwright install --with-deps chromium
+      - name: Browser tests
+        run: ../scripts/test/run-e2e.sh
+      - name: Require the browser-test report
+        run: test -s playwright-report/index.html
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 3
+          if-no-files-found: ignore
+
+  deployment:
+    name: Deployment script checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: ./scripts/test/test-deployment.sh
+      - run: ./scripts/test/test-docker-context.sh
+      - run: ./scripts/test/test-frontend-image.sh
+
+  images:
+    name: Build and scan images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build PR images
+        run: ./scripts/ci/build-images.sh
+      - name: Scan PR images
+        run: ./scripts/ci/scan-images.sh "$(git rev-parse HEAD)"
