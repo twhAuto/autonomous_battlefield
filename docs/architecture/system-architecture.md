@@ -198,12 +198,12 @@ library. Adding content therefore needs no per-map selection updates.
 
 Replays store one engine checkpoint per decision window and re-simulate the ticks
 between them. Storing every tick's state would need no re-simulation, but it would
-take one state per tick instead of one per decision interval: twenty times the
-storage at the default interval. Re-simulating from tick 0 alone would make seeking
-cost the whole battle. Checkpoints bound both, at the cost of serializing engine
-runtime beyond `State`: a field added to the match runtime must join the checkpoint,
-which the restore tests enforce. Ticks between checkpoints use the deployed engine,
-so after a gameplay change they can differ for battles recorded earlier.
+take one state per tick instead of one per decision interval. Re-simulating from
+tick 0 alone would make seeking cost the whole battle. Checkpoints bound both, at
+the cost of serializing engine runtime beyond `State`: a field added to the match
+runtime must join the checkpoint, which the restore tests enforce. Ticks between
+checkpoints use the deployed engine, so after a gameplay change they can differ for
+battles recorded earlier.
 
 ### 4.6 Identity at the edge, authorization in the API
 
