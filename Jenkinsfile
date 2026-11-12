@@ -65,7 +65,7 @@ pipeline {
         disableConcurrentBuilds()
         skipDefaultCheckout(true)
         timestamps()
-        timeout(time: 45, unit: 'MINUTES')
+        // Time limits sit on the stages: a pipeline-level limit would also count the wait for the PR lock.
     }
 
     environment {
@@ -120,7 +120,20 @@ pipeline {
             }
             stages {
                 stage('PR continuous integration') {
+                    options {
+                        // These checks take every CPU; a second build starting them starves the first past its test time limits.
+                        // Options wrap in the order written, so the time limit starts once the lock is held.
+                        lock(resource: 'battlefield-pr-verification')
+                        timeout(time: 30, unit: 'MINUTES')
+                    }
                     parallel {
+                        stage('Host load record') {
+                            steps {
+                                // Keeps sampling after this step returns; the stage's post step stops it.
+                                sh 'nohup ./scripts/ci/record-host-load.sh record artifacts/host-load.tsv >/dev/null 2>&1 &'
+                            }
+                        }
+
                         stage('Go lint') {
                             steps {
                                 sh './scripts/ci/lint-go.sh'
@@ -165,6 +178,7 @@ pipeline {
                     }
                     post {
                         always {
+                            sh './scripts/ci/record-host-load.sh finish artifacts/host-load.tsv'
                             script {
                                 def summaryFile = '.jenkins-coverage-check.md'
                                 def summaryStatus = sh(
@@ -193,6 +207,7 @@ pipeline {
 
                 // Community Build has no dev-branch analysis, so each PR gets a preview project.
                 stage('PR SonarQube analysis and quality gate') {
+                    options { timeout(time: 15, unit: 'MINUTES') }
                     steps {
                         script {
                             sonarQubeGate('./scripts/ci/run-sonarqube-pr-gate.sh "${CHANGE_ID}" "origin/${CHANGE_TARGET}"')
@@ -201,12 +216,14 @@ pipeline {
                 }
 
                 stage('Build PR images') {
+                    options { timeout(time: 15, unit: 'MINUTES') }
                     steps {
                         sh './scripts/ci/build-images.sh'
                     }
                 }
 
                 stage('Scan PR images') {
+                    options { timeout(time: 15, unit: 'MINUTES') }
                     steps {
                         sh './scripts/ci/scan-images.sh "${IMAGE_TAG}"'
                     }
@@ -216,7 +233,11 @@ pipeline {
 
         stage('Main delivery') {
             when {
+                beforeOptions true
                 branch 'main'
+            }
+            options {
+                timeout(time: 45, unit: 'MINUTES')
             }
             stages {
                 stage('Main quality reports') {

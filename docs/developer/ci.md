@@ -73,6 +73,18 @@ For a pull request targeting `dev` or `main`, the pipeline performs:
 5. Local image builds, frontend container startup/static-asset verification and
    vulnerability scans, without publication or production credentials.
 
+Step 2 runs for one build at a time; see
+[concurrency](../operations/jenkins.md#concurrency). While it runs, the build
+samples the agent every five seconds into the archived `artifacts/host-load.tsv`:
+load average, CPU busy and I/O-wait shares, available memory, swap in use, and the
+kernel's pressure figures for CPU, memory and I/O (the share of the last ten
+seconds in which some task waited for that resource). The stage ends by printing
+the averages and peaks in a line starting `Host load over`. When a check fails
+on a time limit, compare that line with a build that passed. High CPU or memory
+pressure means the checks competed for the host. The cause can be another build
+or host workload, or the change under test using more CPU or memory, so check
+which before rerunning.
+
 Backend integration packages run concurrently against the disposable PostgreSQL
 database. Migration fixtures use the same advisory lock as startup, including
 tests that upgrade or downgrade selected versions. Separate schemas alone do not
@@ -158,8 +170,13 @@ files while keeping source and examples. PR and `main` builds run both.
 
 ### Source security
 
-The source-security stage first runs a full npm audit from a digest-pinned Node
-container. If the npm advisory endpoint is still unavailable after a bounded retry,
+The source-security stage archives Go vulnerability findings in `govulncheck.json`
+and evaluates that report with govulncheck's text converter. Reachable findings,
+scanner errors and conversion errors fail the gate; `govulncheck.txt` contains the
+readable summary. JSON-mode exit status alone does not enforce vulnerability findings.
+
+The stage also runs a full npm audit from a digest-pinned Node container.
+If the npm advisory endpoint is still unavailable after a bounded retry,
 the stage requires a passing Trivy lockfile scan of all frontend dependencies,
 including development and unfixed vulnerabilities. A definitive npm vulnerability
 report is never replaced by that fallback. The archived `npm-audit-mode.json`

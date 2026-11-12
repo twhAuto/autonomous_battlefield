@@ -2,7 +2,7 @@
 # Shared pre-merge and main deployment regression gate; external mutations use doubles.
 set -Eeuo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-for suite in deployment-components kind-deployment runtime-assurance deployment-environment security-launchers registry-auth image-metadata registry-verification sonarqube-gate e2e-runner prometheus-rules failure-drills langfuse-detection; do
+for suite in deployment-components kind-deployment runtime-assurance deployment-environment security-launchers registry-auth image-metadata registry-verification sonarqube-gate e2e-runner host-load prometheus-rules failure-drills langfuse-detection; do
   bash "${project_dir}/scripts/test/test-${suite}.sh"
 done
 for suite in assurance-job base-image-pins k3s-delivery k3s-delivery-rehearsal access-service limited-launch production-preparation production-hardening agent-vm-host cross-review cli-agent ai-policy database-harness ai-manifest retention-report ensure-helm base-image-drift doc-links; do

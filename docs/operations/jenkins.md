@@ -153,12 +153,24 @@ compilation; see [disk quota](#disk-quota-and-go-caches) when that runs out.
 
 ### Concurrency
 
-PR builds isolate PostgreSQL test ports, Playwright ports and image tags by build,
-so they can share the four executors. `main` uses `disableConcurrentBuilds()` and
-holds the `battlefield-production-platform` lock for its rollout, the same lock the
-platform jobs take for their whole operation. Size executors to the host's
-capacity; sharing the agent does not remove locking requirements for other
-deployment or drill jobs.
+One build at a time runs the parallel PR checks. The `PR continuous integration`
+stage holds the `battlefield-pr-verification` lock, because several of its checks
+use every CPU: a second build starting them starves the first past its test,
+browser and deployment-script time limits. Other PR builds queue for the lock in
+arrival order, each occupying an executor while it waits. The stage's 30-minute
+limit starts when the build gets the lock, so time in the queue does not count
+against it. The SonarQube, image build and image scan stages that follow run
+outside the lock, with 15 minutes each, and can overlap the next build's checks.
+Each build [records the host's load](../developer/ci.md#pull-request-verification)
+during the locked stage.
+
+`main` does not take that lock, so a delivery can overlap one PR build; builds
+isolate PostgreSQL test ports, Playwright ports and image tags, so the two do not
+collide on those. `main` uses `disableConcurrentBuilds()`, has 45 minutes for
+`Main delivery`, and holds the `battlefield-production-platform` lock for its
+rollout, the same lock the platform jobs take for their whole operation. Size
+executors to the host's capacity; sharing the agent does not remove locking
+requirements for other deployment or drill jobs.
 
 ### Shared CI and production agent
 

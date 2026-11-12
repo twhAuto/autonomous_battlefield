@@ -1,6 +1,6 @@
 module github.com/twh09/autonomous_battlefield/backend
 
-go 1.26.5
+go 1.26.11
 
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
