@@ -9,20 +9,20 @@ Notion holds task status and the
 
 ## Registered facts
 
-Other runbooks use placeholders for this deployment's identities. These are the
-current registered values; the private inventory and Jenkins configuration remain
-authoritative, so check them before an operation.
+Runbooks use placeholders for installation-specific identities. Resolve them from
+the private inventory and Jenkins configuration before an operation; do not copy
+host addresses, operator accounts or filesystem UUIDs into shared documentation.
 
-| Fact | Current value | Where it is set |
-| --- | --- | --- |
-| Host LAN address (`<host>`) | `192.168.1.126`, kept by a router reservation | Private `server/inventory.json` |
-| Registered operator (`<operator>`): host account, Jenkins agent user and owner of the production profile | `twh09` | Private `server/inventory.json` |
-| Jenkins administrator and platform-job approver | `whtan` | `submitter` in `infra/jenkins/Jenkinsfile.{platform,vm,k3s,cli}`; default `--user` / `--jenkins-user` / `--ci-admin` of `seed-platform.py`, `setup-platform.py` and `server.sh` |
-| Jenkins controller | `http://192.168.1.126:8080` (reach it through an SSH tunnel) | Native Jenkins service |
-| Host data partition (`<data-uuid>`) | ext4 UUID `75db9b1d-5c46-4e5b-bd94-5391b2a35411`, mounted at `/srv/battlefield-data` | Private inventory `data_uuid` / `data_mount` |
+| Fact | Authoritative source |
+| --- | --- |
+| Host LAN address (`<host>`) | Private `server/inventory.json`; verify the router reservation. |
+| Registered operator (`<operator>`): host account, Jenkins agent user and owner of the production profile | Private `server/inventory.json`. |
+| Jenkins administrator and platform-job approver | Configured Jenkins identity and the `submitter` in `infra/jenkins/Jenkinsfile.{platform,vm,k3s,cli}`; check the effective `--user`, `--jenkins-user` and `--ci-admin` inputs when seeding or setting up services. |
+| Jenkins controller | Native Jenkins service on the registered host; connect through a strict SSH tunnel to a loopback URL. |
+| Host data partition (`<data-uuid>`) | Private inventory `data_uuid` / `data_mount`; verify the filesystem mounted at `/srv/battlefield-data`. |
 
-Technical identifiers such as the `ghcr.io/twh09/...` image namespace and the Go
-module path are part of the code, not registration facts.
+Container registry namespaces and the Go module path identify published artifacts
+and source packages; they are not private host registration values.
 
 ## Selected layout and capacity
 

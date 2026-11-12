@@ -536,7 +536,7 @@ services and run `DEPLOY_ENV=production ./scripts/cd/smoke-test.sh` as the agent
 account. Do not run the dev bootstrap on this machine. If the production cluster
 is missing, recover its data and registered identity rather than recreating it.
 
-[Environment operations](environments.md) cover production registration and
+[Environment operations](deployment.md#production-setup) cover production registration and
 configuration, and [K3s delivery](k3s-delivery.md) covers the kubeconfig credential
 and database export and restore. WSL needs only Docker and its dev cluster for
 local work; local Jenkins and SonarQube need not be running.

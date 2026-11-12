@@ -3,7 +3,7 @@
 Use the registered Kind environment to build and run working-tree changes.
 The [configuration model](../architecture/configuration.md) describes file locations,
 credential precedence and cluster identity checks. For production, see
-[environment operations](../operations/environments.md).
+[environment operations](../operations/deployment.md#production-setup).
 
 ## WSL setup and normal use
 

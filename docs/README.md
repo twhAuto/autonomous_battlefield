@@ -4,7 +4,7 @@ Start with [game rules](game/game-rules.md) to understand battles,
 [local setup](developer/local-setup.md) to run the application, or the
 [codebase guide](developer/codebase-guide.md) to find the implementation.
 [System architecture](architecture/system-architecture.md) explains runtime
-components. Operators can start with [environment operations](operations/environments.md)
+components. Operators can start with [environment operations](operations/deployment.md#production-setup)
 for application configuration and delivery, or the
 [server rebuild contract](operations/server-rebuild-contract.md) for host and
 platform recovery. Return to the [project overview](../README.md) for capabilities
@@ -55,12 +55,10 @@ configuring, deploying, observing and recovering environments.
 
 | Guide | Use it for |
 | --- | --- |
-| [Environments](operations/environments.md) | Registering environments and managing configuration |
-| [Deployment](operations/deployment.md) | How delivery works: overlays, deployment components, image identity and releases, registry verification, runtime requirements, AWS reference |
+| [Deployment](operations/deployment.md) | Environment setup, delivery components, image identity, registry verification and runtime requirements |
 | [Production access](operations/access.md) | Access requirements, tunnel, roles, AI limits, CI service identity and access recovery |
 | [Player invitations](operations/player-invitations.md) | Activating and recovering managed Player membership |
-| [Observability operations](operations/observability.md) | Metrics, dashboards, logs and diagnostics |
-| [Reliability testing](operations/reliability-testing.md) | Disposable load tests, capacity checks and failure drills |
+| [Observability operations](operations/observability.md) | Metrics, dashboards, logs, diagnostics, load tests and failure drills |
 | [Redis](operations/redis.md) | Optional completed-battle caching and recovery |
 | [Langfuse](operations/langfuse.md) | Optional AI traces and self-hosted service setup |
 | [Supply chain](operations/supply-chain-runbook.md) | Image signing, evidence, admission and recovery |
