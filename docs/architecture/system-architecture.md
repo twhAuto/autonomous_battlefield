@@ -938,9 +938,10 @@ A model profile specifies:
 Local CLIs allow the [selected stable version](../developer/local-kubernetes.md#subscription-clis)
 or newer. Production CLI agents use their configured version prefixes.
 
-Key runtime settings and their defaults:
+Key runtime settings, with the value each takes when the configuration file omits
+it:
 
-| Setting | Default | Effect |
+| Setting | Default when omitted | Effect |
 | --- | --- | --- |
 | `api.maxTicks` | 10000 (maximum) | Upper bound for a battle's requested tick limit |
 | `engine.pollInterval` | 1s | Delay between empty battle-queue claims |
