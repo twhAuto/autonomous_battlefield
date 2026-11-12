@@ -158,8 +158,13 @@ files while keeping source and examples. PR and `main` builds run both.
 
 ### Source security
 
-The source-security stage first runs a full npm audit from a digest-pinned Node
-container. If the npm advisory endpoint is still unavailable after a bounded retry,
+The source-security stage archives Go vulnerability findings in `govulncheck.json`
+and evaluates that report with govulncheck's text converter. Reachable findings,
+scanner errors and conversion errors fail the gate; `govulncheck.txt` contains the
+readable summary. JSON-mode exit status alone does not enforce vulnerability findings.
+
+The stage also runs a full npm audit from a digest-pinned Node container.
+If the npm advisory endpoint is still unavailable after a bounded retry,
 the stage requires a passing Trivy lockfile scan of all frontend dependencies,
 including development and unfixed vulnerabilities. A definitive npm vulnerability
 report is never replaced by that fallback. The archived `npm-audit-mode.json`
