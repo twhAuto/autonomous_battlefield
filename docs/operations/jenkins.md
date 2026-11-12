@@ -153,12 +153,16 @@ compilation; see [disk quota](#disk-quota-and-go-caches) when that runs out.
 
 ### Concurrency
 
-One PR is verified at a time. The `PR verification` stage holds the
-`battlefield-pr-verification` lock, because its test, browser and deployment-script
-time limits assume the host is running one build and overlapping builds starve
-each other past them. Other PR builds queue for the lock in arrival order, each
-occupying an executor while it waits. A build's 45-minute limit starts when it
-gets the lock, so time in the queue does not count against it.
+One build at a time runs the parallel PR checks. The `PR continuous integration`
+stage holds the `battlefield-pr-verification` lock, because several of its checks
+use every CPU: a second build starting them starves the first past its test,
+browser and deployment-script time limits. Other PR builds queue for the lock in
+arrival order, each occupying an executor while it waits. The stage's 30-minute
+limit starts when the build gets the lock, so time in the queue does not count
+against it. The SonarQube, image build and image scan stages that follow run
+outside the lock, with 15 minutes each, and can overlap the next build's checks.
+Each build [records the host's load](../developer/ci.md#pull-request-verification)
+during the locked stage.
 
 `main` does not take that lock, so a delivery can overlap one PR build; builds
 isolate PostgreSQL test ports, Playwright ports and image tags, so the two do not
