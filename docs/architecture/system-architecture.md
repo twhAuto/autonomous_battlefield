@@ -36,7 +36,7 @@ The design in brief:
   model fails or is late.
 - **Work is durable.** Battles and model decisions are PostgreSQL state machines
   claimed with leases. Any process can restart, and an interrupted battle is rerun
-  from tick 0 with the plans already decided.
+  from tick 0, reusing earlier plans where the observation still matches.
 - **Identity is checked twice.** Cloudflare Access authenticates people in
   production, and the API verifies every request's token and enforces roles and
   ownership itself.
@@ -543,15 +543,18 @@ A reclaimed battle starts a new deterministic attempt at tick 0 from
 `initial_state`; it does not resume the last persisted tick. Events from earlier
 attempts remain available by attempt number.
 
-The rerun does not ask a model again for a decision an earlier attempt resolved.
-When the engine opens a decision window, it looks for a resolved decision of the
-same battle, faction and target tick whose observation hash, prompt and tool
-versions, profile, provider, runtime, model and reasoning effort all match. It
-stores that decision's plan as already accepted, so no agent is notified and no
-model is called. Because the engine is deterministic, the same plans lead to the
-same states and therefore the same observation hashes at the following windows. The
-rerun repeats the earlier attempt's decisions up to the point where that attempt
-stopped, and resolves the remaining windows as usual.
+The rerun reuses decisions an earlier attempt resolved where it can. When the
+engine opens a decision window, it looks for a resolved decision of the same battle,
+faction and target tick whose observation hash, prompt and tool versions, profile,
+provider, runtime, model and reasoning effort all match. On a match it stores that
+decision's plan as already accepted, so no agent is notified and no model is called.
+A window with no match is resolved as usual.
+
+Reuse is decided window by window and is not guaranteed for the whole rerun. The
+observation includes the faction's memory of its earlier decisions with their
+status, and a reused plan is recorded as accepted. After a window that the earlier
+attempt resolved by fallback, later observations therefore hash differently, and
+those windows go to their controller again.
 
 Attempts are budgeted:
 
