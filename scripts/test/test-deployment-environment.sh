@@ -134,6 +134,19 @@ cluster_deploy_rollback_application
     assert "branch 'main'" in pipeline[main:rollout]
     assert 'battlefield-production-kubeconfig' not in pipeline[:rollout]
     assert 'battlefield-production-application-env' in pipeline[rollout:] and 'battlefield-production-application-env' not in pipeline[:rollout]
+    # One build at a time runs the parallel PR checks. Their time limit must start inside the
+    # lock: stage options wrap in the order written, and a limit on the enclosing stage or
+    # the pipeline would count the wait for the lock.
+    pr=pipeline.index("stage('PR verification')")
+    ci=pipeline.index("stage('PR continuous integration')")
+    ci_options=pipeline[ci:pipeline.index('parallel {', ci)]
+    assert 0 <= ci_options.index("lock(resource: 'battlefield-pr-verification')") < ci_options.index('timeout(')
+    assert 'timeout(' not in pipeline[pipeline.index('pipeline {'):pipeline.index('stages {')] + pipeline[pr:ci]
+    # Every stage outside the lock keeps a limit of its own, and main never queues for the PR lock.
+    for stage in ('PR SonarQube analysis and quality gate','Build PR images','Scan PR images','Main delivery'):
+        start=pipeline.index(f"stage('{stage}')")
+        assert 'timeout(' in pipeline[start:pipeline.index("stage('", start+1)], stage
+    assert 'battlefield-pr-verification' not in pipeline[main:]
     # AI gateway readiness pings PostgreSQL; the probe must outlast that ping deadline.
     gateway_probe=re.search(r'readinessProbe: \{httpGet: \{path: /readyz, port: http\}.*timeoutSeconds: (\d+)\}',
         (root/'infra/deploy/base/application/ai-gateway-deployment.yaml').read_text())
