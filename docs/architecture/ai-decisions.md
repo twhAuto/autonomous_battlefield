@@ -209,8 +209,8 @@ The battlefield is fully visible, so enemy losses are faction-visible facts. The
 engine reads only these five event types within the remembered ticks.
 Memory is part of the frozen, hashed observation; there is no mutable scratchpad,
 and attempts never read memory from earlier attempts. A plan is reused only when the
-observation hash, prompt and tool versions, and profile, provider, runtime and model
-all match. [AI controller comparisons](../developer/ai-comparisons.md) measure these
+observation hash, prompt and tool versions, and profile, provider, runtime, model and
+reasoning effort all match. [AI controller comparisons](../developer/ai-comparisons.md) measure these
 contracts.
 
 ## Decision context
