@@ -65,7 +65,7 @@ pipeline {
         disableConcurrentBuilds()
         skipDefaultCheckout(true)
         timestamps()
-        timeout(time: 45, unit: 'MINUTES')
+        // Time limits sit on the PR and main stages: a pipeline-level limit would also count lock waits.
     }
 
     environment {
@@ -113,10 +113,18 @@ pipeline {
 
         stage('PR verification') {
             when {
+                // Builds that skip this stage must not queue for its lock.
+                beforeOptions true
                 anyOf {
                     changeRequest target: 'main'
                     changeRequest target: 'dev'
                 }
+            }
+            options {
+                // The checks assume the host runs one build; overlapping builds starve each other's time limits.
+                // Options wrap in the order written, so the time limit starts once the lock is held.
+                lock(resource: 'battlefield-pr-verification')
+                timeout(time: 45, unit: 'MINUTES')
             }
             stages {
                 stage('PR continuous integration') {
@@ -216,7 +224,11 @@ pipeline {
 
         stage('Main delivery') {
             when {
+                beforeOptions true
                 branch 'main'
+            }
+            options {
+                timeout(time: 45, unit: 'MINUTES')
             }
             stages {
                 stage('Main quality reports') {

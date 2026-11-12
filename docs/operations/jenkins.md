@@ -153,12 +153,20 @@ compilation; see [disk quota](#disk-quota-and-go-caches) when that runs out.
 
 ### Concurrency
 
-PR builds isolate PostgreSQL test ports, Playwright ports and image tags by build,
-so they can share the four executors. `main` uses `disableConcurrentBuilds()` and
-holds the `battlefield-production-platform` lock for its rollout, the same lock the
-platform jobs take for their whole operation. Size executors to the host's
-capacity; sharing the agent does not remove locking requirements for other
-deployment or drill jobs.
+One PR is verified at a time. The `PR verification` stage holds the
+`battlefield-pr-verification` lock, because its test, browser and deployment-script
+time limits assume the host is running one build and overlapping builds starve
+each other past them. Other PR builds queue for the lock in arrival order, each
+occupying an executor while it waits. A build's 45-minute limit starts when it
+gets the lock, so time in the queue does not count against it.
+
+`main` does not take that lock, so a delivery can overlap one PR build; builds
+isolate PostgreSQL test ports, Playwright ports and image tags, so the two do not
+collide on those. `main` uses `disableConcurrentBuilds()`, has 45 minutes for
+`Main delivery`, and holds the `battlefield-production-platform` lock for its
+rollout, the same lock the platform jobs take for their whole operation. Size
+executors to the host's capacity; sharing the agent does not remove locking
+requirements for other deployment or drill jobs.
 
 ### Shared CI and production agent
 

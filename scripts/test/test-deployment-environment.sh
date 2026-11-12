@@ -134,6 +134,16 @@ cluster_deploy_rollback_application
     assert "branch 'main'" in pipeline[main:rollout]
     assert 'battlefield-production-kubeconfig' not in pipeline[:rollout]
     assert 'battlefield-production-application-env' in pipeline[rollout:] and 'battlefield-production-application-env' not in pipeline[:rollout]
+    # One PR is verified at a time. Skipped builds must not queue for the lock, and the time
+    # limit must start inside it: stage options wrap in the order written, and a
+    # pipeline-level limit would count the wait.
+    pr=pipeline.index("stage('PR verification')")
+    pr_options=pipeline[pr:pipeline.index('stages {', pr)]
+    lock=pr_options.index("lock(resource: 'battlefield-pr-verification')")
+    assert pr_options.index('beforeOptions true') < lock < pr_options.index('timeout(')
+    assert 'timeout(' not in pipeline[pipeline.index('pipeline {'):pipeline.index('stages {')]
+    main_options=pipeline[main:pipeline.index('stages {', main)]
+    assert 'timeout(' in main_options and 'battlefield-pr-verification' not in pipeline[main:]
     # AI gateway readiness pings PostgreSQL; the probe must outlast that ping deadline.
     gateway_probe=re.search(r'readinessProbe: \{httpGet: \{path: /readyz, port: http\}.*timeoutSeconds: (\d+)\}',
         (root/'infra/deploy/base/application/ai-gateway-deployment.yaml').read_text())
