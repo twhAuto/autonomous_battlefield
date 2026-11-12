@@ -19,9 +19,10 @@ interval="${HOST_LOAD_INTERVAL_SECONDS:-5}"
 max_seconds="${HOST_LOAD_MAX_SECONDS:-2700}"
 pid_file="${output}.pid"
 
-# Jiffies since boot: all states, idle, and waiting for I/O.
+# Jiffies since boot: all states, idle, and waiting for I/O. Printed as whole numbers:
+# some awks switch to exponent notation past 2^31, which a long-running host reaches.
 cpu_counters() {
-  awk '/^cpu /{print $2+$3+$4+$5+$6+$7+$8+$9, $5, $6; exit}' "${proc}/stat"
+  awk '/^cpu /{printf "%.0f %.0f %.0f\n", $2+$3+$4+$5+$6+$7+$8+$9, $5, $6; exit}' "${proc}/stat"
 }
 
 # Share of the last 10 seconds in which some task waited for the resource; "-" without PSI.

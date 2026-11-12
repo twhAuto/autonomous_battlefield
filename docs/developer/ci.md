@@ -80,8 +80,10 @@ load average, CPU busy and I/O-wait shares, available memory, swap in use, and t
 kernel's pressure figures for CPU, memory and I/O (the share of the last ten
 seconds in which some task waited for that resource). The stage ends by printing
 the averages and peaks in a line starting `Host load over`. When a check fails
-on a time limit, read that line first: high CPU or memory pressure points at a
-starved host, not at the change under test.
+on a time limit, compare that line with a build that passed. High CPU or memory
+pressure means the checks competed for the host. The cause can be another build
+or host workload, or the change under test using more CPU or memory, so check
+which before rerunning.
 
 Backend integration packages run concurrently against the disposable PostgreSQL
 database. Migration fixtures use the same advisory lock as startup, including

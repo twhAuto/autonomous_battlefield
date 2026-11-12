@@ -12,10 +12,11 @@ trap cleanup EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
-# A fixed /proc: between the recorder's two reads, 1000 jiffies pass with 150 idle and 50 in I/O wait.
+# A fixed /proc with counters past 2^31, as on a host that has been up for weeks: between
+# the recorder's two reads, 1000 jiffies pass with 150 idle and 50 in I/O wait.
 proc="${test_dir}/proc"
 mkdir -p "${proc}/pressure"
-echo 'cpu  1000 0 500 8000 500 0 0 0 0 0' >"${proc}/stat"
+echo 'cpu  3000001000 0 500 9000008000 500 0 0 0 0 0' >"${proc}/stat"
 echo '7.50 3.00 1.00 9/900 1234' >"${proc}/loadavg"
 printf 'MemAvailable:    2097152 kB\nSwapTotal:       1048576 kB\nSwapFree:         524288 kB\n' >"${proc}/meminfo"
 for resource in cpu memory io; do
@@ -26,7 +27,7 @@ echo 'some avg10=2.50 avg60=1.00 avg300=0.50 total=1' >"${proc}/pressure/memory"
 record="${test_dir}/out/host-load.tsv"
 HOST_LOAD_PROC="${proc}" HOST_LOAD_INTERVAL_SECONDS=1 "${recorder}" record "${record}" &
 for _ in $(seq 50); do [[ -s "${record}" ]] && break; sleep 0.1; done
-echo 'cpu  1500 0 800 8150 550 0 0 0 0 0' >"${proc}/stat"
+echo 'cpu  3000001500 0 800 9000008150 550 0 0 0 0 0' >"${proc}/stat"
 for _ in $(seq 50); do (($(wc -l <"${record}") >= 2)) && break; sleep 0.1; done
 
 summary="$(HOST_LOAD_PROC="${proc}" "${recorder}" finish "${record}")"
