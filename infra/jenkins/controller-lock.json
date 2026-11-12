@@ -953,9 +953,9 @@
     }
   },
   "go": {
-    "version": "1.26.5",
-    "url": "https://go.dev/dl/go1.26.5.linux-amd64.tar.gz",
-    "sha256": "5c2c3b16caefa1d968a94c1daca04a7ca301a496d9b086e17ad77bb81393f053"
+    "version": "1.26.11",
+    "url": "https://go.dev/dl/go1.26.11.linux-amd64.tar.gz",
+    "sha256": "9849f4e04ee35303714e34fbc3ac8ab44ea3e448a95aa182f91e3b9b79c710ec"
   },
   "node": {
     "version": "24.17.0",

@@ -1,8 +1,8 @@
 # Builds the API, engine, AI gateway, and agent binaries and packages them with their runtime
 # configuration in a non-root image. Game content and migrations are embedded in the binaries.
 
-# Base image: golang:1.26.10-alpine
-FROM golang@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS build
+# Base image: golang:1.26.11-alpine
+FROM golang@sha256:ae52b5bc6ed045a9ed26ab03dc19327a802a9cc9aa8b27ed57f5c6b60579b0bb AS build
 
 WORKDIR /src
 

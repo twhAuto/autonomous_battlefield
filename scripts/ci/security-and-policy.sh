@@ -27,6 +27,11 @@ echo "Running reachable Go vulnerability analysis..."
 if ! (cd "${project_dir}/backend" && go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" -json ./... >"${artifact_dir}/govulncheck.json"); then
   echo "Go vulnerability analysis failed; see ${artifact_dir}/govulncheck.json." >&2
   failure=1
+elif ! (cd "${project_dir}/backend" && go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" -mode=convert <"${artifact_dir}/govulncheck.json" >"${artifact_dir}/govulncheck.txt"); then
+  # JSON output exits zero even with findings. The text converter evaluates the
+  # same report and exits nonzero for reachable vulnerabilities or invalid input.
+  echo "Go vulnerability gate failed; see ${artifact_dir}/govulncheck.txt and ${artifact_dir}/govulncheck.json." >&2
+  failure=1
 fi
 
 echo "Auditing frontend runtime and CI dependencies..."

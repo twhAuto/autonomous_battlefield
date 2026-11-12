@@ -44,15 +44,58 @@ process.stdout.write('{}\n');
 process.exit(args.includes(process.env.FAIL_SCANNER_COMMAND) ? 23 : 0);
 STUB
 cat >"${test_dir}/bin/go" <<'STUB'
-#!/usr/bin/env bash
-printf '{}\n'
+#!/usr/bin/env node
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+assert.equal(args[0], 'run');
+assert.match(args[1], /^golang\.org\/x\/vuln\/cmd\/govulncheck@v/);
+fs.appendFileSync(process.env.GO_CALL_LOG, JSON.stringify(args) + '\n');
+const report = JSON.stringify({fixture: process.env.GO_SCAN_CASE || 'clean'}) + '\n';
+if (args.includes('-json')) {
+  assert.equal(args.at(-1), './...');
+  process.stdout.write(report);
+  // Like real govulncheck JSON mode, findings still exit successfully.
+  process.exit(process.env.GO_SCAN_CASE === 'scan-error' ? 23 : 0);
+}
+assert.equal(args.at(-1), '-mode=convert');
+assert.equal(fs.readFileSync(0, 'utf8'), report);
+process.stdout.write('Go vulnerability summary\n');
+process.exit(process.env.GO_SCAN_CASE === 'finding' ? 3 : process.env.GO_SCAN_CASE === 'convert-error' ? 23 : 0);
 STUB
 chmod +x "${test_dir}/bin/"*
 export PATH="${test_dir}/bin:${PATH}"
 export SECURITY_ARTIFACT_DIR="${test_dir}/reports with spaces"
-unset EXPECTED_TRIVY_IMAGE FAIL_SCANNER_COMMAND DB_FAILURE
+unset EXPECTED_TRIVY_IMAGE FAIL_SCANNER_COMMAND DB_FAILURE GO_SCAN_CASE
 export TRIVY_CACHE_VOLUME=battlefield-security-test-cache
 export SCANNER_CALL_LOG="${test_dir}/scanner-calls.jsonl"
+export GO_CALL_LOG="${test_dir}/go-calls.jsonl"
+
+# JSON findings must fail the gate despite a successful scanner exit. Preserve
+# both reports, and fail closed if either scanning or report conversion fails.
+for GO_SCAN_CASE in clean finding scan-error convert-error; do
+  export GO_SCAN_CASE
+  : >"${GO_CALL_LOG}"
+  rm -rf -- "${SECURITY_ARTIFACT_DIR}"
+  status=0
+  "${project_dir}/scripts/ci/security-and-policy.sh" >"${test_dir}/security.log" 2>&1 || status=$?
+  expected_status=1
+  [[ "${GO_SCAN_CASE}" != clean ]] || expected_status=0
+  [[ "${status}" == "${expected_status}" ]] || { cat "${test_dir}/security.log" >&2; exit 1; }
+  node <<'CHECK'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const calls = fs.readFileSync(process.env.GO_CALL_LOG, 'utf8').trim().split('\n').map(JSON.parse);
+const scanError = process.env.GO_SCAN_CASE === 'scan-error';
+assert.equal(calls.length, scanError ? 1 : 2);
+assert.ok(calls[0].includes('-json'));
+assert.equal(JSON.parse(fs.readFileSync(`${process.env.SECURITY_ARTIFACT_DIR}/govulncheck.json`)).fixture, process.env.GO_SCAN_CASE);
+const summary = `${process.env.SECURITY_ARTIFACT_DIR}/govulncheck.txt`;
+if (scanError) assert.ok(!fs.existsSync(summary));
+else assert.equal(fs.readFileSync(summary, 'utf8'), 'Go vulnerability summary\n');
+CHECK
+done
+unset GO_SCAN_CASE
 
 # Render real manifests but stub networked scanners. Custom artifact locations
 # must reach both Kubernetes scanners and scanner failures must fail the gate.
