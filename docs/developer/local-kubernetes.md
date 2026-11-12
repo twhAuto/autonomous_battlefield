@@ -194,7 +194,7 @@ kubectl config current-context  # must be battlefield-dev
 ```
 
 For production inspection, use the production profile as described in
-[environments](../operations/environments.md); local cleanup commands below are for dev.
+[production setup](../operations/deployment.md#production-setup); local cleanup commands below are for dev.
 
 ### PostgreSQL and configuration
 

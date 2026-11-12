@@ -3,7 +3,6 @@
 Use this guide to deploy and inspect metrics, traces and logs, and configure
 production monitoring trust. The [observability architecture](../architecture/observability.md)
 owns signal paths, metric and log contracts, trace relationships and proposed SLOs.
-For repeatable load tests and failure drills, use [reliability testing](reliability-testing.md).
 
 ## Run the local stack
 
@@ -152,19 +151,14 @@ summarizes the differences and the accepted access risk.
   pod is replaced. Prometheus keeps up to 30 days only while its pod remains intact.
 - **Logs and Kibana objects:** Elasticsearch indices and Kibana saved objects use
   the `battlefield-elasticsearch-data` PVC: 10 Gi on Kind's `standard` class, and
-  20 Gi on `battlefield-retained` in production, which survives pod and guest-OS
+  20 Gi on [`battlefield-retained`](k3s-delivery.md#deliver-and-verify) in production,
+  which survives pod and guest-OS
   replacement. Neither is a backup against cluster or disk loss. The setup Job
   recreates checked-in saved objects but does not restore logs.
 - **Access:** on Kind, use `grafana.localhost` and `kibana.localhost` through the
   loopback gateway. In production, use `grafana.home.arpa` and `kibana.home.arpa`
   from the host network; the [local HTTPS workflow](local-https-platform.md) owns
   those routes. Neither is published through the Cloudflare tunnel.
-
-The deployment helper waits for Elasticsearch, restarts and waits for Kibana,
-then applies `kibana/setup-job.yaml` separately from the observability overlay.
-Setup requests and the Job lifetime are bounded. Each retry gets a separate pod,
-and terminal failure immediately triggers diagnostics. Finished Jobs and their
-pods expire after 300 seconds, so capture failure output promptly.
 
 Elasticsearch keeps its container root filesystem read-only. A non-root init
 container copies the image's complete default configuration and the checked-in
@@ -185,12 +179,10 @@ from untrusted networks.
 
 ## Elasticsearch and Kibana recovery
 
-Kind uses a 10Gi `battlefield-elasticsearch-data` PVC with the `standard` storage
-class. K3s requests 20Gi through `battlefield-retained`; see the
-[K3s storage contract](k3s-delivery.md#deliver-and-verify). Pod replacement preserves
-stored indices and Kibana objects. Storage loss or cluster recreation requires
-recovery; never treat a PVC request as a backup. When transferring storage, export
-or snapshot data first and follow the target's recovery procedure.
+Pod replacement preserves the Elasticsearch and Kibana state described in
+[storage and access](#storage-and-access-by-environment). Storage loss or cluster
+recreation requires recovery; export or snapshot data before transferring storage
+and follow the target's recovery procedure.
 
 The deployment helper waits for Elasticsearch and the other observability
 workloads, restarts Kibana against the ready Elasticsearch instance, waits for
@@ -288,6 +280,57 @@ count, and a successful scrape within 60 seconds. Missing discovery, a failed
 replica, stale results, or incomplete HPA rollout cannot pass on another pod's
 healthy metric. The bounded 120-second wait still accommodates discovery after
 rollout and returns immediately when every expected target is healthy.
+
+## Load tests and failure drills
+
+Run these procedures on demand against a separately registered disposable dev Kind
+cluster. Production is forbidden for the failure drills. Record the date, exact
+revision, environment, load, recovery timings and artifact locations in the
+relevant Notion task or evidence page. Measurements from one host do not establish
+current production capacity. The [observability architecture](../architecture/observability.md#proposed-slis-and-slos)
+defines the proposed objectives; inspect the metrics in this guide while testing.
+
+```bash
+# Representative load: 20 viewers for 10 minutes against two scripted battles.
+# Set the load explicitly; run-k6.sh otherwise applies its 3-viewer, 30 s smoke defaults.
+ADMIN_USERNAME=... ADMIN_PASSWORD=... DEPLOY_ENV=dev K6_VUS=20 K6_DURATION=10m \
+  ./scripts/perf/run-k6.sh backend/test/performance/k6-representative.js
+
+# Saturation: K6_STAGES replaces the fixed viewer count and duration.
+ADMIN_USERNAME=... ADMIN_PASSWORD=... DEPLOY_ENV=dev \
+  K6_STAGES=30s:100,60s:100,30s:300,60s:300,30s:600,60s:600,20s:0 \
+  ./scripts/perf/run-k6.sh backend/test/performance/k6-representative.js
+
+# Failure drills: requires BF_DISPOSABLE=1 in the dev profile; restore it afterwards.
+DEPLOY_ENV=dev RUN_DESTRUCTIVE_KIND_DRILLS=I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS \
+  ./scripts/ops/run-kind-failure-drills.sh
+```
+
+For an AI outage, set `runtime_policy.ai_enabled` to `false` in the dev
+database, run a battle with one model controller, and restore it to `true`.
+New model decisions are stored as `failed` with `ai_disabled_or_budget` and are
+never claimed, so no provider is called even for an API profile.
+
+`backend/test/performance/k6-representative.js` queues the admitted number of
+scripted battles (two per person) and replays the battle page: each viewer
+polls status, the next event page, and decision history once a second, and
+browses history once the battle settles. It records two battle metrics from
+server timestamps: `battle_queue_wait_seconds` (queued to started) and
+`battle_pace_ratio` (run time divided by ticks; 1.0 is one tick per second).
+`battles_completed` must be 100%, so one failed or unfinished battle fails the
+run even when thousands of polling checks pass.
+Run the drills while the representative load runs, so the drill shows its
+effect on viewers and on a live battle.
+
+The drill script deletes each workload's pods and fails unless replacement pods
+with new UIDs become Ready, so a selector that matches nothing cannot report a
+passed drill. Its `artifacts/failure-drills/summary.json` records the recovery
+seconds for each drill.
+
+The AI gateway outage drill (`ai-gateway-outage`; set its length with
+`AI_GATEWAY_OUTAGE_SECONDS`) restores the deployment to exactly one replica; it does
+not capture or restore a different starting count. Use a one-replica AI gateway in the
+registered disposable dev environment, and verify its replica count after the drill.
 
 ## Decision latency measurements
 

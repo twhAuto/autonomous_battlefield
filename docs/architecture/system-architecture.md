@@ -616,7 +616,7 @@ The API and engines share PostgreSQL. Inspect database CPU and throttling, query
 latency and connection-pool pressure alongside API pod usage when assessing
 capacity. Adding API replicas does not remove shared database work; the limiting
 resource and sustainable request rate depend on the workload and resource limits.
-Use [reliability testing](../operations/reliability-testing.md) to measure them.
+Use [reliability testing](../operations/observability.md#load-tests-and-failure-drills) to measure them.
 
 These contracts come from the
 [worker loop](../../backend/internal/battle/worker/worker.go),

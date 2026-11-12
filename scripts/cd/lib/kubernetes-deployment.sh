@@ -260,7 +260,7 @@ cluster_deploy_validate_artifacts() {
 
   if deployment_component_selected infrastructure && [[ ! -f "${secret_file}" ]]; then
     echo "Database secret file not found: ${secret_file}" >&2
-    echo "See docs/operations/environments.md to prepare the private database file; .env.example is reference-only." >&2
+    echo "See docs/operations/deployment.md#production-setup to prepare the private database file; .env.example is reference-only." >&2
     return 1
   fi
 }

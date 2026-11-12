@@ -106,7 +106,7 @@ Start with the [documentation index](docs/README.md) for the full guide catalogu
 | Understand the system | [System architecture](docs/architecture/system-architecture.md), [AI decisions](docs/architecture/ai-decisions.md), [database](docs/architecture/database.md) |
 | Use the API | [HTTP reference](docs/architecture/api.md), [OpenAPI](docs/architecture/openapi.yaml) |
 | Author game content or compare controllers | [Content authoring](docs/developer/content-library.md), [AI comparisons](docs/developer/ai-comparisons.md) |
-| Deploy, operate or recover an environment | [Environment operations](docs/operations/environments.md), [deployment](docs/operations/deployment.md) |
+| Deploy, operate or recover an environment | [Deployment and environment setup](docs/operations/deployment.md) |
 
 ## Contributing and checks
 

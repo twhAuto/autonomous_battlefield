@@ -90,7 +90,7 @@ Automated production smoke checks use the [CI service identity](#ci-service-iden
 ## Production profile and tunnel activation
 
 The production profile lives in `~/.config/autonomous-battlefield/production/` on
-the registered host; see [environments](environments.md) for its registration.
+the registered host; see [production setup](deployment.md#production-setup) for its registration.
 
 1. Put the Access issuer, audience, public origin and role assignments in `.env`.
    The Cloudflare workflow's `handoff.json` supplies these values for a newly
@@ -292,7 +292,7 @@ keep host and VM clocks synchronized.
 Set `BATTLEFIELD_POSTGRES_POD=battlefield-postgres-0` and `DEPLOY_ENV` to `dev` or
 `production`, and run the commands below. With `DEPLOY_ENV` set, the script uses
 that environment's registered kubeconfig and context and refuses a cluster whose
-identity does not match ([environments](environments.md)). Like rollback, it skips
+identity does not match ([production setup](deployment.md#production-setup)). Like rollback, it skips
 the platform-readiness checks, so `stop` still works while an unrelated controller
 is unhealthy. Without `DEPLOY_ENV`, it uses the shell's current kubectl context.
 
