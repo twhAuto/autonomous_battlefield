@@ -2,7 +2,7 @@
 
 Use this reference to choose where a setting belongs and understand how it reaches
 the application. For setup commands, use [local development](../developer/local-setup.md)
-or [production environment operations](../operations/deployment.md#production-setup).
+or [production setup](../operations/deployment.md#production-setup).
 
 ## Configuration sources
 

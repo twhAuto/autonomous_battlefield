@@ -145,7 +145,7 @@ Canonical operator state is under
 All files are private to the operator and must stay outside Git, artifacts and
 shared backups. Keep this controller state with its encrypted capture for recovery;
 changing controllers does not move it automatically. For fresh delivery, consume
-the handoff values through the existing [production profile](deployment.md#production-setup) and
+the handoff values through the existing [production setup](deployment.md#production-setup) and
 [production access](access.md) procedures, retaining the other application
 secrets, roles and pinned cloudflared image. The existing renderer enforces Access
 at the connector, validates the API audience and uses a final 404 catch-all. The

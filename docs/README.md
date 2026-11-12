@@ -4,7 +4,7 @@ Start with [game rules](game/game-rules.md) to understand battles,
 [local setup](developer/local-setup.md) to run the application, or the
 [codebase guide](developer/codebase-guide.md) to find the implementation.
 [System architecture](architecture/system-architecture.md) explains runtime
-components. Operators can start with [environment operations](operations/deployment.md#production-setup)
+components. Operators can start with [production setup](operations/deployment.md#production-setup)
 for application configuration and delivery, or the
 [server rebuild contract](operations/server-rebuild-contract.md) for host and
 platform recovery. Return to the [project overview](../README.md) for capabilities

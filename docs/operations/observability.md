@@ -151,7 +151,8 @@ summarizes the differences and the accepted access risk.
   pod is replaced. Prometheus keeps up to 30 days only while its pod remains intact.
 - **Logs and Kibana objects:** Elasticsearch indices and Kibana saved objects use
   the `battlefield-elasticsearch-data` PVC: 10 Gi on Kind's `standard` class, and
-  20 Gi on `battlefield-retained` in production, which survives pod and guest-OS
+  20 Gi on [`battlefield-retained`](k3s-delivery.md#deliver-and-verify) in production,
+  which survives pod and guest-OS
   replacement. Neither is a backup against cluster or disk loss. The setup Job
   recreates checked-in saved objects but does not restore logs.
 - **Access:** on Kind, use `grafana.localhost` and `kibana.localhost` through the

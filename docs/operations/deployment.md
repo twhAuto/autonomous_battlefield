@@ -3,7 +3,7 @@
 Application delivery uses `deploy.sh`, `rollback.sh` and `smoke-test.sh` in
 `scripts/cd/`. The registered environment's driver selects the manifests and
 cluster checks: production runs on K3s, and development on Kind. This page explains
-how delivery works; the linked guides own each procedure.
+delivery and production setup; the linked guides own the other procedures.
 
 | Task | Start here |
 | --- | --- |
