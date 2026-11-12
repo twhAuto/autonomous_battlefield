@@ -15,5 +15,6 @@ Docs describe the system as it is now. Apply the rules and owning-doc list in th
    - holds nothing that matters only during review or rollout (move it to the PR description);
    - does not restate code function by function or test by test;
    - adds only sentences a newcomer would miss if they were gone;
+   - holds no figure worked out from a setting or default, and repeats no default outside its owning doc;
    - removes what it made stale, especially when it only adds lines.
-5. Verify every path, command, option, environment variable, link target, example response and diagram against the current tree. For changed procedures, run safe render, dry-run or targeted checks when possible; never execute a production change just to validate prose. Run `python3 scripts/test/test-doc-links.py`. Report the sources consulted, the examples exercised, and any live-environment detail left unverified.
+5. Verify every path, command, option, environment variable, link target, example response and diagram against the current tree. For changed procedures, run safe render, dry-run or targeted checks when possible; never execute a production change just to validate prose. Run `python3 scripts/test/test-doc-links.py`. After changing a configuration default or the settings table in `docs/architecture/system-architecture.md`, run `(cd backend && go test ./internal/config -run TestDocumentedDefaults)`. Report the sources consulted, the examples exercised, and any live-environment detail left unverified.

@@ -50,6 +50,10 @@ for every doc edit.
   guides keep only standing procedures.
 - **One owner per fact.** State each fact in its owning doc below and link to it
   from elsewhere instead of restating it.
+- **Name the setting, not its result.** A figure worked out from a setting or
+  default goes stale when the setting changes. Write "one checkpoint per decision
+  interval", not the multiple that follows from the interval, and state a default
+  only in its owning doc.
 - **Merge, don't append.** Put new behavior into the section that already covers
   its topic and rewrite that section so it still reads as one description. Do not
   add a section per feature, ticket or migration. Delete text the change made stale
@@ -83,7 +87,10 @@ Owning docs:
 Check links, diagrams, examples, paths and commands in every touched doc against
 the working tree. `python3 scripts/test/test-doc-links.py` checks every internal
 Markdown link and heading anchor; `./scripts/test/test-deployment.sh` runs it on
-every PR.
+every PR. `TestDocumentedDefaultsMatchLoader` in `backend/internal/config` checks the
+settings table in `docs/architecture/system-architecture.md` against the
+configuration loader's defaults; a row added to that table needs an entry in the
+test.
 
 ## Test coverage quality gate
 
