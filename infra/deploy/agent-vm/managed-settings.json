@@ -74,7 +74,12 @@
     ],
     "claude-subscription-local": [
       {
-        "id": "haiku"
+        "id": "haiku",
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high"
+        ]
       },
       {
         "id": "sonnet",

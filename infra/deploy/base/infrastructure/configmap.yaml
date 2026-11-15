@@ -169,6 +169,7 @@ data:
           model: sonnet
           modelOptions:
             - id: haiku
+              reasoningEfforts: [low, medium, high]
             - id: sonnet
               reasoningEfforts: [low, medium, high]
             - id: opus
@@ -176,7 +177,7 @@ data:
             - id: fable
               reasoningEfforts: [low, medium, high]
           scope: local
-          supportedVersionPrefix: "2.1.267 "
+          supportedVersionPrefix: "2.1.325 "
           availabilityEnvironmentVariable: CLAUDE_CLI_PROFILE_AVAILABLE
           maxSteps: 3
           enabled: true

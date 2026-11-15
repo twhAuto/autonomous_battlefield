@@ -38,6 +38,7 @@ ai:
       model: sonnet
       modelOptions:
         - id: haiku
+          reasoningEfforts: [low, medium, high]
         - id: sonnet
           reasoningEfforts: [low, medium, high]
         - id: opus
@@ -45,7 +46,7 @@ ai:
         - id: fable
           reasoningEfforts: [low, medium, high]
       scope: local
-      supportedVersionPrefix: "2.1.267 "
+      supportedVersionPrefix: "2.1.325 "
       maxSteps: 3
       enabled: false
     - id: gemini-subscription-local
