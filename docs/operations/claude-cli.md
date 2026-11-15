@@ -1,16 +1,18 @@
 # Claude subscription CLI
 
 The `claude-subscription-local` profile runs the `claude-cli` provider on the host,
-using Claude Code **2.1.267** locally and the **sonnet** model alias.
+using Claude Code **2.1.325** and the **sonnet** model alias.
 It is selectable through
 the same model catalog as Codex and Antigravity, with existing role restrictions.
 
-1. Install Claude Code 2.1.267 for local development using the [official installation instructions](https://code.claude.com/docs/en/setup),
-   and turn off its automatic updates (`"autoUpdates": false` in `~/.claude.json`).
-   The profile accepts only a CLI whose `claude --version` output starts with the
-   profile's `supportedVersionPrefix` (`"2.1.267 "`); any other version, newer
-   included, leaves the profile unavailable as "claude CLI version is not supported".
-   Raise it only through the CLI upgrade described below.
+1. Install Claude Code 2.1.325 for local development using the [official installation instructions](https://code.claude.com/docs/en/setup)
+   (`claude install 2.1.325`), and turn off its automatic updates
+   (`"autoUpdates": false` in `~/.claude.json`). The profile's
+   `supportedVersionPrefix` (`"2.1.325 "`) is the minimum the dev launcher accepts;
+   a worker configured directly, such as the agent VM, accepts only a
+   `claude --version` output that starts with it. Any other version there leaves
+   the profile unavailable as "claude CLI version is not supported". Raise it only
+   through the CLI upgrade described below.
 2. Run `claude auth login` and sign in with a Claude subscription. The worker checks
    `claude auth status --json` for a saved `claude.ai` login. API-key and Console logins do
    not satisfy this profile. Authentication stays on the host in its native location.
@@ -36,16 +38,22 @@ execution rather than being bypassed. The worker requires a validated MCP
 submission, not merely a successful CLI exit or a textual plan.
 
 Battle setup also offers `haiku` for lighter workloads, and `opus` and `fable` for
-more demanding work. Haiku uses model-default effort so it works with older supported
-CLI versions whose Haiku model does not expose effort settings; Sonnet, Opus and
-Fable offer low/medium/high effort. The default is `sonnet`.
+more demanding work, each with low/medium/high effort. The default is `sonnet`.
 
-The model aliases follow the account's current model versions. To pin a model,
-update `backend/config.yaml`, `infra/deploy/base/infrastructure/configmap.yaml`,
+Each Claude Code release maps the aliases to fixed model versions, so the pinned
+release decides which models battles use. Claude Code 2.1.325 maps `haiku`,
+`sonnet`, `opus` and `fable` to Claude Haiku 5.5, Sonnet 5.5, Opus 5.5 and Fable
+5.2; a newer model needs a newer release. The CLI's JSON result reports the model
+that ran. To change the models, update `backend/config.yaml`,
+`infra/deploy/base/infrastructure/configmap.yaml`,
 `infra/deploy/agent-vm/config.yaml`, `infra/deploy/agent-vm/managed-settings.json`,
 and `scripts/dev/run-k8s-cli-agent.sh` consistently.
-When upgrading the production CLI, verify restricted-mode behavior and update the
-version pin in those same files.
+
+To upgrade the CLI, install the new release beside the old one, run the synthetic
+live check below and one battle decision through the dev launcher, then update the
+version pin in those same files. `claude install <version>` keeps earlier releases
+in `~/.local/share/claude/versions/`; to roll back, point `~/.local/bin/claude` at
+the earlier release.
 
 A synthetic live check uses the existing subscription and makes model requests:
 
@@ -74,7 +82,7 @@ registered dev kubeconfig and context. Health probes bypass HTTP proxies and
 check that the forwarding process is still alive.
 
 The pinned CLI's `auth status --help` confirms JSON is the default; the worker
-requests `--json` explicitly. A live synthetic check on 2.1.267 verified both
+requests `--json` explicitly. A live synthetic check on 2.1.325 verified both
 subscription authentication and MCP submission with `--tools ""` (which removes
 built-in tools, not MCP tools). Claude stdout is parsed as one JSON document,
 including multiline output; stderr is discarded so diagnostics cannot corrupt it.
