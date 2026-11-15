@@ -6,13 +6,12 @@ ID stays `gemini-subscription-local` and its availability flag
 `GEMINI_CLI_PROFILE_AVAILABLE`, from the retired Gemini CLI provider, so existing
 battle configurations keep working.
 
-Battle setup offers Gemini 4 Argon (`gemini-4-argon-low`, `-medium`, `-high`),
-Gemini 4 Hydrogen (`gemini-4-hydrogen-low`, `-medium`, `-high`, `-xhigh`) and
-Gemini 3.8 Flash (`gemini-3.8-flash-low`, `-medium`, `-high`). The suffix is the
-reasoning level, so there is no separate effort selector; lower levels answer
-faster with lighter reasoning. Run `agy models` to check which IDs the signed-in
-account exposes before enabling a profile; listing a model does not verify a
-successful battle submission. See [Google's model catalog](https://antigravity.google/docs/models)
+Battle setup offers the Antigravity models in the
+[shipped catalog](../architecture/ai-decisions.md#model-selection-and-latency).
+Each model ID ends in its reasoning level, so there is no separate effort selector;
+lower levels answer faster with lighter reasoning. Run `agy models` to check which
+IDs the signed-in account exposes before enabling a profile; listing a model does
+not verify a successful battle submission. See [Google's model catalog](https://antigravity.google/docs/models)
 for plan availability.
 
 ## WSL setup
