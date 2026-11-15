@@ -139,11 +139,11 @@ set_profile_flags false false false
             ('agy', '1.1.99', False),
             ('agy', '1.4.5-dev', False),
             ('agy', '1.4.5\nunexpected output', False),
-            ('claude', '2.1.267 (Claude Code)', True),
-            ('claude', '2.1.300 (Claude Code)', True),
+            ('claude', '2.1.325 (Claude Code)', True),
+            ('claude', '2.1.400 (Claude Code)', True),
             ('claude', '2.2.0 (Claude Code)', True),
             ('claude', '3.0.0 (Claude Code)', True),
-            ('claude', '2.1.266 (Claude Code)', False),
+            ('claude', '2.1.324 (Claude Code)', False),
             ('claude', '2.0.999 (Claude Code)', False),
             ('claude', '2.2.0-beta (Claude Code)', False),
             ('claude', '2.2.0 (Unknown)', False),
@@ -174,7 +174,7 @@ printf '%s' "${{{name}_version_prefix}}"
 
     def test_newer_versions_reach_config_and_still_require_authentication(self):
         with tempfile.TemporaryDirectory() as runtime:
-            versions = {'codex': 'codex-cli 0.159.2', 'agy': '1.4.5', 'claude': '2.1.300 (Claude Code)'}
+            versions = {'codex': 'codex-cli 0.159.2', 'agy': '1.4.5', 'claude': '2.1.400 (Claude Code)'}
             for binary, version in versions.items():
                 fake = Path(runtime, binary)
                 fake.write_text(f'#!/usr/bin/env bash\necho "{version}"\n')

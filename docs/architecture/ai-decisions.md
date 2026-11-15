@@ -544,11 +544,9 @@ example, GPT-6 Luna). The GPT-6.1 models need Codex 0.159 or newer. Claude offer
 `-medium` and `-high`. The API catalog offers the same `gpt-*` models through the
 OpenAI API, `gemini-3.8-flash` through the Gemini API, and `claude-haiku-5-5`,
 `claude-sonnet-5-5`, `claude-opus-5-5` and `claude-fable-5-1` through the Claude
-API. Codex models, Sonnet, Opus, Fable and every API model offer low/medium/high
+API. Codex models, every Claude alias and every API model offer low/medium/high
 effort; higher efforts are left out so decisions finish within the decision
-timeout. Haiku uses model-default effort because the alias can resolve to a model
-without effort support on older supported CLIs. Antigravity's Flash variants encode
-reasoning in the model ID. CLI profile defaults are `gpt-5.6-luna`, `sonnet` and
+timeout. Antigravity's Flash variants encode reasoning in the model ID. CLI profile defaults are `gpt-5.6-luna`, `sonnet` and
 `gemini-3.8-flash-medium`. Battle and league setup list model profiles under
 separate API and CLI headings.
 See the provider catalogs for [OpenAI](https://developers.openai.com/api/docs/models/gpt-6-luna),
