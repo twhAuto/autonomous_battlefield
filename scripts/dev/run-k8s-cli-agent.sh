@@ -256,7 +256,7 @@ write_agent_config() {
       printf '      provider: antigravity-cli\n'
       printf '      runtime: cli\n'
       printf '      model: gemini-3.8-flash-medium\n'
-      printf '      modelOptions:\n        - id: gemini-3.8-flash-low\n        - id: gemini-3.8-flash-medium\n        - id: gemini-3.8-flash-high\n'
+      printf '      modelOptions:\n        - id: gemini-4-argon-low\n        - id: gemini-4-argon-medium\n        - id: gemini-4-argon-high\n        - id: gemini-4-hydrogen-low\n        - id: gemini-4-hydrogen-medium\n        - id: gemini-4-hydrogen-high\n        - id: gemini-4-hydrogen-xhigh\n        - id: gemini-3.8-flash-low\n        - id: gemini-3.8-flash-medium\n        - id: gemini-3.8-flash-high\n'
       printf '      scope: local\n'
       printf '      supportedVersionPrefix: "%s"\n' "${antigravity_version_prefix}"
       printf '      maxSteps: 3\n'
