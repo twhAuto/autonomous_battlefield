@@ -131,8 +131,9 @@ accessing the PC remotely, the initial SSH to the PC is one additional hop.
 
 A fresh bootstrap needs these artifacts. Once a worker is registered,
 [`battlefield-platform/cli`](cli-worker.md#worker-upgrades) upgrades its binary to
-each production release and [its Codex](cli-worker.md#codex-updates) to the pinned
-release.
+each production release and [its CLIs](cli-worker.md#cli-updates) to their pinned
+releases. Claude Code (`claude`) and Antigravity (`agy`) are optional artifacts; the
+job adopts either when it is installed later.
 
 On the host, obtain the `battlefield-agent` binary from the same verified backend
 release deployed in production. For example, extract `/app/agent` from the running

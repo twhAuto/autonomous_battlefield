@@ -39,7 +39,7 @@ cli_minimum_version() {
 resolve_version_prefixes() {
   codex_version_prefix='codex-cli 0.159.'
   claude_version_prefix='2.1.325 '
-  antigravity_version_prefix='1.2.'
+  antigravity_version_prefix='1.5.'
   codex_minimum_version="$(cli_minimum_version "${codex_version_prefix}")"
   claude_minimum_version="$(cli_minimum_version "${claude_version_prefix}")"
   antigravity_minimum_version="$(cli_minimum_version "${antigravity_version_prefix}")"

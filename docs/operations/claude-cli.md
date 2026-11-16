@@ -51,9 +51,11 @@ and `scripts/dev/run-k8s-cli-agent.sh` consistently.
 
 To upgrade the CLI, install the new release beside the old one, run the synthetic
 live check below and one battle decision through the dev launcher, then update the
-version pin in those same files. `claude install <version>` keeps earlier releases
-in `~/.local/share/claude/versions/`; to roll back, point `~/.local/bin/claude` at
-the earlier release.
+version pin in those same files and the Claude Code release in
+`infra/deploy/agent-vm/cli-releases.json`, which the CLI worker job
+[installs on the VM](cli-worker.md#cli-updates). `claude install <version>` keeps
+earlier releases in `~/.local/share/claude/versions/`; to roll back, point
+`~/.local/bin/claude` at the earlier release.
 
 A synthetic live check uses the existing subscription and makes model requests:
 

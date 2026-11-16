@@ -198,7 +198,7 @@ data:
             - id: gemini-3.8-flash-medium
             - id: gemini-3.8-flash-high
           availabilityEnvironmentVariable: GEMINI_CLI_PROFILE_AVAILABLE
-          supportedVersionPrefix: 1.2.
+          supportedVersionPrefix: 1.5.
           scope: local
           maxSteps: 3
           enabled: true
