@@ -148,6 +148,7 @@ ai:
       model: sonnet
       modelOptions:
         - id: haiku
+          reasoningEfforts: [low, medium, high]
         - id: sonnet
           reasoningEfforts: [low, medium, high]
         - id: opus
@@ -155,7 +156,7 @@ ai:
         - id: fable
           reasoningEfforts: [low, medium, high]
       scope: local
-      supportedVersionPrefix: "2.1.267 "
+      supportedVersionPrefix: "2.1.325 "
       availabilityEnvironmentVariable: CLAUDE_CLI_PROFILE_AVAILABLE
       maxSteps: 3
       enabled: true
@@ -165,6 +166,13 @@ ai:
       runtime: cli
       model: gemini-3.8-flash-medium
       modelOptions:
+        - id: gemini-4-argon-low
+        - id: gemini-4-argon-medium
+        - id: gemini-4-argon-high
+        - id: gemini-4-hydrogen-low
+        - id: gemini-4-hydrogen-medium
+        - id: gemini-4-hydrogen-high
+        - id: gemini-4-hydrogen-xhigh
         - id: gemini-3.8-flash-low
         - id: gemini-3.8-flash-medium
         - id: gemini-3.8-flash-high

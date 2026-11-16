@@ -83,7 +83,7 @@ The helper supports `auto`, `codex`, `antigravity`, `claude`, `both` and `all`
 (`gemini` is a compatibility alias). `both` means Codex plus Antigravity, and
 `all` requires all three CLIs. `auto` selects every available authenticated CLI.
 Local CLIs allow the selected stable version or newer: Codex `0.159.0+`,
-Antigravity `1.2.0+` and Claude `2.1.267+`. A saved login is required.
+Antigravity `1.2.0+` and Claude `2.1.325+`. A saved login is required.
 Name a CLI explicitly to see why it was rejected.
 
 The host agent runs `HOST_AGENT_CONCURRENCY` decision slots (default `8`, range
@@ -194,7 +194,7 @@ kubectl config current-context  # must be battlefield-dev
 ```
 
 For production inspection, use the production profile as described in
-[environments](../operations/environments.md); local cleanup commands below are for dev.
+[production setup](../operations/deployment.md#production-setup); local cleanup commands below are for dev.
 
 ### PostgreSQL and configuration
 

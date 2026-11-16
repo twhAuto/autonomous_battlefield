@@ -3,11 +3,11 @@
 Application delivery uses `deploy.sh`, `rollback.sh` and `smoke-test.sh` in
 `scripts/cd/`. The registered environment's driver selects the manifests and
 cluster checks: production runs on K3s, and development on Kind. This page explains
-how delivery works; the linked guides own each procedure.
+delivery and production setup; the linked guides own the other procedures.
 
 | Task | Start here |
 | --- | --- |
-| Register a target and configure its private inputs | [Environment operations](environments.md) |
+| Register a target and configure its private inputs | [Production setup](#production-setup) |
 | Deploy or troubleshoot development Kind | [Local Kubernetes deployment](../developer/local-kubernetes.md) |
 | Prepare public production access | [Production access](access.md) |
 | Deliver to K3s or move production to a new cluster | [K3s delivery](k3s-delivery.md) |
@@ -26,6 +26,75 @@ on a new or rebuilt environment, complete the
 [shared agent setup](jenkins.md#shared-ci-and-production-agent) and
 [trusted kubelet monitoring](observability.md#production-kubelet-tls). Run
 `./scripts/test/test-deployment.sh` before opening a deployment PR.
+
+## Production setup
+
+The [configuration model](../architecture/configuration.md) owns file layouts,
+credential precedence, environment identity and Secret boundaries.
+
+Production runs on K3s; configuration setup does not launch it publicly.
+Register the cluster with [K3s registration](k3s-delivery.md#prepare-a-separate-registration).
+A profile without `BF_DRIVER` still selects the Kind driver; only the retained
+recovery profile from before the K3s move uses it, so do not register new Kind
+production profiles.
+
+Create the private production `.env` from the shared template and fill in its own
+database and provider credentials. Use `BATTLEFIELD_AUTH_MODE=cloudflare`,
+Access issuer/audience/public origin and role assignments. Production rejects
+development login modes. Use distinct, randomly generated worker and MCP capability secrets of at least
+32 bytes; values copied from `.env.example` are rejected.
+Keep provider availability false until intentionally configured; CLI availability
+requires verified isolation.
+
+Add `BF_TUNNEL_ID`, `BF_TUNNEL_CREDENTIALS_FILE=tunnel-credentials.json`,
+and a digest-pinned `BF_TUNNEL_IMAGE` to production `deployment.env`.
+Install this application's tunnel credential JSON at that relative path.
+Validate application configuration and tunnel rendering without public activation:
+```bash
+./scripts/ops/prepare-limited-production.sh
+```
+
+Jenkins `main` delivery uses verified registry image digests and the production
+profile on its agent. Jenkins holds the registry, signing, Access service-token,
+stage-scoped kubeconfig and production `.env` credentials, but no separate database
+credential. For a change only to production `.env`, follow
+[production application configuration](jenkins.md#production-application-configuration).
+Deployment extracts auth settings into a private temporary file while keeping
+`BATTLEFIELD_AUTH_SECRET_FILE` pointed at the production `.env`, so
+child policy-installation commands can repeat environment identity checks.
+
+### Activate public access
+
+Tunnel activation is a separate, explicit operation:
+```bash
+./scripts/cd/deploy-tunnel.sh
+```
+It validates production settings, generates resources temporarily, updates the
+tunnel Secret, and rolls the connector only when its config, credentials, or image
+changes. NetworkPolicies reconcile independently during production CD, and normal
+application deployments do not activate public access. See [production access](access.md) for network and
+Access requirements.
+
+### Other managed credentials and validation
+
+Production smoke checks use an enrolled Access service identity with read-only
+permissions. Keep only its
+`BATTLEFIELD_ACCESS_CI_CLIENT_ID` in the application `.env`; the Client Secret stays
+in the Jenkins service credential; see the [CI service runbook](access.md#ci-service-identity).
+Database migration backups and verified image rollback stay enabled.
+Failure drills still require a separately registered disposable dev cluster,
+matching UID and explicit acknowledgement; production is forbidden.
+
+Production monitoring requires `BF_KUBELET_CA_FILE` in `deployment.env`; see
+[trusted kubelet certificates](observability.md#production-kubelet-tls). Successful
+Jenkins deployments maintain a private `recovery.json` beside that profile. It is
+bound to the registered cluster UID, exact verified image pair and applied Goose
+migration versions, and is not an application Secret or a credential to copy into
+Git.
+
+For managed-player configuration and Secret ownership, see
+[the configuration model](../architecture/configuration.md#optional-managed-players)
+and [Player invitations](player-invitations.md).
 
 ## Gameplay rules cutover
 
@@ -363,73 +432,14 @@ Unsigned Kind development through `IMAGE_SOURCE=local` is not promotion evidence
   signing secret out of Git, images, ConfigMaps, and examples; replicas share the
   signing secret, and HTTPS development uses `BATTLEFIELD_AUTH_COOKIE_SECURE=true`.
 
-## Scaling and reliability exercises
-
-Once one replica works, exercise these behaviors deliberately:
-
-- Scale the API and engine separately.
-- Terminate an engine pod during a battle and verify requeue or lease recovery.
-- Verify readiness removes a pod from service without immediately restarting it.
-- Verify liveness restarts a genuinely stuck process.
-- Perform a rolling update and rollback.
-- Add CPU and memory requests based on observations.
-- Scale the API from a request or CPU signal and the engine from battle backlog
-  or oldest queued work rather than CPU by default.
-- Add a Pod Disruption Budget only to workloads with enough replicas to remain
-  available during disruption.
-- Recreate the entire cluster and application from committed configuration.
-
 ## Moving the deployment to AWS
 
-The implementation root is [`infra/aws`](../../infra/aws). It creates budget alerts
-before the network and runtime resources, then provisions VPC networking, immutable
-ECR repositories, EKS, encrypted RDS PostgreSQL with managed master credentials and
-backups, Secrets Manager placeholders, control-plane logging, and an OIDC provider
-for IRSA.
-
-GHCR remains the build source of truth. `scripts/cd/promote-to-ecr.sh` copies the
-already verified subject and OCI referrers with ORAS, proves that the ECR subject
-digest is unchanged, then verifies the Cosign signature plus CycloneDX,
-SLSA-provenance, and AI-manifest attestations. It never rebuilds an image.
-
-Reuse tested images and base resources. See
-[AWS promotion limits](jenkins.md#aws-promotion-limits) before copying images to ECR.
-Keep production PostgreSQL outside EKS in managed RDS; account-specific ingress,
-identity and recovery configuration remain necessary.
-
-An AWS account is required before this stage, including billing verification.
-Secure the root user with MFA, avoid using it for daily administration, and use
-temporary role-based credentials for normal human and workload access. Create a
-cost budget and alerts before provisioning. Free Tier eligibility does not make
-an EKS environment free: the cluster control plane and its compute, database,
-load balancer, networking, and storage resources are independently billable.
-
-The checked-in Terraform is a reference implementation and has not been applied
-to an AWS account by this repository. Account-specific plans, IAM review,
-secret population, ingress installation, and recovery evidence are still
-required before treating the environment as production-ready.
-
-1. Create the AWS account, cost budget, and billing alerts.
-2. Review and apply `infra/aws` to provision ECR, networking, EKS, RDS, and
-   Secrets Manager.
-3. Promote immutable GHCR digests and all OCI referrers to ECR without rebuilding.
-4. Configure EKS workload identity and least-privilege access to the required
-   secret.
-5. Point `DATABASE_URL` at the private RDS endpoint with TLS enabled.
-6. Add the AWS Load Balancer configuration in the AWS overlay.
-7. Run the migration Job and deploy the workloads.
-8. Exercise secret rotation, backup restore, pod disruption, failed rollout,
-   and teardown.
-
-Budget alerts are notifications, not guaranteed spending limits.
+The [AWS reference environment](../../infra/aws/README.md) owns provisioning,
+account prerequisites and production-readiness limits. Reuse tested images and
+base resources; follow [AWS promotion limits](jenkins.md#aws-promotion-limits)
+when copying verified GHCR images and their OCI referrers to ECR.
 
 ## Reference documentation
 
 - [Kustomize with `kubectl`](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/)
 - [Kubernetes probes](https://kubernetes.io/docs/concepts/workloads/pods/probes/)
-- [Amazon EKS pricing](https://aws.amazon.com/eks/pricing/)
-- [AWS Free Tier plans](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/free-tier-plans.html)
-- [AWS Budgets](https://docs.aws.amazon.com/cost-management/latest/userguide/create-cost-budget.html)
-- [AWS root-user security practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/root-user-best-practices.html)
-- [EKS Auto Mode](https://docs.aws.amazon.com/eks/latest/userguide/automode.html)
-- [Using Secrets Manager secrets with EKS pods](https://docs.aws.amazon.com/eks/latest/userguide/manage-secrets.html)

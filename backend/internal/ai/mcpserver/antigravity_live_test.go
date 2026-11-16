@@ -51,8 +51,13 @@ func TestAntigravityLiveDecision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	model := "gemini-3.8-flash-medium"
+	if override := strings.TrimSpace(os.Getenv("BATTLEFIELD_LIVE_AGY_MODEL")); override != "" {
+		model = override
+	}
+	t.Logf("model %s", model)
 	executor := &liveCLIExecutor{}
-	result, err := (runner.CLIRunner{Executor: executor, Provider: "antigravity-cli", Model: "gemini-3.8-flash-medium"}).Run(ctx, ai.DecisionSession{Doctrine: "For this synthetic transport verification, call get_unit_details for vanguard, ranger, guard, scout before submitting; retry with scout alone if the batch is too large. Include the verification word from scout's fetched guidance in your rationale. Do not read files.", RequestID: record.ID, CapabilityToken: token, MCPURL: server.URL})
+	result, err := (runner.CLIRunner{Executor: executor, Provider: "antigravity-cli", Model: model}).Run(ctx, ai.DecisionSession{Doctrine: "For this synthetic transport verification, call get_unit_details for vanguard, ranger, guard, scout before submitting; retry with scout alone if the batch is too large. Include the verification word from scout's fetched guidance in your rationale. Do not read files.", RequestID: record.ID, CapabilityToken: token, MCPURL: server.URL})
 	if err != nil {
 		t.Fatalf("runner error: %v category=%s", err, result.ErrorCategory)
 	}

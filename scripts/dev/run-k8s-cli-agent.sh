@@ -38,7 +38,7 @@ cli_minimum_version() {
 # Local CLIs allow the selected version or newer.
 resolve_version_prefixes() {
   codex_version_prefix='codex-cli 0.159.'
-  claude_version_prefix='2.1.267 '
+  claude_version_prefix='2.1.325 '
   antigravity_version_prefix='1.2.'
   codex_minimum_version="$(cli_minimum_version "${codex_version_prefix}")"
   claude_minimum_version="$(cli_minimum_version "${claude_version_prefix}")"
@@ -242,7 +242,7 @@ write_agent_config() {
       printf '      displayName: Claude subscription\n'
       printf '      provider: claude-cli\n'
       printf '      prefetchContext: %s\n' "${prefetch_context}"
-      printf '      modelOptions:\n        - id: haiku\n        - id: sonnet\n          reasoningEfforts: [low, medium, high]\n        - id: opus\n          reasoningEfforts: [low, medium, high]\n        - id: fable\n          reasoningEfforts: [low, medium, high]\n'
+      printf '      modelOptions:\n        - id: haiku\n          reasoningEfforts: [low, medium, high]\n        - id: sonnet\n          reasoningEfforts: [low, medium, high]\n        - id: opus\n          reasoningEfforts: [low, medium, high]\n        - id: fable\n          reasoningEfforts: [low, medium, high]\n'
       printf '      runtime: cli\n'
       printf '      model: sonnet\n'
       printf '      scope: local\n'
@@ -256,7 +256,7 @@ write_agent_config() {
       printf '      provider: antigravity-cli\n'
       printf '      runtime: cli\n'
       printf '      model: gemini-3.8-flash-medium\n'
-      printf '      modelOptions:\n        - id: gemini-3.8-flash-low\n        - id: gemini-3.8-flash-medium\n        - id: gemini-3.8-flash-high\n'
+      printf '      modelOptions:\n        - id: gemini-4-argon-low\n        - id: gemini-4-argon-medium\n        - id: gemini-4-argon-high\n        - id: gemini-4-hydrogen-low\n        - id: gemini-4-hydrogen-medium\n        - id: gemini-4-hydrogen-high\n        - id: gemini-4-hydrogen-xhigh\n        - id: gemini-3.8-flash-low\n        - id: gemini-3.8-flash-medium\n        - id: gemini-3.8-flash-high\n'
       printf '      scope: local\n'
       printf '      supportedVersionPrefix: "%s"\n' "${antigravity_version_prefix}"
       printf '      maxSteps: 3\n'

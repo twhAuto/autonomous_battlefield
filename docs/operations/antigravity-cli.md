@@ -6,12 +6,12 @@ ID stays `gemini-subscription-local` and its availability flag
 `GEMINI_CLI_PROFILE_AVAILABLE`, from the retired Gemini CLI provider, so existing
 battle configurations keep working.
 
-Battle setup offers `gemini-3.8-flash-low`, `gemini-3.8-flash-medium` and
-`gemini-3.8-flash-high`. Low favors lighter reasoning; medium remains the default.
-The reasoning level is part of the model ID, so there is no separate effort
-selector. Run `agy models` to check which IDs the signed-in account exposes
-before enabling a profile; listing a model does not verify a successful battle
-submission. See [Google's model catalog](https://antigravity.google/docs/models)
+Battle setup offers the Antigravity models in the
+[shipped catalog](../architecture/ai-decisions.md#model-selection-and-latency).
+Each model ID ends in its reasoning level, so there is no separate effort selector;
+lower levels answer faster with lighter reasoning. Run `agy models` to check which
+IDs the signed-in account exposes before enabling a profile; listing a model does
+not verify a successful battle submission. See [Google's model catalog](https://antigravity.google/docs/models)
 for plan availability.
 
 ## WSL setup
@@ -89,6 +89,7 @@ run from `backend`:
 PATH="$HOME/.local/bin:$PATH" BATTLEFIELD_LIVE_AGY=1 go test ./internal/ai/mcpserver -run '^TestAntigravityLiveDecision$' -v -count=1
 ```
 
-This uses the installed CLI and its subscription allowance. Normal test runs skip
-it. It verifies a substantive submission for the exact context tick through the
+It runs `gemini-3.8-flash-medium` unless `BATTLEFIELD_LIVE_AGY_MODEL` names another
+Antigravity model ID; use it to check a model before offering it. This uses the
+installed CLI and its subscription allowance. Normal test runs skip it. It verifies a substantive submission for the exact context tick through the
 application MCP server; it does not deploy or alter existing battles.
