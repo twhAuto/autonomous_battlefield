@@ -18,7 +18,7 @@ for plan availability.
 
 1. Install Antigravity CLI using the
    [official installation instructions](https://antigravity.google/docs/cli/install/).
-   Local use requires stable version 1.2.0 or newer; check `agy --version`. The host
+   Local use requires stable version 1.5.0 or newer; check `agy --version`. The host
    launcher includes `~/.local/bin` on PATH.
 2. Run `agy` interactively and complete Google sign-in. The worker supports the
    host OS keyring (with an accessible Linux secret service/session D-Bus
@@ -40,7 +40,9 @@ consistently in `backend/config.yaml`,
 `infra/deploy/agent-vm/managed-settings.json` (applied to the CLI VM by
 [`battlefield-platform/cli`](cli-worker.md)), and `scripts/dev/run-k8s-cli-agent.sh` if selecting
 another supported model. A retired model fails the decision within seconds with
-error category `cli` and no tokens.
+error category `cli` and no tokens. A model can need a newer Antigravity release;
+the VM runs the one pinned in `infra/deploy/agent-vm/cli-releases.json`, which the
+CLI worker job [installs](cli-worker.md#cli-updates).
 
 ## Isolation and troubleshooting
 

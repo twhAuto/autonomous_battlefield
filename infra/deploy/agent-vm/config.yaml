@@ -66,6 +66,6 @@ ai:
         - id: gemini-3.8-flash-medium
         - id: gemini-3.8-flash-high
       scope: local
-      supportedVersionPrefix: 1.2.
+      supportedVersionPrefix: 1.5.
       maxSteps: 3
       enabled: false
