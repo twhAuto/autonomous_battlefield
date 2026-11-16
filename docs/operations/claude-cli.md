@@ -44,10 +44,10 @@ low/medium/high effort. The default is `claude-sonnet-5-5`.
 The options are full model IDs, so a selection names the model version it runs and
 setup, standings and faction headers show it. Claude Code's aliases (`haiku`,
 `sonnet`, `opus`, `fable`) instead resolve to whatever models the installed release
-maps them to. Each option lists the alias it replaced, so battles, leagues and model
-access rules saved with an alias resolve to that option. A release accepts only the
-model IDs it knows, so a newer model needs a newer release; Claude Code 2.1.325
-knows all four. Decision history shows the model each decision ran, read from the
+maps them to; each option lists its alias, which
+[still selects it](../architecture/api.md#model-and-effort-selection). A release
+accepts only the model IDs it knows, so a newer model needs a newer release; Claude
+Code 2.1.325 knows all four. Decision history shows the model each decision ran, read from the
 CLI's JSON result. To change the models, update `backend/config.yaml`,
 `infra/deploy/base/infrastructure/configmap.yaml`,
 `infra/deploy/agent-vm/config.yaml`, `infra/deploy/agent-vm/managed-settings.json`,

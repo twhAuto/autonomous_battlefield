@@ -535,10 +535,9 @@ Codex receives `model_reasoning_effort`, Claude CLI `--effort`, OpenAI
 `reasoning.effort`, Gemini `thinkingConfig.thinkingLevel` and the Claude API
 `output_config.effort`. The CLI model identifier is the requested identifier. Every
 shipped option is a full model ID; a provider alias, such as Claude Code's `sonnet`,
-could resolve to a new model version. An option can list `aliases`, other
-identifiers that select it: selections, frozen decisions and model access rules saved
-under one resolve to the option's ID. The Claude subscription options list the Claude
-Code aliases they replaced.
+could resolve to a new model version. An option can list `aliases`, other identifiers
+that [select it](api.md#model-and-effort-selection). Each Claude subscription option
+lists Claude Code's alias for its model, such as `opus` for `claude-opus-5-5`.
 Each decision also records `resolvedModel` in provider metadata: the model
 the provider reports having run. Claude Code reports it in the result's `modelUsage`
 (the model with the most output when a session used several), and the OpenAI,
