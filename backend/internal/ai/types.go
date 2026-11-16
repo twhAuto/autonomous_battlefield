@@ -229,8 +229,11 @@ type DecisionRecord struct {
 }
 
 // ModelOption is an operator-approved model and its provider-supported efforts.
+// Aliases are other identifiers that select the option, such as a CLI model alias it
+// replaced, so selections and access rules saved with one keep resolving to ID.
 type ModelOption struct {
 	ID                     string   `json:"id" yaml:"id"`
+	Aliases                []string `json:"aliases,omitempty" yaml:"aliases"`
 	ReasoningEfforts       []string `json:"reasoningEfforts,omitempty" yaml:"reasoningEfforts"`
 	DefaultReasoningEffort string   `json:"defaultReasoningEffort,omitempty" yaml:"defaultReasoningEffort"`
 }

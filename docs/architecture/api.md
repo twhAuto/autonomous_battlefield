@@ -527,14 +527,16 @@ emit `unit_repaired` events and use support-action target markers.
 
 `GET /v1/model-profiles` includes `modelOptions` for each listed profile, limited to
 the models the caller's role may use. Each option contains `id`, `reasoningEfforts`,
-and an optional `defaultReasoningEffort`. An absent option list means only the
+an optional `defaultReasoningEffort`, and optional `aliases`. An absent option list means only the
 configured model is selectable. `POST /v1/battles` accepts optional `modelIdentifier`
 and `reasoningEffort` in each model controller. Unsupported combinations return 422;
 scripted controllers reject these model fields. The
 [model access](#model-access-administration) role checks for the profile and the
 model still apply.
-The selection is frozen for execution and retry matching. Provider aliases remain
-aliases, rather than promises of a specific underlying version.
+The selection is frozen for execution and retry matching. A `modelIdentifier` that
+names one of an option's `aliases` selects that option, and the frozen selection
+records the option's `id`; model access rules saved under an alias apply to the
+option too.
 
 Decision history includes `reasoningEffort`, `claimedAt`, `contextServedAt`,
 `runnerCompletedAt`, optional `cliProcessStartMs`, and optional `resolvedModel`, the

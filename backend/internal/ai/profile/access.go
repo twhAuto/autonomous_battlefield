@@ -56,29 +56,48 @@ func applyAccess(p ai.ModelProfile, policy AccessPolicy, err error) ai.ModelProf
 	return p
 }
 
+// OptionModels keys policy entries by the configured model options they apply to and
+// drops the rest. An entry saved under an alias applies to its option, unless the
+// option has its own entry.
+func OptionModels(p ai.ModelProfile, models map[string]ModelAccess) map[string]ModelAccess {
+	result := map[string]ModelAccess{}
+	for _, option := range p.ModelOptions {
+		for _, id := range append([]string{option.ID}, option.Aliases...) {
+			if access, ok := models[id]; ok {
+				result[option.ID] = access
+				break
+			}
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 // modelRoles keeps the policy entries of configured model options. A fresh map leaves
 // the shared configuration untouched; an entry's empty list denies everyone.
 func modelRoles(p ai.ModelProfile, models map[string]ModelAccess) map[string][]string {
-	if len(models) == 0 {
+	options := OptionModels(p, models)
+	if options == nil {
 		return nil
 	}
-	result := make(map[string][]string, len(models))
-	for _, option := range p.ModelOptions {
-		if access, ok := models[option.ID]; ok {
-			result[option.ID] = access.AllowedRoles
-		}
+	result := make(map[string][]string, len(options))
+	for id, access := range options {
+		result[id] = access.AllowedRoles
 	}
 	return result
 }
 
 // ModelAllowed reports whether the caller may select model on p: the profile must allow
-// the caller's role, and so must the model's own policy entry when it has one. A model
-// that is not a configured option has no entry; selection still rejects it.
+// the caller's role, and so must the model's own policy entry when it has one. An alias
+// is checked as its option. A model that is not a configured option has no entry;
+// selection still rejects it.
 func ModelAllowed(ctx context.Context, p ai.ModelProfile, model string) bool {
 	if !Allowed(ctx, p) {
 		return false
 	}
-	roles, restricted := p.ModelRoles[model]
+	roles, restricted := p.ModelRoles[ai.CanonicalModel(p, model)]
 	if !restricted {
 		return true
 	}

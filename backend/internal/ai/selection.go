@@ -8,10 +8,12 @@ import (
 
 // ResolveModelSelection uses only the operator's allowlist. Empty input preserves
 // legacy profile defaults; explicit options may select an explicit default effort.
+// An option's alias resolves to the option's ID.
 func ResolveModelSelection(p ModelProfile, model, effort string) (string, string, error) {
 	if model == "" {
 		model = ConfiguredModel(p)
 	}
+	model = CanonicalModel(p, model)
 	for _, option := range p.ModelOptions {
 		if option.ID != model {
 			continue
@@ -38,13 +40,25 @@ func ConfiguredModel(p ModelProfile) string {
 	return p.ModelLabel
 }
 
-func ValidateModelOptions(p ModelProfile) error {
-	seen := map[string]bool{}
+// CanonicalModel returns the ID of the option model names by an alias, or model itself.
+func CanonicalModel(p ModelProfile, model string) string {
 	for _, option := range p.ModelOptions {
-		if (p.Runtime != "cli" && p.Runtime != "api") || option.ID == "" || strings.TrimSpace(option.ID) != option.ID || strings.HasPrefix(option.ID, "-") || seen[option.ID] {
-			return fmt.Errorf("invalid model options for profile %q", p.ID)
+		if slices.Contains(option.Aliases, model) {
+			return option.ID
 		}
-		seen[option.ID] = true
+	}
+	return model
+}
+
+func validModelIdentifier(id string) bool {
+	return id != "" && strings.TrimSpace(id) == id && !strings.HasPrefix(id, "-")
+}
+
+func ValidateModelOptions(p ModelProfile) error {
+	if err := validateModelIdentifiers(p); err != nil {
+		return err
+	}
+	for _, option := range p.ModelOptions {
 		efforts := map[string]bool{}
 		for _, effort := range option.ReasoningEfforts {
 			if !supportsReasoningEffort(p.Provider, effort) || efforts[effort] {
@@ -59,8 +73,30 @@ func ValidateModelOptions(p ModelProfile) error {
 	return nil
 }
 
-// HasModelOption reports whether model is one of the profile's operator-approved options.
+// validateModelIdentifiers requires distinct option IDs, and aliases that each name
+// exactly one option and never another option's ID.
+func validateModelIdentifiers(p ModelProfile) error {
+	seen := map[string]bool{}
+	for _, option := range p.ModelOptions {
+		if (p.Runtime != "cli" && p.Runtime != "api") || !validModelIdentifier(option.ID) || seen[option.ID] {
+			return fmt.Errorf("invalid model options for profile %q", p.ID)
+		}
+		seen[option.ID] = true
+	}
+	for _, option := range p.ModelOptions {
+		for _, alias := range option.Aliases {
+			if !validModelIdentifier(alias) || seen[alias] {
+				return fmt.Errorf("invalid model aliases for profile %q", p.ID)
+			}
+			seen[alias] = true
+		}
+	}
+	return nil
+}
+
+// HasModelOption reports whether model, or an alias of it, is one of the profile's operator-approved options.
 func HasModelOption(p ModelProfile, model string) bool {
+	model = CanonicalModel(p, model)
 	return slices.ContainsFunc(p.ModelOptions, func(option ModelOption) bool { return option.ID == model })
 }
 

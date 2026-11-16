@@ -533,9 +533,13 @@ it preselects `low` (or the first listed effort when `low` is absent) and submit
 it with the model identifier.
 Codex receives `model_reasoning_effort`, Claude CLI `--effort`, OpenAI
 `reasoning.effort`, Gemini `thinkingConfig.thinkingLevel` and the Claude API
-`output_config.effort`. The CLI model identifier is the requested identifier; aliases such as `sonnet` can resolve
-to a new provider version and are not an immutable model-version guarantee.
-Each decision therefore also records `resolvedModel` in provider metadata: the model
+`output_config.effort`. The CLI model identifier is the requested identifier. Every
+shipped option is a full model ID; a provider alias, such as Claude Code's `sonnet`,
+could resolve to a new model version. An option can list `aliases`, other
+identifiers that select it: selections, frozen decisions and model access rules saved
+under one resolve to the option's ID. The Claude subscription options list the Claude
+Code aliases they replaced.
+Each decision also records `resolvedModel` in provider metadata: the model
 the provider reports having run. Claude Code reports it in the result's `modelUsage`
 (the model with the most output when a session used several), and the OpenAI,
 Gemini and Claude APIs in each response's `model` or `modelVersion`. Codex and
@@ -546,15 +550,16 @@ The shipped CLI catalog offers every model the Codex subscription lists:
 `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`,
 `gpt-5.6-sol`, `gpt-5.6-terra` and `gpt-5.6-luna` (the published names are, for
 example, GPT-6 Luna). The GPT-6.1 models need Codex 0.159 or newer. Claude offers
-`haiku`, `sonnet`, `opus` and `fable`. Antigravity offers `gemini-4-argon-low`,
+`claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5` and `claude-fable-5-2`,
+which need Claude Code 2.1.325. Antigravity offers `gemini-4-argon-low`,
 `-medium` and `-high`, `gemini-4-hydrogen-low`, `-medium`, `-high` and `-xhigh`,
 and `gemini-3.8-flash-low`, `-medium` and `-high`. The API catalog offers the same `gpt-*` models through the
 OpenAI API, `gemini-3.8-flash` through the Gemini API, and `claude-haiku-5-5`,
 `claude-sonnet-5-5`, `claude-opus-5-5` and `claude-fable-5-1` through the Claude
-API. Codex models, every Claude alias and every API model offer low/medium/high
+API. Codex models, every Claude model and every API model offer low/medium/high
 effort; higher efforts are left out so decisions finish within the decision
 timeout. Antigravity model IDs encode the reasoning level as a suffix, so
-Antigravity has no separate effort choice. CLI profile defaults are `gpt-5.6-luna`, `sonnet` and
+Antigravity has no separate effort choice. CLI profile defaults are `gpt-5.6-luna`, `claude-sonnet-5-5` and
 `gemini-3.8-flash-medium`. Battle and league setup list model profiles under
 separate API and CLI headings.
 See the provider catalogs for [OpenAI](https://developers.openai.com/api/docs/models/gpt-6-luna),

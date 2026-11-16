@@ -311,7 +311,12 @@ class ConfigTests(unittest.TestCase):
                             {'a': [{'id': 'b'}, {'id': 'b'}]},
                             {'a': [{'id': 'b', 'reasoningEfforts': ['unknown']}]},
                             {'a': [{'id': 'b', 'reasoningEfforts': ['low', 'low']}]},
-                            {'a': [{'id': 'b', 'reasoningEfforts': ['low'], 'defaultReasoningEffort': 'high'}]}):
+                            {'a': [{'id': 'b', 'reasoningEfforts': ['low'], 'defaultReasoningEffort': 'high'}]},
+                            {'a': [{'id': 'b', 'aliases': 'c'}]}, {'a': [{'id': 'b', 'aliases': ['bad alias']}]},
+                            {'a': [{'id': 'b', 'aliases': ['b']}]}, {'a': [{'id': 'b', 'aliases': ['c', 'c']}]},
+                            {'a': [{'id': 'b', 'aliases': ['c']}, {'id': 'c'}]},
+                            {'a': [{'id': 'b'}, {'id': 'c', 'aliases': ['b']}]},
+                            {'a': [{'id': 'b', 'aliases': ['d']}, {'id': 'c', 'aliases': ['d']}]}):
                 path.write_text(json.dumps({'agentConcurrency': None, 'models': {'a': 'b'}, 'modelOptions': options}))
                 with self.subTest(options=options), self.assertRaises(ValueError):
                     worker.managed_settings(path)

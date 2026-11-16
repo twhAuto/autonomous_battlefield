@@ -124,17 +124,29 @@ def managed_settings(path=MANAGED_SETTINGS):
             raise ValueError('Managed modelOptions must contain model choices')
         seen = set()
         for option in profile_options:
-            if not isinstance(option, dict) or not {'id'} <= set(option) <= {'id', 'reasoningEfforts', 'defaultReasoningEffort'}:
-                raise ValueError('Invalid managed model option fields')
-            model, efforts = option['id'], option.get('reasoningEfforts', [])
-            if (not isinstance(model, str) or not MODEL.fullmatch(model) or model in seen
-                    or not isinstance(efforts, list)
-                    or not all(isinstance(effort, str) and effort in {'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'} for effort in efforts)
-                    or len(set(efforts)) != len(efforts)
-                    or ('defaultReasoningEffort' in option and option['defaultReasoningEffort'] not in efforts)):
-                raise ValueError('Invalid managed model option or reasoning effort')
-            seen.add(model)
+            seen |= managed_option_identifiers(option, seen)
     return settings
+
+
+def managed_option_identifiers(option, seen):
+    """Validate one managed model option and return its ID and aliases.
+
+    No other option of the profile may use them. Aliases name the option for selections
+    saved before it replaced them.
+    """
+    if not isinstance(option, dict) or not {'id'} <= set(option) <= {'id', 'aliases', 'reasoningEfforts', 'defaultReasoningEffort'}:
+        raise ValueError('Invalid managed model option fields')
+    model, efforts, aliases = option['id'], option.get('reasoningEfforts', []), option.get('aliases', [])
+    if (not isinstance(model, str) or not MODEL.fullmatch(model) or model in seen
+            or not isinstance(efforts, list)
+            or not all(isinstance(effort, str) and effort in {'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'} for effort in efforts)
+            or len(set(efforts)) != len(efforts)
+            or ('defaultReasoningEffort' in option and option['defaultReasoningEffort'] not in efforts)):
+        raise ValueError('Invalid managed model option or reasoning effort')
+    if (not isinstance(aliases, list) or not all(isinstance(alias, str) and MODEL.fullmatch(alias) for alias in aliases)
+            or len(set(aliases)) != len(aliases) or (seen | {model}) & set(aliases)):
+        raise ValueError('Invalid managed model option aliases')
+    return {model, *aliases}
 
 
 def desired_config(current, settings):
