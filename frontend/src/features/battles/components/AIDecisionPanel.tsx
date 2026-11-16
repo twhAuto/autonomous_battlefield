@@ -92,6 +92,7 @@ function DecisionCard({ decision, participantNames, initiallyOpen, battleId, att
           <DecisionDetail label="Upgrades" value={formatUpgrades(decision.resolvedPlan?.upgradeOrders)} />
           <DecisionDetail label="Build sites" value={formatConstruction(decision.resolvedPlan)} />
           <DecisionDetail label="Model" value={decision.modelIdentifier || decision.profileId || '—'} />
+          <DecisionDetail label="Model run" value={decision.resolvedModel || 'Not reported'} />
           <DecisionDetail label="Reasoning effort" value={decision.reasoningEffort || 'Model default'} />
           <DecisionDetail label="Controller" value={decision.controllerType} />
           <DecisionDetail label="Provider" value={decision.provider || '—'} />

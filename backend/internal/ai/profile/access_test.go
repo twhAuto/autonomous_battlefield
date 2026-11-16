@@ -105,6 +105,41 @@ func TestModelRolesNarrowEachRoleToItsModels(t *testing.T) {
 	}
 }
 
+func TestModelRolesSavedUnderAnAliasApplyToItsOption(t *testing.T) {
+	t.Setenv("MODEL_ROLES_CLI_AVAILABLE", "true")
+	registry := NewCatalog("cluster", []ai.ModelProfile{{
+		ID: "cli", DisplayName: "CLI", Provider: "claude-cli", Runtime: "cli", Scope: "local", Enabled: true, Model: "claude-sonnet-5-5",
+		AvailabilityEnvironmentVariable: "MODEL_ROLES_CLI_AVAILABLE", SupportedVersionPrefix: "2.",
+		ModelOptions: []ai.ModelOption{{ID: "claude-sonnet-5-5", Aliases: []string{"sonnet"}}, {ID: "claude-fable-5-2", Aliases: []string{"fable"}}},
+	}})
+	// A rule saved while the catalog listed aliases keeps restricting the option that replaced it.
+	policy := AccessPolicy{Profiles: map[string]Access{"cli": {Enabled: true, AllowedRoles: []string{"admin", "player"}, Models: map[string]ModelAccess{
+		"fable": {AllowedRoles: []string{"admin"}},
+	}}}}
+	p, err := registry.WithAccessPolicy(func() (AccessPolicy, error) { return policy, nil }).Require("cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	player := authn.WithActor(context.Background(), authn.Actor{ID: "friend", Role: authn.Player})
+	admin := authn.WithActor(context.Background(), authn.Actor{ID: "admin", Role: authn.Admin})
+	for _, model := range []string{"fable", "claude-fable-5-2"} {
+		if ModelAllowed(player, p, model) || !ModelAllowed(admin, p, model) {
+			t.Fatalf("%s: alias rule not applied to its option", model)
+		}
+	}
+	if view, ok := ForRole(player, p); !ok || !slices.Equal(optionIDs(view), []string{"claude-sonnet-5-5"}) {
+		t.Fatalf("player view: %+v %v", view, ok)
+	}
+	// An entry under the option's own ID wins over one under its alias.
+	models := OptionModels(p, map[string]ModelAccess{"fable": {AllowedRoles: []string{"admin"}}, "claude-fable-5-2": {AllowedRoles: []string{"player"}}, "gone": {}})
+	if len(models) != 1 || !slices.Equal(models["claude-fable-5-2"].AllowedRoles, []string{"player"}) {
+		t.Fatalf("option models: %+v", models)
+	}
+	if OptionModels(p, map[string]ModelAccess{"gone": {}}) != nil {
+		t.Fatal("entries for unconfigured models were kept")
+	}
+}
+
 func TestModelRolesDenyWithinTheProfileRoles(t *testing.T) {
 	policy := AccessPolicy{Profiles: map[string]Access{"cli": {Enabled: true, AllowedRoles: []string{"admin", "tester", "player"}, Models: map[string]ModelAccess{
 		"haiku": {AllowedRoles: []string{"admin"}}, "opus": {AllowedRoles: []string{}},

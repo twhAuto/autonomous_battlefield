@@ -40,6 +40,14 @@ func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 	}
 	messages := []ai.Message{{Role: "user", Content: prompts.SessionDecision(session, nil), SharedPrefixBytes: prompts.SessionDecisionSharedBytes(session)}}
 	usage := ai.Usage{Scope: "api_calls", ModelCalls: new(int64)}
+	resolvedModel := ""
+	// Every outcome after the first turn carries the summed usage and the model the
+	// provider last reported.
+	finish := func(result ai.DecisionResult, err error) (ai.DecisionResult, error) {
+		result.Usage = usage
+		result.RecordResolvedModel(resolvedModel)
+		return result, err
+	}
 	for step := 0; step < session.Profile.MaxSteps; step++ {
 		turnCtx, span := generationSpan(ctx, session, "api_call")
 		messageJSON, _ := json.Marshal(messages)
@@ -54,24 +62,27 @@ func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 		usage.InputTokens += turn.Usage.InputTokens
 		usage.OutputTokens += turn.Usage.OutputTokens
 		usage.Requests += max(1, turn.Usage.Requests)
+		if turn.Model != "" {
+			resolvedModel = turn.Model
+		}
 		if err != nil {
-			return ai.DecisionResult{ErrorCategory: providerErrorCategory(ctx, err), Usage: usage}, err
+			return finish(ai.DecisionResult{ErrorCategory: providerErrorCategory(ctx, err)}, err)
 		}
 		if len(turn.ToolCalls) == 0 {
-			return ai.DecisionResult{ErrorCategory: "no_progress", Usage: usage}, fmt.Errorf("provider returned no tool call")
+			return finish(ai.DecisionResult{ErrorCategory: "no_progress"}, fmt.Errorf("provider returned no tool call"))
 		}
 		calls := withCallIDs(turn.ToolCalls, step)
 		messages = append(messages, ai.Message{Role: "assistant", Content: turn.Text, ToolCalls: calls, ProviderContent: turn.ProviderContent})
 		accepted, updatedMessages, err := executeToolCalls(ctx, clientSession, calls, messages, prompts.SessionToolNames(session))
 		if err != nil {
-			return ai.DecisionResult{ErrorCategory: toolErrorCategory(err), Usage: usage}, err
+			return finish(ai.DecisionResult{ErrorCategory: toolErrorCategory(err)}, err)
 		}
 		messages = updatedMessages
 		if accepted {
-			return ai.DecisionResult{Accepted: true, Usage: usage}, nil
+			return finish(ai.DecisionResult{Accepted: true}, nil)
 		}
 	}
-	return ai.DecisionResult{ErrorCategory: "step_limit", Usage: usage}, fmt.Errorf("provider exceeded %d steps", session.Profile.MaxSteps)
+	return finish(ai.DecisionResult{ErrorCategory: "step_limit"}, fmt.Errorf("provider exceeded %d steps", session.Profile.MaxSteps))
 }
 
 func providerErrorCategory(ctx context.Context, err error) string {

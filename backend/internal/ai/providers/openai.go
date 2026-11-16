@@ -54,6 +54,7 @@ func (p *OpenAI) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	request.Header.Set("Authorization", "Bearer "+p.APIKey)
 	request.Header.Set("Content-Type", "application/json")
 	var decoded struct {
+		Model  string         `json:"model"`
 		Output []openAIOutput `json:"output"`
 		Usage  *struct {
 			Input        int64 `json:"input_tokens"`
@@ -72,9 +73,11 @@ func (p *OpenAI) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	if decoded.Usage == nil {
 		result, err := openAIResult(decoded.Output, 0, 0)
 		result.Usage.TokensReported = false
+		result.Model = decoded.Model
 		return result, err
 	}
 	result, err := openAIResult(decoded.Output, decoded.Usage.Input, decoded.Usage.Output)
+	result.Model = decoded.Model
 	result.Usage.CachedInputTokens = decoded.Usage.InputDetails.Cached
 	result.Usage.ReasoningOutputTokens = decoded.Usage.OutputDetails.Reasoning
 	return result, err

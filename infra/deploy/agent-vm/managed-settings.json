@@ -2,7 +2,7 @@
   "agentConcurrency": 4,
   "models": {
     "codex-subscription-local": "gpt-5.6-luna",
-    "claude-subscription-local": "sonnet",
+    "claude-subscription-local": "claude-sonnet-5-5",
     "gemini-subscription-local": "gemini-3.8-flash-medium"
   },
   "modelOptions": {
@@ -74,7 +74,10 @@
     ],
     "claude-subscription-local": [
       {
-        "id": "haiku",
+        "id": "claude-haiku-5-5",
+        "aliases": [
+          "haiku"
+        ],
         "reasoningEfforts": [
           "low",
           "medium",
@@ -82,7 +85,10 @@
         ]
       },
       {
-        "id": "sonnet",
+        "id": "claude-sonnet-5-5",
+        "aliases": [
+          "sonnet"
+        ],
         "reasoningEfforts": [
           "low",
           "medium",
@@ -90,7 +96,10 @@
         ]
       },
       {
-        "id": "opus",
+        "id": "claude-opus-5-5",
+        "aliases": [
+          "opus"
+        ],
         "reasoningEfforts": [
           "low",
           "medium",
@@ -98,7 +107,10 @@
         ]
       },
       {
-        "id": "fable",
+        "id": "claude-fable-5-2",
+        "aliases": [
+          "fable"
+        ],
         "reasoningEfforts": [
           "low",
           "medium",

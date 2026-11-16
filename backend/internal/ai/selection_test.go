@@ -37,6 +37,28 @@ func TestModelSelectionAllowlistAndDefaults(t *testing.T) {
 	}
 }
 
+func TestModelAliasesResolveToTheirOption(t *testing.T) {
+	p := ModelProfile{Runtime: "cli", Provider: "claude-cli", Model: "claude-sonnet-5-5", ModelOptions: []ModelOption{
+		{ID: "claude-sonnet-5-5", Aliases: []string{"sonnet"}, ReasoningEfforts: []string{"low", "high"}},
+		{ID: "claude-opus-5-5", Aliases: []string{"opus"}, ReasoningEfforts: []string{"low"}},
+	}}
+	for _, tc := range []struct {
+		model, effort, wantModel, wantEffort string
+		valid                                bool
+	}{
+		{"opus", "low", "claude-opus-5-5", "low", true}, {"sonnet", "", "claude-sonnet-5-5", "", true},
+		{"claude-opus-5-5", "low", "claude-opus-5-5", "low", true}, {"opus", "high", "", "", false}, {"haiku", "", "", "", false},
+	} {
+		model, effort, err := ResolveModelSelection(p, tc.model, tc.effort)
+		if (err == nil) != tc.valid || model != tc.wantModel || effort != tc.wantEffort {
+			t.Fatalf("%+v: %s %s %v", tc, model, effort, err)
+		}
+	}
+	if CanonicalModel(p, "opus") != "claude-opus-5-5" || CanonicalModel(p, "haiku") != "haiku" || !HasModelOption(p, "sonnet") || HasModelOption(p, "haiku") {
+		t.Fatal("aliases do not name their options")
+	}
+}
+
 func TestValidateModelOptions(t *testing.T) {
 	for _, tc := range []struct {
 		provider, runtime string
@@ -60,6 +82,12 @@ func TestValidateModelOptions(t *testing.T) {
 		{"codex-cli", "cli", []ModelOption{{ID: "a"}, {ID: "a"}}, false},
 		{"codex-cli", "cli", []ModelOption{{ID: "a", ReasoningEfforts: []string{"low", "low"}}}, false},
 		{"codex-cli", "cli", []ModelOption{{ID: "a", DefaultReasoningEffort: "high"}}, false},
+		{"claude-cli", "cli", []ModelOption{{ID: "a", Aliases: []string{"x", "y"}}, {ID: "b", Aliases: []string{"z"}}}, true},
+		{"claude-cli", "cli", []ModelOption{{ID: "a", Aliases: []string{"b"}}, {ID: "b"}}, false},
+		{"claude-cli", "cli", []ModelOption{{ID: "a", Aliases: []string{"x"}}, {ID: "b", Aliases: []string{"x"}}}, false},
+		{"claude-cli", "cli", []ModelOption{{ID: "a", Aliases: []string{"a"}}}, false},
+		{"claude-cli", "cli", []ModelOption{{ID: "a", Aliases: []string{""}}}, false},
+		{"claude-cli", "cli", []ModelOption{{ID: "a", Aliases: []string{"-x"}}}, false},
 	} {
 		if err := ValidateModelOptions(ModelProfile{Provider: tc.provider, Runtime: tc.runtime, ModelOptions: tc.options}); (err == nil) != tc.valid {
 			t.Fatalf("%+v: %v", tc, err)

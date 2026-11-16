@@ -198,6 +198,9 @@ export interface DecisionHistory {
   requestId: string; factionId: string; targetTick: number; status: 'pending' | 'running' | 'accepted' | 'fallback' | 'failed'
   controllerType: 'scripted' | 'model'
   profileId?: string; provider?: string; runtime?: string; modelIdentifier?: string
+  // The model the provider reported running, when it named one; an alias selection
+  // such as `opus` shows here as its full model ID.
+  resolvedModel?: string
   fallbackSource?: string; errorCategory?: string
   resolvedPlan?: {
     name?: string

@@ -513,12 +513,13 @@ func TestDrainStopsNewClaimsAndLetsRunningDecisionsFinish(t *testing.T) {
 
 func TestWorkerExecutesFrozenSelectionOrFailsUnavailable(t *testing.T) {
 	t.Setenv("SELECTION_CLI_AVAILABLE", "true")
-	profiles := profile.NewCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true, Model: "fast", SupportedVersionPrefix: "codex-cli 0.155.", AvailabilityEnvironmentVariable: "SELECTION_CLI_AVAILABLE", ModelOptions: []ai.ModelOption{{ID: "deep", ReasoningEfforts: []string{"low"}}}}})
+	profiles := profile.NewCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true, Model: "fast", SupportedVersionPrefix: "codex-cli 0.155.", AvailabilityEnvironmentVariable: "SELECTION_CLI_AVAILABLE", ModelOptions: []ai.ModelOption{{ID: "deep", Aliases: []string{"deep-alias"}, ReasoningEfforts: []string{"low"}}}}})
+	// A selection frozen under an alias the option replaced runs the option's ID.
 	for _, test := range []struct {
 		model      string
 		invoked    bool
 		reportPath string
-	}{{"deep", true, "/internal/agent/usage"}, {"removed", false, "/internal/agent/fail"}} {
+	}{{"deep", true, "/internal/agent/usage"}, {"deep-alias", true, "/internal/agent/usage"}, {"removed", false, "/internal/agent/fail"}} {
 		invoked := false
 		reportPath := ""
 		worker := &Executor{Profiles: profiles, DecisionTimeout: time.Second, MCPURL: "http://mcp/mcp", Client: &http.Client{Transport: agentRoundTrip(func(req *http.Request) (*http.Response, error) {

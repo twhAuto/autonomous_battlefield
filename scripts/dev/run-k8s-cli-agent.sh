@@ -242,9 +242,9 @@ write_agent_config() {
       printf '      displayName: Claude subscription\n'
       printf '      provider: claude-cli\n'
       printf '      prefetchContext: %s\n' "${prefetch_context}"
-      printf '      modelOptions:\n        - id: haiku\n          reasoningEfforts: [low, medium, high]\n        - id: sonnet\n          reasoningEfforts: [low, medium, high]\n        - id: opus\n          reasoningEfforts: [low, medium, high]\n        - id: fable\n          reasoningEfforts: [low, medium, high]\n'
+      printf '      modelOptions:\n        - id: claude-haiku-5-5\n          aliases: [haiku]\n          reasoningEfforts: [low, medium, high]\n        - id: claude-sonnet-5-5\n          aliases: [sonnet]\n          reasoningEfforts: [low, medium, high]\n        - id: claude-opus-5-5\n          aliases: [opus]\n          reasoningEfforts: [low, medium, high]\n        - id: claude-fable-5-2\n          aliases: [fable]\n          reasoningEfforts: [low, medium, high]\n'
       printf '      runtime: cli\n'
-      printf '      model: sonnet\n'
+      printf '      model: claude-sonnet-5-5\n'
       printf '      scope: local\n'
       printf '      supportedVersionPrefix: "%s"\n' "${claude_version_prefix}"
       printf '      maxSteps: 3\n'

@@ -8,14 +8,20 @@ const defaultReasoningEffort = 'low'
 
 export type ModelSelection = { modelIdentifier?: string; reasoningEffort?: string }
 function supportedEfforts(profile: ModelProfile | undefined, model: string) {
-  return profile?.modelOptions?.find(option => option.id === model)?.reasoningEfforts ?? []
+  const id = canonicalModel(profile, model)
+  return profile?.modelOptions?.find(option => option.id === id)?.reasoningEfforts ?? []
+}
+
+/** The option a model names, including by an alias the option replaced, such as a copied league's `opus`. */
+export function canonicalModel(profile: ModelProfile | undefined, model: string) {
+  return profile?.modelOptions?.find(option => option.aliases?.includes(model))?.id ?? model
 }
 
 // Prefer an explicit Low effort over the provider's unstated default; models without
 // configurable efforts keep sending none.
 export function resolveSelection(profile: ModelProfile | undefined, selection: ModelSelection): ModelSelection {
   if (!profile || selection.reasoningEffort) return selection
-  const model = selection.modelIdentifier || profile.modelLabel
+  const model = canonicalModel(profile, selection.modelIdentifier || profile.modelLabel)
   const efforts = supportedEfforts(profile, model)
   if (efforts.length === 0) return selection
   return { modelIdentifier: model, reasoningEffort: efforts.includes(defaultReasoningEffort) ? defaultReasoningEffort : efforts[0] }
@@ -23,7 +29,7 @@ export function resolveSelection(profile: ModelProfile | undefined, selection: M
 
 /** The selected model and effort the profile no longer offers ('' when offered). League setup copies selections that can go stale. */
 export function staleSelection(profile: ModelProfile, selection: ModelSelection) {
-  const model = selection.modelIdentifier || profile.modelLabel
+  const model = canonicalModel(profile, selection.modelIdentifier || profile.modelLabel)
   const offered = model === profile.modelLabel || (profile.modelOptions ?? []).some(option => option.id === model)
   const effort = selection.reasoningEffort ?? ''
   return { model: offered ? '' : model, effort: supportedEfforts(profile, model).includes(effort) ? '' : effort }
@@ -66,7 +72,7 @@ export function ControllerSelect({ id, value, onChange, profiles, selection, onS
 // A stale model or effort stays selected as an unavailable option, so what shows is
 // what would be submitted.
 function ModelFields({ id, profile, selection, onSelect }: Readonly<{ id: string; profile: ModelProfile; selection: ModelSelection; onSelect: (value: ModelSelection) => void }>) {
-  const model = selection.modelIdentifier || profile.modelLabel
+  const model = canonicalModel(profile, selection.modelIdentifier || profile.modelLabel)
   const options = profile.modelOptions ?? []
   const efforts = supportedEfforts(profile, model)
   const effort = resolveSelection(profile, selection).reasoningEffort ?? ''

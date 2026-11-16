@@ -76,19 +76,11 @@ func (s *Service) Save(ctx context.Context, settings Settings, actorID string) (
 	return s.Repository.Save(ctx, settings, actorID)
 }
 
-// configuredModels drops entries for models the profile does not offer, so a saved
-// policy keeps validating after a configuration change.
+// configuredModels drops entries for models the profile does not offer and moves an
+// entry saved under an alias to its option, so a saved policy keeps validating and
+// applying after a configuration change.
 func configuredModels(p ai.ModelProfile, models map[string]profile.ModelAccess) map[string]profile.ModelAccess {
-	result := map[string]profile.ModelAccess{}
-	for _, option := range p.ModelOptions {
-		if access, ok := models[option.ID]; ok {
-			result[option.ID] = access
-		}
-	}
-	if len(result) == 0 {
-		return nil
-	}
-	return result
+	return profile.OptionModels(p, models)
 }
 
 func defaultProfileAccess(p ai.ModelProfile) profile.Access {

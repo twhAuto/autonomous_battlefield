@@ -333,11 +333,17 @@ func (r *historyBattleRepo) ListBattleDecisions(context.Context, string, int) ([
 }
 
 func TestDecisionHistoryIsSafeAndValidated(t *testing.T) {
-	repository := &historyBattleRepo{fakeBattleRepo: &fakeBattleRepo{}, records: []ai.DecisionRecord{{ID: "request", FactionID: "faction", TargetTick: 10, Status: "accepted", ProfileID: "profile", Provider: "openai", Runtime: "api", ModelIdentifier: "model", ProviderMetadata: map[string]any{"contextDelivery": "prefetch"}, Usage: ai.Usage{Requests: 1}}}}
+	repository := &historyBattleRepo{fakeBattleRepo: &fakeBattleRepo{}, records: []ai.DecisionRecord{
+		{ID: "request", FactionID: "faction", TargetTick: 10, Status: "accepted", ProfileID: "profile", Provider: "claude-cli", Runtime: "cli", ModelIdentifier: "opus", ProviderMetadata: map[string]any{"contextDelivery": "prefetch", ai.ResolvedModelKey: "claude-opus-5"}, Usage: ai.Usage{Requests: 1}},
+		{ID: "malformed", FactionID: "faction", TargetTick: 20, Status: "accepted", ProviderMetadata: map[string]any{ai.ResolvedModelKey: "claude opus <b>"}},
+	}}
 	service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000, Options{}).(DecisionHistoryService)
 	history, err := service.ListDecisionHistory(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), "7f22e693-bacd-46bb-b942-64fa613cd388", 1)
-	if err != nil || len(history) != 1 || history[0].ProfileID != "profile" || history[0].Usage.Requests != 1 || history[0].ContextDelivery != "prefetch" {
+	if err != nil || len(history) != 2 || history[0].ProfileID != "profile" || history[0].Usage.Requests != 1 || history[0].ContextDelivery != "prefetch" {
 		t.Fatalf("history=%#v err=%v", history, err)
+	}
+	if history[0].ModelIdentifier != "opus" || history[0].ResolvedModel != "claude-opus-5" || history[1].ResolvedModel != "" {
+		t.Fatalf("selected %q ran %q; malformed ran %q", history[0].ModelIdentifier, history[0].ResolvedModel, history[1].ResolvedModel)
 	}
 	if _, err := service.ListDecisionHistory(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), "bad", 0); !errors.Is(err, ErrInvalidBattle) {
 		t.Fatal(err)

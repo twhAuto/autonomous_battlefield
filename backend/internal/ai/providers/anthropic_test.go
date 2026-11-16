@@ -105,7 +105,7 @@ func TestAnthropicDecodesTurnAndReplaysItUnchanged(t *testing.T) {
 	client := anthropicCapture(t, anthropicToolTurn, &request)
 	provider := &Anthropic{APIKey: "key", Client: client}
 	result, err := provider.NextTurn(context.Background(), providerRequest())
-	if err != nil || result.Text != "checking" || len(result.ToolCalls) != 1 {
+	if err != nil || result.Text != "checking" || len(result.ToolCalls) != 1 || result.Model != "claude-opus-5-5" {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	if call := result.ToolCalls[0]; call.ID != "toolu_1" || call.Name != "get_decision_context" || string(call.Arguments) != `{"requestId":"r"}` {

@@ -68,6 +68,22 @@ describe('faction summaries', () => {
     expect(heading('Dusk')).toHaveAttribute('title', 'Dusk')
   })
 
+  it('adds the model the latest reporting decision ran when it differs from the selection', () => {
+    const participants = [
+      { id: 'a', name: 'Amber', controller: { type: 'model' as const, profileId: 'claude', modelIdentifier: 'opus', reasoningEffort: 'low' } },
+      { id: 'b', name: 'Blue', controller: { type: 'model' as const, profileId: 'claude-api', modelIdentifier: 'claude-opus-5-5' } },
+    ]
+    render(<FactionSummaries {...props} battle={{ ...battle, participants }} decisions={[
+      { ...decision, factionId: 'a', resolvedModel: 'claude-opus-5' },
+      { ...decision, requestId: '2', factionId: 'a' },
+      { ...decision, requestId: '3', factionId: 'b', resolvedModel: 'claude-opus-5-5' },
+    ]} />)
+    const heading = (name: string) => within(screen.getByRole('article', { name })).getByRole('heading')
+    expect(heading('Amber')).toHaveTextContent('Amberopus (claude-opus-5) · low')
+    expect(heading('Amber')).toHaveAttribute('title', 'Amber (opus (claude-opus-5) · low)')
+    expect(heading('Blue')).toHaveTextContent(/^Blueclaude-opus-5-5$/)
+  })
+
   it('counts living units belonging to the faction', () => {
     const unit = { id: 'u', factionId: 'a', type: 'soldier', position: { x: 0, y: 0 }, health: 10, maxHealth: 10, attack: 1, defense: 1, speed: 1, movement: 1, range: 1, vision: 1, readyAtTick: 0 }
     render(<FactionSummaries {...props} battle={{ ...battle, state: { ...battle.state, units: [unit, { ...unit, id: 'dead', health: 0 }, { ...unit, id: 'enemy', factionId: 'b' }] } }} />)

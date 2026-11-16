@@ -197,6 +197,21 @@ it('keeps copied factions, maps, models and efforts that no longer exist blockin
   expect(start).toBeEnabled()
 })
 
+it('copies a selection saved under an alias as the model option that replaced it', async () => {
+  serve()
+  const served = vi.mocked(fetch).getMockImplementation()!
+  const renamed = [{ ...profiles[0], modelLabel: 'claude-sonnet-5-5', modelOptions: [{ id: 'claude-sonnet-5-5', aliases: ['sonnet'], reasoningEfforts: ['low', 'high'] }] }]
+  vi.mocked(fetch).mockImplementation(async (input, init) => String(input).endsWith('/v1/model-profiles') ? reply(200, { profiles: renamed }) : served(input, init))
+  const user = userEvent.setup()
+  show('/leagues/new?from=source-1')
+  expect(await screen.findByLabelText('Model', { selector: '#entrant-0-controller-model' })).toHaveDisplayValue('claude-sonnet-5-5')
+  expect(screen.getByLabelText('Reasoning effort', { selector: '#entrant-0-controller-effort' })).toHaveValue('high')
+  expect(screen.queryByText('Choose an available controller, model and effort for every entrant.')).not.toBeInTheDocument()
+  await user.selectOptions(screen.getByLabelText('Faction', { selector: '#entrant-7-faction' }), 'faction-0')
+  await user.click(screen.getByRole('button', { name: /START LEAGUE/ }))
+  expect(await screen.findByRole('heading', { name: 'League page' })).toBeInTheDocument()
+})
+
 it('offers a retry when the league to copy cannot be loaded', async () => {
   serve(9, undefined, undefined, () => reply(404, {}))
   const user = userEvent.setup()
