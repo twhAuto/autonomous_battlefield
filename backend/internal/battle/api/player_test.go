@@ -50,7 +50,7 @@ func TestPlayerDecisionHistoryKeepsPlansAndDropsDiagnostics(t *testing.T) {
 		RequestID: "request", FactionID: "faction", TargetTick: 10, Status: "fallback", ControllerType: "model",
 		ResolvedPlan:    map[string]any{"name": "Hold the bridge", "rationale": "Protect the economy."},
 		ContextDelivery: secret, CLIProcessStartMS: &started, ReasoningEffort: secret, ClaimedAt: &claimed, TraceURL: secret,
-		ProfileID: secret, Provider: secret, Runtime: secret, ModelIdentifier: secret, FallbackSource: secret, ErrorCategory: secret,
+		ProfileID: secret, Provider: secret, Runtime: secret, ModelIdentifier: secret, ResolvedModel: secret, FallbackSource: secret, ErrorCategory: secret,
 		Usage: ai.Usage{Scope: secret, InputTokens: 4242},
 	}}}
 	router := httpapi.NewRouter(NewHandler(battles))

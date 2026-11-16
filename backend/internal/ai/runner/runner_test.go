@@ -163,17 +163,44 @@ func TestAPIRunnerFailureCategories(t *testing.T) {
 type turnProvider struct {
 	step       int
 	noProgress bool
+	// models are the models each turn reports; turns past the end report none.
+	models []string
+}
+
+func (p *turnProvider) reportedModel() string {
+	if p.step <= len(p.models) {
+		return p.models[p.step-1]
+	}
+	return ""
 }
 
 func (p *turnProvider) NextTurn(context.Context, ai.ModelTurnRequest) (ai.ModelTurnResult, error) {
 	p.step++
 	if p.noProgress {
-		return ai.ModelTurnResult{}, nil
+		return ai.ModelTurnResult{Model: p.reportedModel()}, nil
 	}
 	if p.step == 1 {
-		return ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "get_decision_context", Arguments: []byte(`{"requestId":"request"}`)}}, Usage: ai.Usage{InputTokens: 2, Requests: 1}}, nil
+		return ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "get_decision_context", Arguments: []byte(`{"requestId":"request"}`)}}, Usage: ai.Usage{InputTokens: 2, Requests: 1}, Model: p.reportedModel()}, nil
 	}
-	return ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "submit_strategy_plan", Arguments: []byte(`{"requestId":"request","idempotencyKey":"once","expectedVersion":1,"targetTick":10,"name":"advance","actionWeights":{"attack":1200},"reserveGold":0,"spendOrder":["recruitment"],"constructionPriorities":[],"recruitmentPriorities":[]}`)}}, Usage: ai.Usage{OutputTokens: 3, Requests: 1}}, nil
+	return ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "submit_strategy_plan", Arguments: []byte(`{"requestId":"request","idempotencyKey":"once","expectedVersion":1,"targetTick":10,"name":"advance","actionWeights":{"attack":1200},"reserveGold":0,"spendOrder":["recruitment"],"constructionPriorities":[],"recruitmentPriorities":[]}`)}}, Usage: ai.Usage{OutputTokens: 3, Requests: 1}, Model: p.reportedModel()}, nil
+}
+
+func TestAPIRunnerRecordsTheLastReportedModel(t *testing.T) {
+	session := ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 3, MaxOutputTokens: 100}}
+	for _, test := range []struct {
+		models []string
+		want   string
+	}{{[]string{"gpt-6-luna-2026-10-01", "gpt-6-luna-2026-11-01"}, "gpt-6-luna-2026-11-01"}, {[]string{"claude-opus-5-5"}, "claude-opus-5-5"}, {nil, ""}} {
+		result, err := (APIRunner{Provider: &turnProvider{models: test.models}, Connector: fakeConnector{&fakeToolSession{}}}).Run(context.Background(), session)
+		if err != nil || !result.Accepted || ai.ResolvedModel(result.ProviderData) != test.want || result.Usage.InputTokens != 2 {
+			t.Fatalf("models=%v result=%#v err=%v", test.models, result, err)
+		}
+	}
+	// A failed decision still records the model that ran.
+	result, err := (APIRunner{Provider: &turnProvider{noProgress: true, models: []string{"gemini-3.8-flash-001"}}, Connector: fakeConnector{&fakeToolSession{}}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 1}})
+	if err == nil || result.ErrorCategory != "no_progress" || ai.ResolvedModel(result.ProviderData) != "gemini-3.8-flash-001" || result.Usage.Requests != 1 {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
 }
 
 func TestAPIRunnerUsesMCPForContextAndSubmission(t *testing.T) {

@@ -54,6 +54,33 @@ func assertClaudeResult(t *testing.T, tc claudeResultCase) {
 	}
 }
 
+func TestClaudeResultRecordsResolvedModel(t *testing.T) {
+	for _, tc := range []struct{ name, modelUsage, want string }{
+		{"single model", `{"claude-opus-5-5":{"inputTokens":10,"outputTokens":5}}`, "claude-opus-5-5"},
+		{"most output wins", `{"claude-haiku-5-5":{"inputTokens":900,"outputTokens":4},"claude-opus-5-5":{"inputTokens":10,"outputTokens":50}}`, "claude-opus-5-5"},
+		{"equal output, most input wins", `{"claude-haiku-5-5":{"inputTokens":9,"outputTokens":5},"claude-opus-5-5":{"inputTokens":10,"outputTokens":5}}`, "claude-opus-5-5"},
+		{"full tie, first in sort order", `{"claude-sonnet-5-5":{"inputTokens":1,"outputTokens":1},"claude-opus-5-5":{"inputTokens":1,"outputTokens":1}}`, "claude-opus-5-5"},
+		{"malformed ID", `{"bad model!":{"inputTokens":1,"outputTokens":1}}`, ""},
+		{"empty", `{}`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, _ := claudeResult([]byte(`{"type":"result","subtype":"success","modelUsage":` + tc.modelUsage + `}`))
+			if got := ai.ResolvedModel(result.ProviderData); got != tc.want {
+				t.Fatalf("resolved model %q, want %q (metadata %v)", got, tc.want, result.ProviderData)
+			}
+		})
+	}
+	// A failed session still reports the model it ran.
+	result, err := claudeResult([]byte(`{"type":"result","subtype":"success","is_error":true,"result":"API Error: 500","modelUsage":{"claude-opus-5":{"outputTokens":3}}}`))
+	if err == nil || ai.ResolvedModel(result.ProviderData) != "claude-opus-5" {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	// Without modelUsage nothing is recorded.
+	if result, _ := claudeResult([]byte(`{"type":"result","subtype":"success"}`)); result.ProviderData != nil {
+		t.Fatal(result.ProviderData)
+	}
+}
+
 type claudeExecutor struct {
 	t          *testing.T
 	configPath string

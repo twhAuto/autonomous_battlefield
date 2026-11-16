@@ -43,8 +43,8 @@ more demanding work, each with low/medium/high effort. The default is `sonnet`.
 Each Claude Code release maps the aliases to fixed model versions, so the pinned
 release decides which models battles use. Claude Code 2.1.325 maps `haiku`,
 `sonnet`, `opus` and `fable` to Claude Haiku 5.5, Sonnet 5.5, Opus 5.5 and Fable
-5.2; a newer model needs a newer release. The CLI's JSON result reports the model
-that ran. To change the models, update `backend/config.yaml`,
+5.2; a newer model needs a newer release. Decision history shows the model each
+decision ran, read from the CLI's JSON result. To change the models, update `backend/config.yaml`,
 `infra/deploy/base/infrastructure/configmap.yaml`,
 `infra/deploy/agent-vm/config.yaml`, `infra/deploy/agent-vm/managed-settings.json`,
 and `scripts/dev/run-k8s-cli-agent.sh` consistently.

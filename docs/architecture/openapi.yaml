@@ -2652,6 +2652,7 @@ components:
         provider: {type: string}
         runtime: {type: string}
         modelIdentifier: {type: string}
+        resolvedModel: {type: string, description: "Model the provider reported running, such as the full ID behind a Claude Code alias; omitted when the provider names none."}
         reasoningEffort: {type: string}
         fallbackSource: {type: string}
         errorCategory: {type: string}

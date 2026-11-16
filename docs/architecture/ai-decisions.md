@@ -535,6 +535,12 @@ Codex receives `model_reasoning_effort`, Claude CLI `--effort`, OpenAI
 `reasoning.effort`, Gemini `thinkingConfig.thinkingLevel` and the Claude API
 `output_config.effort`. The CLI model identifier is the requested identifier; aliases such as `sonnet` can resolve
 to a new provider version and are not an immutable model-version guarantee.
+Each decision therefore also records `resolvedModel` in provider metadata: the model
+the provider reports having run. Claude Code reports it in the result's `modelUsage`
+(the model with the most output when a session used several), and the OpenAI,
+Gemini and Claude APIs in each response's `model` or `modelVersion`. Codex and
+Antigravity report none; their identifiers are already exact model IDs. Decision
+history and the battle page's faction header show it beside the selection.
 
 The shipped CLI catalog offers every model the Codex subscription lists:
 `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`,

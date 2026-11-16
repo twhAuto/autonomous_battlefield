@@ -105,6 +105,15 @@ it('shows CLI aggregate usage and a trace link without inventing model calls', (
   expect(screen.queryByText('Requests (legacy)')).not.toBeInTheDocument()
 })
 
+it('shows the model the provider ran beside the selected model', () => {
+  const base: DecisionHistory = { requestId: 'r', factionId: 'a', targetTick: 10, status: 'accepted', controllerType: 'model', modelIdentifier: 'opus', usage: {}, createdAt: '' }
+  const { rerender } = render(<AIDecisionPanel decisions={[{ ...base, resolvedModel: 'claude-opus-5-5' }]} participantNames={new Map()} message="" hasModelController />)
+  expect(screen.getByText('Model').nextElementSibling).toHaveTextContent('opus')
+  expect(screen.getByText('Model run').nextElementSibling).toHaveTextContent('claude-opus-5-5')
+  rerender(<AIDecisionPanel decisions={[base]} participantNames={new Map()} message="" hasModelController />)
+  expect(screen.getByText('Model run').nextElementSibling).toHaveTextContent('Not reported')
+})
+
 it('labels API usage as summed model calls', () => {
   render(<AIDecisionPanel decisions={[{ requestId: 'r', factionId: 'a', targetTick: 10, status: 'accepted', controllerType: 'model', usage: { scope: 'api_calls', tokensReported: true, modelCalls: 3 }, createdAt: '' }]} participantNames={new Map()} message="" hasModelController />)
   expect(screen.getByText('Input total').nextElementSibling).toHaveTextContent('0')

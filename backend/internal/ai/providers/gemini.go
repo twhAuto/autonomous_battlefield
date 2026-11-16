@@ -66,8 +66,9 @@ func (p *Gemini) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	request.Header.Set("x-goog-api-key", p.APIKey)
 	request.Header.Set("Content-Type", "application/json")
 	var decoded struct {
-		Candidates []geminiCandidate `json:"candidates"`
-		Usage      *struct {
+		ModelVersion string            `json:"modelVersion"`
+		Candidates   []geminiCandidate `json:"candidates"`
+		Usage        *struct {
 			Prompt     int64  `json:"promptTokenCount"`
 			Candidates int64  `json:"candidatesTokenCount"`
 			Cached     *int64 `json:"cachedContentTokenCount"`
@@ -80,9 +81,11 @@ func (p *Gemini) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	if decoded.Usage == nil {
 		result, err := geminiResult(decoded.Candidates, 0, 0)
 		result.Usage.TokensReported = false
+		result.Model = decoded.ModelVersion
 		return result, err
 	}
 	result, err := geminiResult(decoded.Candidates, decoded.Usage.Prompt, decoded.Usage.Candidates)
+	result.Model = decoded.ModelVersion
 	result.Usage.CachedInputTokens = decoded.Usage.Cached
 	result.Usage.ReasoningOutputTokens = decoded.Usage.Thoughts
 	// Gemini candidates exclude thoughts; normalize output to include reasoning.

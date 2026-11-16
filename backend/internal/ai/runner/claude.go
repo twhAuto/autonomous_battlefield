@@ -3,8 +3,10 @@ package runner
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -18,6 +20,11 @@ type claudeUsage struct {
 	Creation *int64 `json:"cache_creation_input_tokens"`
 }
 
+type claudeModelUsage struct {
+	Input  int64 `json:"inputTokens"`
+	Output int64 `json:"outputTokens"`
+}
+
 type claudeEvent struct {
 	Type    string            `json:"type"`
 	Subtype string            `json:"subtype"`
@@ -25,6 +32,9 @@ type claudeEvent struct {
 	Result  string            `json:"result"`
 	Denials []json.RawMessage `json:"permission_denials"`
 	Usage   claudeUsage       `json:"usage"`
+	// ModelUsage is keyed by the full ID of each model the session ran, which shows
+	// what a model alias resolved to.
+	ModelUsage map[string]claudeModelUsage `json:"modelUsage"`
 }
 
 // The MCP capability lives in a private temporary file, never process arguments.
@@ -59,6 +69,7 @@ func claudeResult(output []byte) (ai.DecisionResult, error) {
 		return result, fmt.Errorf("Claude returned no terminal result")
 	}
 	applyClaudeUsage(&result.Usage, event.Usage)
+	result.RecordResolvedModel(claudeMainModel(event.ModelUsage))
 	if len(event.Denials) > 0 {
 		result.ErrorCategory = "cli_permission"
 		return result, fmt.Errorf("Claude denied a required tool action")
@@ -75,6 +86,20 @@ func claudeResult(output []byte) (ai.DecisionResult, error) {
 	}
 	result.Accepted = true
 	return result, nil
+}
+
+// claudeMainModel picks the model that produced the most output, then read the most
+// input, so a smaller model the CLI used for an internal step does not hide the
+// selected one. Ties go to the first ID in sort order.
+func claudeMainModel(usage map[string]claudeModelUsage) string {
+	main := ""
+	for _, model := range slices.Sorted(maps.Keys(usage)) {
+		current, best := usage[model], usage[main]
+		if main == "" || current.Output > best.Output || (current.Output == best.Output && current.Input > best.Input) {
+			main = model
+		}
+	}
+	return main
 }
 
 func applyClaudeUsage(result *ai.Usage, usage claudeUsage) {

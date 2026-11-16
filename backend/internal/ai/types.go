@@ -59,6 +59,8 @@ type ModelTurnResult struct {
 	Text      string
 	ToolCalls []ToolCall
 	Usage     Usage
+	// Model is the model the provider reports having run, when its response names one.
+	Model string
 	// ProviderContent is the whole turn in the provider's own format, for providers
 	// whose later requests must repeat it unchanged, such as Claude thinking blocks.
 	ProviderContent json.RawMessage

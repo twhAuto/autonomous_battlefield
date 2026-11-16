@@ -166,6 +166,7 @@ type DecisionHistory struct {
 	Provider          string     `json:"provider,omitempty"`
 	Runtime           string     `json:"runtime,omitempty"`
 	ModelIdentifier   string     `json:"modelIdentifier,omitempty"`
+	ResolvedModel     string     `json:"resolvedModel,omitempty"`
 	FallbackSource    string     `json:"fallbackSource,omitempty"`
 	ErrorCategory     string     `json:"errorCategory,omitempty"`
 	ResolvedPlan      any        `json:"resolvedPlan,omitempty"`
@@ -226,7 +227,7 @@ func (s *battleService) ListDecisionHistory(ctx context.Context, battleID string
 		if id, ok := record.ProviderMetadata["aiTraceId"].(string); ok && id == tracing.DecisionTraceID(record.ID) {
 			traceURL = tracing.DecisionTraceURL(record.ID)
 		}
-		result = append(result, DecisionHistory{ContextDelivery: ai.ContextDelivery(record.ProviderMetadata), CLIProcessStartMS: ai.MetadataMilliseconds(record.ProviderMetadata, "cliProcessStartMs"), ReasoningEffort: record.ReasoningEffort, ClaimedAt: record.ClaimedAt, ContextServedAt: record.ContextServedAt, RunnerCompletedAt: record.RunnerCompletedAt, TraceURL: traceURL, RequestID: record.ID, FactionID: record.FactionID, TargetTick: record.TargetTick, Status: record.Status, ControllerType: record.ControllerType, ProfileID: record.ProfileID, Provider: record.Provider, Runtime: record.Runtime, ModelIdentifier: record.ModelIdentifier, FallbackSource: record.FallbackSource, ErrorCategory: record.ErrorCategory, ResolvedPlan: record.ResolvedPlan, Usage: record.Usage, CreatedAt: record.CreatedAt, ResolvedAt: record.ResolvedAt})
+		result = append(result, DecisionHistory{ContextDelivery: ai.ContextDelivery(record.ProviderMetadata), CLIProcessStartMS: ai.MetadataMilliseconds(record.ProviderMetadata, "cliProcessStartMs"), ReasoningEffort: record.ReasoningEffort, ClaimedAt: record.ClaimedAt, ContextServedAt: record.ContextServedAt, RunnerCompletedAt: record.RunnerCompletedAt, TraceURL: traceURL, RequestID: record.ID, FactionID: record.FactionID, TargetTick: record.TargetTick, Status: record.Status, ControllerType: record.ControllerType, ProfileID: record.ProfileID, Provider: record.Provider, Runtime: record.Runtime, ModelIdentifier: record.ModelIdentifier, ResolvedModel: ai.ResolvedModel(record.ProviderMetadata), FallbackSource: record.FallbackSource, ErrorCategory: record.ErrorCategory, ResolvedPlan: record.ResolvedPlan, Usage: record.Usage, CreatedAt: record.CreatedAt, ResolvedAt: record.ResolvedAt})
 	}
 	return result, nil
 }
