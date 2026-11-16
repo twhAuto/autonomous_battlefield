@@ -32,7 +32,7 @@ func clientWith(status int, body string, check func(*http.Request)) *http.Client
 }
 
 func TestOpenAIParsesToolCallsAndUsage(t *testing.T) {
-	client := clientWith(http.StatusOK, `{"output":[{"type":"function_call","call_id":"call-1","name":"get_decision_context","arguments":"{\"requestId\":\"r\"}"}],"usage":{"input_tokens":12,"output_tokens":4}}`, func(request *http.Request) {
+	client := clientWith(http.StatusOK, `{"model":"gpt-6-luna-2026-10-01","output":[{"type":"function_call","call_id":"call-1","name":"get_decision_context","arguments":"{\"requestId\":\"r\"}"}],"usage":{"input_tokens":12,"output_tokens":4}}`, func(request *http.Request) {
 		var body struct {
 			Instructions string           `json:"instructions"`
 			Input        []map[string]any `json:"input"`
@@ -61,7 +61,7 @@ func TestOpenAIParsesToolCallsAndUsage(t *testing.T) {
 		}
 	})
 	result, err := (&OpenAI{APIKey: "key", Model: "model", Client: client}).NextTurn(context.Background(), providerRequest())
-	if err != nil || len(result.ToolCalls) != 1 || result.ToolCalls[0].ID != "call-1" || result.Usage.InputTokens != 12 {
+	if err != nil || len(result.ToolCalls) != 1 || result.ToolCalls[0].ID != "call-1" || result.Usage.InputTokens != 12 || result.Model != "gpt-6-luna-2026-10-01" {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }
@@ -84,11 +84,11 @@ func TestProvidersRecognizeRefusals(t *testing.T) {
 }
 
 func TestGeminiParsesToolCallsAndErrors(t *testing.T) {
-	client := clientWith(http.StatusOK, `{"candidates":[{"content":{"parts":[{"text":"working"},{"functionCall":{"name":"submit_strategy_plan","args":{"requestId":"r"}}}]}}],"usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":3}}`, func(request *http.Request) {
+	client := clientWith(http.StatusOK, `{"modelVersion":"gemini-3.8-flash-001","candidates":[{"content":{"parts":[{"text":"working"},{"functionCall":{"name":"submit_strategy_plan","args":{"requestId":"r"}}}]}}],"usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":3}}`, func(request *http.Request) {
 		checkGeminiRequest(t, request)
 	})
 	result, err := (&Gemini{APIKey: "key", Model: "model", Client: client}).NextTurn(context.Background(), providerRequest())
-	if err != nil || result.Text != "working" || len(result.ToolCalls) != 1 || result.Usage.OutputTokens != 3 {
+	if err != nil || result.Text != "working" || len(result.ToolCalls) != 1 || result.Usage.OutputTokens != 3 || result.Model != "gemini-3.8-flash-001" {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	failure := clientWith(http.StatusTooManyRequests, "no", nil)

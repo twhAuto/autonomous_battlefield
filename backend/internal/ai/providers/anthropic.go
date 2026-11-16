@@ -183,7 +183,7 @@ func anthropicTools(definitions []ai.ToolDefinition) ([]anthropic.ToolUnionParam
 }
 
 func anthropicResult(response *anthropic.Message) (ai.ModelTurnResult, error) {
-	result := ai.ModelTurnResult{Usage: anthropicUsage(response)}
+	result := ai.ModelTurnResult{Usage: anthropicUsage(response), Model: string(response.Model)}
 	if response.StopReason == anthropic.StopReasonRefusal {
 		return result, ErrRefusal
 	}

@@ -166,15 +166,19 @@ data:
           displayName: Claude subscription
           provider: claude-cli
           runtime: cli
-          model: sonnet
+          model: claude-sonnet-5-5
           modelOptions:
-            - id: haiku
+            - id: claude-haiku-5-5
+              aliases: [haiku]
               reasoningEfforts: [low, medium, high]
-            - id: sonnet
+            - id: claude-sonnet-5-5
+              aliases: [sonnet]
               reasoningEfforts: [low, medium, high]
-            - id: opus
+            - id: claude-opus-5-5
+              aliases: [opus]
               reasoningEfforts: [low, medium, high]
-            - id: fable
+            - id: claude-fable-5-2
+              aliases: [fable]
               reasoningEfforts: [low, medium, high]
           scope: local
           supportedVersionPrefix: "2.1.325 "
@@ -198,7 +202,7 @@ data:
             - id: gemini-3.8-flash-medium
             - id: gemini-3.8-flash-high
           availabilityEnvironmentVariable: GEMINI_CLI_PROFILE_AVAILABLE
-          supportedVersionPrefix: 1.2.
+          supportedVersionPrefix: 1.5.
           scope: local
           maxSteps: 3
           enabled: true

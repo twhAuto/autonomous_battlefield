@@ -47,7 +47,8 @@ set_profile_flags false false false
         result = self.run_profile('claude', 'claude')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('provider: claude-cli', result.stdout)
-        self.assertIn('model: sonnet', result.stdout)
+        self.assertIn('model: claude-sonnet-5-5', result.stdout)
+        self.assertIn('aliases: [sonnet]', result.stdout)
         self.assertNotIn('provider: codex-cli', result.stdout)
         self.assertIn('"CLAUDE_CLI_PROFILE_AVAILABLE":"true"', result.stderr)
         self.assertIn('"CLAUDE_CLI_PROFILE_AVAILABLE":"false"', result.stderr)
@@ -132,13 +133,13 @@ set_profile_flags false false false
             ('codex', 'codex-cli 0.159', False),
             ('codex', 'codex-cli 0.9999999999999999999.0', False),
             ('codex', 'other-cli 0.159.2', False),
-            ('agy', '1.2.0', True),
-            ('agy', '1.4.5', True),
+            ('agy', '1.5.0', True),
+            ('agy', '1.5.9', True),
             ('agy', '1.10.0', True),
             ('agy', '2.0.0', True),
-            ('agy', '1.1.99', False),
-            ('agy', '1.4.5-dev', False),
-            ('agy', '1.4.5\nunexpected output', False),
+            ('agy', '1.4.99', False),
+            ('agy', '1.5.9-dev', False),
+            ('agy', '1.5.9\nunexpected output', False),
             ('claude', '2.1.325 (Claude Code)', True),
             ('claude', '2.1.400 (Claude Code)', True),
             ('claude', '2.2.0 (Claude Code)', True),
@@ -174,7 +175,7 @@ printf '%s' "${{{name}_version_prefix}}"
 
     def test_newer_versions_reach_config_and_still_require_authentication(self):
         with tempfile.TemporaryDirectory() as runtime:
-            versions = {'codex': 'codex-cli 0.159.2', 'agy': '1.4.5', 'claude': '2.1.400 (Claude Code)'}
+            versions = {'codex': 'codex-cli 0.159.2', 'agy': '1.6.0', 'claude': '2.1.400 (Claude Code)'}
             for binary, version in versions.items():
                 fake = Path(runtime, binary)
                 fake.write_text(f'#!/usr/bin/env bash\necho "{version}"\n')

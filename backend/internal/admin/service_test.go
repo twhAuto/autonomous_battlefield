@@ -113,3 +113,15 @@ func TestPlayerCLIAccessGrantAndRevocation(t *testing.T) {
 		t.Fatal(defaults)
 	}
 }
+
+func TestStoredRulesUnderAnAliasMoveToTheirOption(t *testing.T) {
+	p := ai.ModelProfile{ModelOptions: []ai.ModelOption{{ID: "claude-fable-5-2", Aliases: []string{"fable"}}, {ID: "claude-sonnet-5-5"}}}
+	models := configuredModels(p, map[string]profile.ModelAccess{"fable": {AllowedRoles: []string{"admin"}}, "retired": {AllowedRoles: []string{"player"}}})
+	if len(models) != 1 || len(models["claude-fable-5-2"].AllowedRoles) != 1 || models["claude-fable-5-2"].AllowedRoles[0] != "admin" {
+		t.Fatalf("models=%+v", models)
+	}
+	// What the administrator then saves validates under the option's ID.
+	if !validModels(p, profile.Access{AllowedRoles: []string{"admin"}, Models: models}) {
+		t.Fatal("moved rule does not validate")
+	}
+}

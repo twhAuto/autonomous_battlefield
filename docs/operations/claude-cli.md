@@ -1,7 +1,7 @@
 # Claude subscription CLI
 
 The `claude-subscription-local` profile runs the `claude-cli` provider on the host,
-using Claude Code **2.1.325** and the **sonnet** model alias.
+using Claude Code **2.1.325** and the **claude-sonnet-5-5** model.
 It is selectable through
 the same model catalog as Codex and Antigravity, with existing role restrictions.
 
@@ -37,23 +37,29 @@ Host managed policies can still make tools unavailable; permission denials fail
 execution rather than being bypassed. The worker requires a validated MCP
 submission, not merely a successful CLI exit or a textual plan.
 
-Battle setup also offers `haiku` for lighter workloads, and `opus` and `fable` for
-more demanding work, each with low/medium/high effort. The default is `sonnet`.
+Battle setup also offers `claude-haiku-5-5` for lighter workloads, and
+`claude-opus-5-5` and `claude-fable-5-2` for more demanding work, each with
+low/medium/high effort. The default is `claude-sonnet-5-5`.
 
-Each Claude Code release maps the aliases to fixed model versions, so the pinned
-release decides which models battles use. Claude Code 2.1.325 maps `haiku`,
-`sonnet`, `opus` and `fable` to Claude Haiku 5.5, Sonnet 5.5, Opus 5.5 and Fable
-5.2; a newer model needs a newer release. The CLI's JSON result reports the model
-that ran. To change the models, update `backend/config.yaml`,
+The options are full model IDs, so a selection names the model version it runs and
+setup, standings and faction headers show it. Claude Code's aliases (`haiku`,
+`sonnet`, `opus`, `fable`) instead resolve to whatever models the installed release
+maps them to; each option lists its alias, which
+[still selects it](../architecture/api.md#model-and-effort-selection). A release
+accepts only the model IDs it knows, so a newer model needs a newer release; Claude
+Code 2.1.325 knows all four. Decision history shows the model each decision ran, read from the
+CLI's JSON result. To change the models, update `backend/config.yaml`,
 `infra/deploy/base/infrastructure/configmap.yaml`,
 `infra/deploy/agent-vm/config.yaml`, `infra/deploy/agent-vm/managed-settings.json`,
 and `scripts/dev/run-k8s-cli-agent.sh` consistently.
 
 To upgrade the CLI, install the new release beside the old one, run the synthetic
 live check below and one battle decision through the dev launcher, then update the
-version pin in those same files. `claude install <version>` keeps earlier releases
-in `~/.local/share/claude/versions/`; to roll back, point `~/.local/bin/claude` at
-the earlier release.
+version pin in those same files and the Claude Code release in
+`infra/deploy/agent-vm/cli-releases.json`, which the CLI worker job
+[installs on the VM](cli-worker.md#cli-updates). `claude install <version>` keeps
+earlier releases in `~/.local/share/claude/versions/`; to roll back, point
+`~/.local/bin/claude` at the earlier release.
 
 A synthetic live check uses the existing subscription and makes model requests:
 

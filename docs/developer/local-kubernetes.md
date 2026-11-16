@@ -83,7 +83,7 @@ The helper supports `auto`, `codex`, `antigravity`, `claude`, `both` and `all`
 (`gemini` is a compatibility alias). `both` means Codex plus Antigravity, and
 `all` requires all three CLIs. `auto` selects every available authenticated CLI.
 Local CLIs allow the selected stable version or newer: Codex `0.159.0+`,
-Antigravity `1.2.0+` and Claude `2.1.325+`. A saved login is required.
+Antigravity `1.5.0+` and Claude `2.1.325+`. A saved login is required.
 Name a CLI explicitly to see why it was rejected.
 
 The host agent runs `HOST_AGENT_CONCURRENCY` decision slots (default `8`, range
@@ -110,7 +110,7 @@ restarts the agent once; it exits if the agent serves none of the selected CLIs.
 No CLI login directory or provider credential is mounted into the cluster. Keep it
 running for the whole battle and press Ctrl+C afterwards. The generated host
 profile passes `--model gpt-5.6-luna` to Codex, `--model gemini-3.8-flash-medium`
-to Antigravity and `--model sonnet` to Claude, matching the profiles deployed to
+to Antigravity and `--model claude-sonnet-5-5` to Claude, matching the profiles deployed to
 the API. Install and sign in with [Claude setup](../operations/claude-cli.md) and
 [Antigravity setup](../operations/antigravity-cli.md). Do not reuse these
 credentials outside the disposable local cluster.

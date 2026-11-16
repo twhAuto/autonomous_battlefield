@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import type { BattleParticipant, BattleRun, DecisionHistory } from '../api/battles'
-import { factionColors, modelLabel, unknownFactionColor } from '../presentation/factions'
+import { factionColors, lastResolvedModel, modelLabel, unknownFactionColor } from '../presentation/factions'
 import { latestDecision } from './AIDecisionPanel'
 import { ProductionChips } from './BuildingProduction'
 import { playerStatus } from './PlayerStatusPanel'
@@ -50,7 +50,7 @@ export function FactionSummaries({ battle, decisions, decisionMessage }: Readonl
         && (decision.status === 'accepted' || decision.status === 'fallback') && decision.resolvedPlan)
       const label = activity(battle, participant, decisions, decisionMessage)
       const force = forces(battle, status)
-      const model = modelLabel(participant)
+      const model = modelLabel(participant, lastResolvedModel(decisions, participant.id))
       const planName = applied?.resolvedPlan?.name || (decisionMessage ? 'Plan unavailable' : 'No plan applied yet')
       const planLabel = applied?.status === 'fallback' ? 'Plan · fallback' : 'Plan'
       const activityClass = `faction-summary__activity${label === 'Deciding' || label === 'Queued' ? ' faction-summary__activity--active' : ''}`

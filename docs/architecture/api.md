@@ -527,18 +527,22 @@ emit `unit_repaired` events and use support-action target markers.
 
 `GET /v1/model-profiles` includes `modelOptions` for each listed profile, limited to
 the models the caller's role may use. Each option contains `id`, `reasoningEfforts`,
-and an optional `defaultReasoningEffort`. An absent option list means only the
+an optional `defaultReasoningEffort`, and optional `aliases`. An absent option list means only the
 configured model is selectable. `POST /v1/battles` accepts optional `modelIdentifier`
 and `reasoningEffort` in each model controller. Unsupported combinations return 422;
 scripted controllers reject these model fields. The
 [model access](#model-access-administration) role checks for the profile and the
 model still apply.
-The selection is frozen for execution and retry matching. Provider aliases remain
-aliases, rather than promises of a specific underlying version.
+The selection is frozen for execution and retry matching. A `modelIdentifier` that
+names one of an option's `aliases` selects that option, and the frozen selection
+records the option's `id`; model access rules saved under an alias apply to the
+option too.
 
 Decision history includes `reasoningEffort`, `claimedAt`, `contextServedAt`,
-`runnerCompletedAt`, and optional `cliProcessStartMs`. Absent timestamps mean
-unknown. `createdAt` to
+`runnerCompletedAt`, optional `cliProcessStartMs`, and optional `resolvedModel`, the
+model the provider reported running (see
+[model selection](ai-decisions.md#model-selection-and-latency)); it is absent when
+the provider names none. Absent timestamps mean unknown. `createdAt` to
 `resolvedAt` measures total wait until acceptance/fallback/failure, not subprocess
 shutdown. Reclaimed jobs report the latest claim while preserving total wait.
 Internal agent claims require `selectionVersion: 1`; incompatible workers receive
