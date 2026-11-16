@@ -166,6 +166,13 @@ ai:
       runtime: cli
       model: gemini-3.8-flash-medium
       modelOptions:
+        - id: gemini-4-argon-low
+        - id: gemini-4-argon-medium
+        - id: gemini-4-argon-high
+        - id: gemini-4-hydrogen-low
+        - id: gemini-4-hydrogen-medium
+        - id: gemini-4-hydrogen-high
+        - id: gemini-4-hydrogen-xhigh
         - id: gemini-3.8-flash-low
         - id: gemini-3.8-flash-medium
         - id: gemini-3.8-flash-high
