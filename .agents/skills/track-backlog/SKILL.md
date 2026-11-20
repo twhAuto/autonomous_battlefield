@@ -5,7 +5,7 @@ description: Audit, reconcile, prioritize, select, create, split, or refine Auto
 
 # Track backlog work
 
-1. Use Notion MCP. Start with the [project](https://app.notion.com/p/3c1b7a19f8f780aea86efbe505e504a7) and [backlog database](https://app.notion.com/p/5198cc5bdacf44e08a7393a5040e2e3e); fetch the live data source schema and relevant views before changing properties. Tickets are cited as `AB-<Issue ID>`. Never assume cached field names, counts, or ticket states remain current. Notion is the source of truth for status; do not copy the backlog into `README.md`. If Notion MCP is unavailable, continue safe repository work and report that statuses could not be synchronized.
+1. Use Notion MCP. Start with the **Autonomous Battlefield** project page and its **Autonomous Battlefield Backlog** database, found by those exact titles with Notion search; fetch the live data source schema and relevant views before changing properties. Tickets are cited as `AB-<Issue ID>`. Never assume cached field names, counts, or ticket states remain current. Notion is the source of truth for status; do not copy the backlog into `README.md`. If Notion MCP is unavailable, continue safe repository work and report that statuses could not be synchronized.
 2. Read each relevant ticket's Acceptance Criteria, Depends On, body, comments, and related decision records. Choose new work from the **To Do** view (P0 first, then lower Issue ID) unless the user names a ticket. Search for an existing ticket, branch, or PR before duplicating work. Verify code-related claims against the current repository revision; a historical successful build is not evidence for a newer head. Treat inaccessible live systems as unknown.
 3. Use the live Status options, with this intended workflow:
 

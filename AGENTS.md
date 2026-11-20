@@ -18,11 +18,11 @@
 
 ## Project tracking
 
-Notion is the source of truth for task status:
-[project](https://app.notion.com/p/3c1b7a19f8f780aea86efbe505e504a7) and
-[backlog](https://app.notion.com/p/5198cc5bdacf44e08a7393a5040e2e3e). Do not copy
-the backlog into `README.md`. If Notion MCP is unavailable, continue safe repository
-work and report that statuses could not be synchronized.
+Notion is the source of truth for task status. The workspace is private: find the
+**Autonomous Battlefield** project page and its **Autonomous Battlefield Backlog**
+database by those exact titles with Notion search. Do not copy the backlog into
+`README.md`. If Notion MCP is unavailable, continue safe repository work and report
+that statuses could not be synchronized.
 
 Every repository change by any agent (Claude, Codex, or another) must be linked to
 a Notion ticket. Before the first edit, follow the

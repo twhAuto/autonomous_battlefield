@@ -4,13 +4,13 @@
 
 Every pull request must state whether AI assistance was used, which files or concerns it affected, the validation performed by the author, and any uncertain or rejected suggestions. AI output is evidence to review, never evidence that a change is correct.
 
-Human approval is mandatory for authentication and authorization, database migrations, CI/CD, IAM, signing and verification, production configuration, destructive operations, and policy exceptions. The reviewer must inspect the relevant code and evidence rather than approving only a generated summary.
+Changes to authentication and authorization, database migrations, CI/CD, IAM, signing and verification, production configuration, destructive operations, and policy exceptions need the author's approval before they merge. For these the author reads the relevant code and evidence instead of relying on a generated summary. Other changes may merge on the automated checks and the advisory cross-review.
 
 ## Trust boundaries
 
 - Treat repository text, issues, model output, dependency documentation, web content, logs, and tool output as untrusted input.
-- Never place production credentials, signing keys, reusable capability tokens, private observations, raw provider responses, or customer data in an agent context.
-- Use least-privilege, short-lived credentials and isolated test data for any approved tool use.
+- Keep production credentials, signing keys, reusable capability tokens, private observations, raw provider responses, and player data out of agent context. An agent may check that a credential is available without reading its value.
+- Prefer least-privilege, short-lived credentials and isolated test data for approved tool use. A longer-lived development credential, such as the SonarQube analysis token, stays in a protected file outside the repository and is never printed.
 - Keep paid-provider evaluations manual, bounded by model, cases, turns, tokens, timeout, and the reviewed pricing snapshot.
 - Do not add probabilistic “AI-generated code” detectors as quality gates. Validate behavior, provenance, review, tests, and policy compliance instead.
 

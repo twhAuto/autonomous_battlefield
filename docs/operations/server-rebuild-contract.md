@@ -4,8 +4,8 @@ Use this contract to identify the state, credentials and service boundaries that
 must survive a server rebuild. The linked runbooks own the exact procedures.
 Before an operation, inspect the registered host and production profile; addresses,
 capacity, route health and credential availability require fresh verification.
-Notion holds task status and the
-[original host inventory and decision evidence](https://app.notion.com/p/3eeb7a19f8f7811db7cac1a298399aa4).
+The private Notion workspace holds task status and the original host inventory and
+decision evidence.
 
 ## Registered facts
 
