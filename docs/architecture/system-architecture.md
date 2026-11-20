@@ -235,22 +235,19 @@ sequenceDiagram
     participant API as API
     participant DB as PostgreSQL
     participant Engine as Battle engine
-    participant Match as Game library<br/>(in-process in API and engine)
 
     User->>UI: Select factions and controllers
     UI->>API: POST /v1/battles
     API->>API: Validate IDs, profiles, and tick limit
     API->>API: Resolve ruleset + scenario + faction snapshots
-    API->>Match: game.NewMatch (in-process)
-    Match-->>API: Validated initial state
-    API->>DB: Insert queued battle_run
+    API->>API: Build the initial state in memory (game.NewMatch)
+    API->>DB: Insert queued battle_run with scenario + initial state
     API-->>UI: 202 Accepted
     Engine->>DB: Claim with FOR UPDATE SKIP LOCKED
     DB-->>Engine: Scenario snapshot + lease attempt
-    Engine->>Match: game.NewMatch from snapshot
+    Engine->>Engine: Rebuild the match from the snapshot (game.NewMatch)
     loop Each tick
-        Engine->>Match: Advance or AdvanceWithPlans
-        Match-->>Engine: State transition + events
+        Engine->>Engine: Compute the next state and events (Advance or AdvanceWithPlans)
         Engine->>DB: Save state/events (and window checkpoint), heartbeat lease
     end
     Engine->>DB: Atomically store result and final events
@@ -259,9 +256,12 @@ sequenceDiagram
     API-->>UI: Current presentation data
 ```
 
-The game library is the deterministic `internal/game` package compiled into the
-API and engine binaries, not a separate service. The API builds the match once to
-validate the request and store its initial state; only the engine advances it.
+A step that names a `game` function is a call into the
+[pure game library](#41-models-propose-the-engine-decides), `internal/game`, which
+is compiled into the API and engine binaries. The call runs in memory inside the
+process shown, and that process stores what it returns. The API builds the match
+once to validate the request and take its initial state; only the engine advances
+it.
 
 Battle execution is asynchronous from the creation request. Each battle stores a
 complete resolved scenario and initial state, so later edits to factions or catalog
@@ -279,7 +279,6 @@ so on; a per-battle override changes that interval in the frozen scenario.
 ```mermaid
 sequenceDiagram
     participant Engine as Battle engine
-    participant Match as Game library<br/>(in-process in API and engine)
     participant DB as PostgreSQL
     participant Gateway as AI gateway
     participant Agent as Agent + runner
@@ -290,9 +289,8 @@ sequenceDiagram
     Gateway->>DB: Claim query finds nothing, so the request is held
 
     Note over Engine,DB: 1. Engine opens the window
-    Engine->>Match: DecisionSnapshot(faction)
-    Match-->>Engine: Visible view + economy + legal choices
-    Engine->>DB: INSERT pending row + pg_notify, in one statement
+    Engine->>Engine: Project each faction's view, economy and legal choices (DecisionSnapshot)
+    Engine->>DB: INSERT pending row with the frozen observation + pg_notify, in one statement
     DB-->>Gateway: Notification after commit (no data, only "look now")
 
     Note over DB,Agent: 2. Gateway claims the row for the waiting agent
@@ -324,7 +322,7 @@ sequenceDiagram
         Engine->>DB: Count unresolved rows in the window + heartbeat lease
     end
     Engine->>DB: Read the window, write a fallback for unresolved rows
-    Engine->>Match: AdvanceWithPlans(resolved plans)
+    Engine->>Engine: Apply the resolved plans to the match (AdvanceWithPlans)
 ```
 
 How the plan travels:
