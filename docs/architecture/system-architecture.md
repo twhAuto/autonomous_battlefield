@@ -798,8 +798,8 @@ API selection reads the durable policy with a bounded timeout, so replicas and
 restarts share settings; read failures make models unavailable. The policy can
 restrict access but cannot activate missing credentials or deployment-disabled
 runtimes. Role overrides supersede configured `allowedRoles`; an explicit empty role
-list denies everyone. Players can select API or CLI profiles only when explicitly
-included in the profile's allowed roles; default roles are Admin and Tester.
+list denies everyone. Players can select a profile only when explicitly included in
+its allowed roles; default roles are Admin and Tester.
 Disables apply to new battle selection and background-generation admission; already
 accepted jobs and frozen controller snapshots continue unchanged. This is not an
 emergency stop.

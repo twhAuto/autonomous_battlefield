@@ -149,8 +149,7 @@ apply at once. Without managed Players, every role comes from configuration.
 - Editing or deleting factions and stopping, pausing or resuming battles require
   ownership or Admin. Rows created before ownership existed belong to
   `legacy-admin`, which only Admin can manage. Owners never come from client JSON.
-- Testers can inspect diagnostics and use enabled CLI profiles; the role grants
-  no host or deployment access.
+- Testers can inspect diagnostics; the role grants no host or deployment access.
 - Players receive gameplay-only responses; the
   [API roles](../architecture/api.md#roles-and-ownership) list what they can read.
 - [Guests](#guest-access), when a guest Access application is configured, receive
@@ -216,9 +215,9 @@ Provider switches preserve individual profile choices. A profile still needs
 deployment configuration, credentials and a working runtime; adding a model variant
 is a deployment configuration task.
 
-- Players see only available profiles explicitly allowed for Players. CLI profiles
-  are off for Players by default; check **Player** on the profile and save to
-  grant it. An empty role selection grants access to nobody.
+- Players see only available profiles explicitly allowed for Players; check
+  **Player** on the profile and save to grant it. An empty role selection grants
+  access to nobody.
 - **Allowed roles per model** limits each model option of a profile to some of the
   profile's roles, for example Opus for Testers only and Haiku for Players too.
   A role cleared on the profile is cleared from its models on save.

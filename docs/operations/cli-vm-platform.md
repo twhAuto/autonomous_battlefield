@@ -11,7 +11,7 @@ and the [pinned libvirt 0.9.9 provider](https://github.com/dmacvicar/terraform-p
 has no network-filter resource.
 Ansible therefore owns this VM's create-once/adoption boundary directly. Neither
 application delivery nor ordinary host bootstrap invokes this workflow. Worker
-release updates, subscription login and Player enablement remain separate.
+release updates, subscription login and enabling CLI profiles remain separate.
 
 ## Prerequisites
 

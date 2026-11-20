@@ -62,7 +62,7 @@ can manage.
 Selecting a model controller, for a battle or for background generation, requires
 an enabled, verified profile and a role the
 [model access policy](#model-access-administration) allows for both the profile and
-the model. Players need explicit approval for each API and CLI profile.
+the model. Players need explicit approval for each profile.
 
 ### Display names
 
