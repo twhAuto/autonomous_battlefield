@@ -283,17 +283,55 @@ def check_pr(metadata, state):
 
 
 
+def gh_login(repo):
+    # GraphQL names the caller for user tokens and GitHub App installation
+    # tokens alike; REST /user refuses an installation token.
+    return gh(repo, "api", "graphql", "-f", "query={viewer{login}}", "--jq", ".data.viewer.login").strip()
+
+
+def trusted_commenters(repo):
+    """Return a predicate for comments that may steer a review.
+
+    Anyone can comment on a public PR, so a marker alone proves nothing. Trusted
+    authors are people with a repository role, the repository owner's own GitHub
+    App acting as itself, and the account running this script.
+    """
+    cache = {}
+
+    def once(name, fetch):
+        if name not in cache:
+            cache[name] = fetch()
+        return cache[name]
+
+    def trusted(comment):
+        if comment.get("author_association") in ("OWNER", "MEMBER", "COLLABORATOR"):
+            return True
+        user = comment.get("user") or {}
+        app_owner = ((comment.get("performed_via_github_app") or {}).get("owner") or {}).get("login", "")
+        if user.get("type") == "Bot" and app_owner:
+            owner = once("owner", lambda: gh(repo, "repo", "view", "--json", "owner", "--jq", ".owner.login").strip())
+            if owner and app_owner.lower() == owner.lower():
+                return True
+        login = user.get("login", "")
+        return bool(login) and login == once("viewer", lambda: gh_login(repo))
+
+    return trusted
+
+
 def pr_discussion(repo, number):
     # One JSON object per line works with gh versions predating --slurp.
     raw = gh(repo, "api", "--paginate", "--jq", ".[] | @json",
              f"repos/{{owner}}/{{repo}}/issues/{number}/comments")
     comments = [json.loads(line) for line in raw.splitlines() if line.strip()]
-    # Only the review exchange, not unrelated CI output. A marker identifies
-    # context, not a trusted instruction source or authenticated model identity.
+    trusted = trusted_commenters(repo)
+    # Only the review exchange from trusted authors, not unrelated CI output or
+    # a stranger's copied marker. A marker identifies context, not a trusted
+    # instruction source or authenticated model identity.
     return [{"id": c["id"], "url": c["html_url"], "body": c.get("body", ""),
              "user_login": (c.get("user") or {}).get("login", "")}
             for c in comments if any(marker in c.get("body", "") for marker in
-                ("<!-- battlefield-cross-review:", "<!-- battlefield-author-response:"))]
+                ("<!-- battlefield-cross-review:", "<!-- battlefield-author-response:"))
+            and trusted(c)]
 
 
 def discussion_digest(comments):
@@ -354,7 +392,7 @@ def publish(repo, number, output, metadata):
     comments = pr_discussion(repo, number)
     matching = [c for c in comments if c["body"].strip() == body.strip()]
     if matching:
-        publisher = gh(repo, "api", "user", "--jq", ".login").strip()
+        publisher = gh_login(repo)
         if publisher and any(c.get("user_login") == publisher for c in matching):
             metadata.update(publication_status="already_posted", pr_url=state["url"])
             return
