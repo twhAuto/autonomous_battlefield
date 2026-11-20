@@ -203,7 +203,7 @@ separate and retain their evidence privately:
 - **Complete reconstruction:** require clean-install, repeat-apply and reboot
   evidence for the required workflows plus verified application delivery and
   restored data/credentials. Worker release updates, monitoring lifecycle and
-  Player CLI enablement require their own verification; a server rebuild does
+  CLI profile enablement require their own verification; a server rebuild does
   not establish them automatically.
 
 Recovery remains constrained by the surviving state and credentials above.
