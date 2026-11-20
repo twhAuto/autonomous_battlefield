@@ -112,7 +112,7 @@ class PolicyTests(unittest.TestCase):
 
     def test_unsafe_or_unknown_directives_never_accepted(self):
         for text in (caddyfile() + '\nimport /private/*', caddyfile().replace('tls internal', 'tls /private/cert /private/key'),
-                     caddyfile().replace('127.0.0.1', '192.168.1.126'), caddyfile() + caddyfile(),
+                     caddyfile().replace('127.0.0.1', '192.0.2.10'), caddyfile() + caddyfile(),
                      caddyfile().replace('battlefield.localhost', 'foreign.localhost'),
                      caddyfile() + "{{ lookup('pipe', 'touch /tmp/never') }}"):
             with self.subTest(text=text[:30]), self.assertRaises(ValueError): runtime.routes(text)
