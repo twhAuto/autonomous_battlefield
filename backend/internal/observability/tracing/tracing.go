@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/redact"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/redact"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -24,7 +24,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const instrumentationName = "github.com/twh09/autonomous_battlefield/backend"
+const instrumentationName = "github.com/twhAuto/autonomous_battlefield/backend"
 
 // Configure installs the trace propagator and, when an OTLP endpoint is set, an
 // exporting tracer provider for service. The returned function flushes and stops it.

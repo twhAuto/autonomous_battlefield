@@ -128,7 +128,7 @@ reload changes only this table and preserves the running K3s service.
 It does not edit the host firewall, Docker networks or the existing CLI VM.
 The validation gateway is private and has no public DNS/tunnel route. Application
 delivery owns the CLI/AI gateway route through the intended private bridge; verify that
-route before enabling CLI execution on K3s. Player CLI access requires the separate
+route before enabling CLI execution on K3s. Advertising CLI profiles requires the separate
 [isolation and accepted-plan checks](cli-worker-verification.md#verify-before-advertising-availability).
 
 [`pins.json`](../../infra/k3s/pins.json) pins and checksums K3s, Envoy Gateway's

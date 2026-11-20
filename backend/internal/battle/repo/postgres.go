@@ -4,7 +4,7 @@
 package repo
 
 import (
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 type Postgres struct {

@@ -16,9 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/metrics"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"

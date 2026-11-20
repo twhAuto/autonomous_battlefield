@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/capability"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/runner"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
 )
 
 // Explicit opt-in: uses the local subscription login and synthetic data only.

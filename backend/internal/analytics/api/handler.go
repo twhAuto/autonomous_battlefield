@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"time"
 
-	analyticsservice "github.com/twh09/autonomous_battlefield/backend/internal/analytics/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
+	analyticsservice "github.com/twhAuto/autonomous_battlefield/backend/internal/analytics/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/apierror"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/httpapi"
 )
 
 type Handler struct {

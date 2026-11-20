@@ -4,8 +4,8 @@ import (
 	"context"
 	"slices"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
 )
 
 // AccessPolicy restricts new selections; deployment configuration still determines

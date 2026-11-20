@@ -15,11 +15,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
-	"github.com/twh09/autonomous_battlefield/backend/internal/league"
-	leagueservice "github.com/twh09/autonomous_battlefield/backend/internal/league/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/faction"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/league"
+	leagueservice "github.com/twhAuto/autonomous_battlefield/backend/internal/league/service"
 )
 
 const testLeagueID = "9d7a1d2c-6c43-4cf8-9a6e-0c5a1f3b2e10"

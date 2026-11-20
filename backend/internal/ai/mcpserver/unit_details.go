@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/agentview"
 )
 
 type unitDetailsInput struct {

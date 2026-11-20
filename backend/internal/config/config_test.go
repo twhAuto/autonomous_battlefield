@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
 	"go.yaml.in/yaml/v3"
 )
 

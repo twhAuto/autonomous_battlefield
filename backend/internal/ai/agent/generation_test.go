@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/capability"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/profile"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/prompts"
 )
 
 func TestGenerationWorkerScopesSessionAndReportsOutcomes(t *testing.T) {

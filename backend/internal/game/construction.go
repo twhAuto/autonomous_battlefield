@@ -1,6 +1,6 @@
 package game
 
-import "github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+import "github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 
 const DefaultBuildRange = 3
 const GoldDepositIncomeBonus int64 = 5

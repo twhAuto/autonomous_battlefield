@@ -9,7 +9,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
 )
 
 // GetReplayFrame returns the attempt's latest checkpoint at or before tick, or

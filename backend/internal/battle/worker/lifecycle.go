@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/battle/queue"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/metrics"
 )
 
 func (w *Worker) Ready() bool { return w.ready.Load() && !w.shuttingDown.Load() }

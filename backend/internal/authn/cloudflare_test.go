@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/apierror"
 )
 
 type roundTrip func(*http.Request) (*http.Response, error)

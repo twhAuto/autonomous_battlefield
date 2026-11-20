@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/config"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/config"
 )
 
 func TestRunRejectsInvalidDatabaseConnection(t *testing.T) {

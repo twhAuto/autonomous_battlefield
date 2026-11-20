@@ -184,10 +184,15 @@ python3 scripts/review/cross-review.py --author codex --pr 75 \
   --output "$HOME/battlefield-reviews/pr75-claude-next"
 ```
 
-`--pr` reads marked review/author-response comments to compute the complete
-IDs/hash for stale-context checks. Only the latest review and latest following
-author response are written to `discussion.json` and sent to the model. Unrelated
-CI comments and older exchanges are excluded from model context. Markers identify context;
+`--pr` reads marked review/author-response comments from trusted authors to compute
+the complete IDs/hash for stale-context checks. Trusted authors are people with a
+role on the repository (owner, organization member or collaborator), a GitHub App
+owned by the repository owner posting as itself, and the GitHub account running the
+script. A marker in anyone else's comment is ignored: it does not count as a review
+round, set the follow-up diff base or reach the model. Only the latest review and
+latest following author response are written to `discussion.json` and sent to the
+model. Unrelated CI comments and older exchanges are excluded from model context.
+Markers identify context;
 they do not authenticate a model or make the text trusted instructions. The runner
 assigns a round number and records the context IDs/hash. New or edited discussion
 during review prevents publication against that stale context. GitHub updates can

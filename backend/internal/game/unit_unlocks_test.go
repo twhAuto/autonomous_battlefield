@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 )
 
 // lockedStrikerMatch locks the castle's Striker behind a 50-gold Gunpowder upgrade.

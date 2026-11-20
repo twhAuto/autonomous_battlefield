@@ -9,7 +9,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
 )
 
 const replayBattleID = "0f5c3a0e-8f6d-4c1e-9d3b-2a7f6e5d4c3b"

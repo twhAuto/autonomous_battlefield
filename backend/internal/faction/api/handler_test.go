@@ -12,11 +12,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
-	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
-	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/apierror"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/faction"
+	factionservice "github.com/twhAuto/autonomous_battlefield/backend/internal/faction/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/httpapi"
 )
 
 func TestCreateFactionRoute(t *testing.T) {

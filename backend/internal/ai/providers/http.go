@@ -11,8 +11,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 // toolArguments returns a call's arguments as JSON, defaulting to an empty object.

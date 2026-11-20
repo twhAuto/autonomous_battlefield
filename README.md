@@ -108,11 +108,13 @@ Start with the [documentation index](docs/README.md) for the full guide catalogu
 | Author game content or compare controllers | [Content authoring](docs/developer/content-library.md), [AI comparisons](docs/developer/ai-comparisons.md) |
 | Deploy, operate or recover an environment | [Deployment and environment setup](docs/operations/deployment.md) |
 
-## Contributing and checks
+## Development workflow
 
 Work branches and pull requests target `dev`; promotion to `main` is a separate
 release action. See [contributor CI](docs/developer/ci.md) for the checks and
 [AI development policy](docs/developer/ai-development-policy.md) for assisted changes.
+The project does not accept outside contributions, and Jenkins builds only pull
+requests from branches of this repository.
 
 ```bash
 ./scripts/ci/lint-go.sh
@@ -134,13 +136,13 @@ criteria in a private Notion backlog; the `AB-NN` IDs in branch names, commit
 subjects and pull-request titles refer to those tickets, so their links are not
 publicly viewable. Agents follow [AGENTS.md](AGENTS.md) and the repository
 [skills](.agents/skills/). Each substantive pull request gets one advisory review
-from the other agent ([cross-review](docs/developer/cross-review.md)) and must pass
-the Jenkins pipeline before the author merges it. The
+from the other agent ([cross-review](docs/developer/cross-review.md)) and runs
+through the Jenkins pipeline before it merges; the author normally does the merge. The
 [AI-assisted development policy](docs/developer/ai-development-policy.md) sets what
-each pull request records and which changes need human approval.
+each pull request records and which changes the author approves personally.
 
-## License
+## License and security
 
 Copyright © 2026 Tan Wei Hao. All rights reserved. The source is shared for
-portfolio and learning purposes; no license is granted to copy, modify or
-distribute it.
+portfolio and learning purposes under the terms in [LICENSE](LICENSE). To report a
+vulnerability, follow the [security policy](SECURITY.md).

@@ -12,8 +12,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
-	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/faction"
+	factionservice "github.com/twhAuto/autonomous_battlefield/backend/internal/faction/service"
 )
 
 func TestGetFaction(t *testing.T) {

@@ -13,9 +13,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
+	battle "github.com/twhAuto/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 func TestBattleHistoryAgainstPostgres(t *testing.T) {

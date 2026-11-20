@@ -6,7 +6,7 @@ package queue
 import (
 	"errors"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
 )
 
 var (

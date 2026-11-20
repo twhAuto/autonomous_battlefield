@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/generation"
 )
 
 // insertBattle queues a minimal battle owned by owner; the admission triggers apply.

@@ -7,8 +7,8 @@ package api
 import (
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/league"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/league"
 )
 
 type leagueJSON struct {

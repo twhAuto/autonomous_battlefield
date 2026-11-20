@@ -4,8 +4,8 @@ Use this contract to identify the state, credentials and service boundaries that
 must survive a server rebuild. The linked runbooks own the exact procedures.
 Before an operation, inspect the registered host and production profile; addresses,
 capacity, route health and credential availability require fresh verification.
-Notion holds task status and the
-[original host inventory and decision evidence](https://app.notion.com/p/3eeb7a19f8f7811db7cac1a298399aa4).
+The private Notion workspace holds task status and the original host inventory and
+decision evidence.
 
 ## Registered facts
 
@@ -203,7 +203,7 @@ separate and retain their evidence privately:
 - **Complete reconstruction:** require clean-install, repeat-apply and reboot
   evidence for the required workflows plus verified application delivery and
   restored data/credentials. Worker release updates, monitoring lifecycle and
-  Player CLI enablement require their own verification; a server rebuild does
+  CLI profile enablement require their own verification; a server rebuild does
   not establish them automatically.
 
 Recovery remains constrained by the surviving state and credentials above.

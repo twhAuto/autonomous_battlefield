@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/capability"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/runner"
 )
 
 // Opt-in: sends only synthetic battle data using the saved Codex (ChatGPT) login,

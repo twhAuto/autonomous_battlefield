@@ -9,16 +9,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel"
 	sdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/capability"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/runner"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
 )
 
 func compactRecord() ai.DecisionRecord {

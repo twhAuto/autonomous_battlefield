@@ -13,11 +13,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/cliisolation"
-	aieval "github.com/twh09/autonomous_battlefield/backend/internal/ai/eval"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/cliisolation"
+	aieval "github.com/twhAuto/autonomous_battlefield/backend/internal/ai/eval"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/providers"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/runner"
 	"go.yaml.in/yaml/v3"
 )
 

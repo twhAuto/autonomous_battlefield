@@ -14,13 +14,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/cmd/internal/startup"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agent"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/cliisolation"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
-	"github.com/twh09/autonomous_battlefield/backend/internal/config"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
+	"github.com/twhAuto/autonomous_battlefield/backend/cmd/internal/startup"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/agent"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/cliisolation"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/profile"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/config"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/logging"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 func main() {

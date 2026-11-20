@@ -3,8 +3,8 @@ package service
 import (
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 )
 
 // Overrides are bounded independently of match length. Omission preserves the

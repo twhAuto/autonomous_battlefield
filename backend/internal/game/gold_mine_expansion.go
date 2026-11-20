@@ -6,7 +6,7 @@ package game
 import (
 	"sort"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 )
 
 // goldMineConstructionOrders gives each wanted kind one separated site: economy takes

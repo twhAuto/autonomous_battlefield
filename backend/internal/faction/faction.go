@@ -2,7 +2,7 @@
 // Profile validation lives in the service subpackage; persistence lives in repo.
 package faction
 
-import "github.com/twh09/autonomous_battlefield/backend/internal/game"
+import "github.com/twhAuto/autonomous_battlefield/backend/internal/game"
 
 // Profile limits count Unicode code points after trimming surrounding whitespace.
 // Keep these values aligned with frontend/src/features/factions/limits.ts.

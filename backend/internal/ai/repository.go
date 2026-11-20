@@ -8,7 +8,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 )
 
 var (

@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 )
 
 // contestedMatch is goldMineMatch under contested territory, with faction-a's castle

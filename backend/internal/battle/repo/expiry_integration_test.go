@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/battle/queue"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
 )
 
 func TestExpireBattlesAgainstPostgres(t *testing.T) {

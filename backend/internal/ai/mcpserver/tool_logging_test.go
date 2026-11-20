@@ -17,8 +17,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func TestSubmissionSchemaFailuresAreLoggedWithoutPayload(t *testing.T) {

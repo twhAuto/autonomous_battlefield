@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/redact"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/redact"
 	"go.opentelemetry.io/otel/trace"
 )
 

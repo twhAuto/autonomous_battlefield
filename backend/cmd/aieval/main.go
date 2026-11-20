@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/gamedata"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	aieval "github.com/twh09/autonomous_battlefield/backend/internal/ai/eval"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
+	"github.com/twhAuto/autonomous_battlefield/backend/gamedata"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	aieval "github.com/twhAuto/autonomous_battlefield/backend/internal/ai/eval"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/prompts"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/providers"
 )
 
 func main() {

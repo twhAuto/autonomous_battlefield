@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/battle/queue"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
 )
 
 // SaveTick stores state, events and any decision-window replay checkpoint, and renews

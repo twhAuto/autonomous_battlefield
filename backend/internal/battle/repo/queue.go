@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/battle/queue"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 // FailExhaustedBattles fails queued or lease-expired battles that have used every

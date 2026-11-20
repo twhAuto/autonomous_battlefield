@@ -10,11 +10,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/gamedata"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/gamedata"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
 
-	aieval "github.com/twh09/autonomous_battlefield/backend/internal/ai/eval"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
+	aieval "github.com/twhAuto/autonomous_battlefield/backend/internal/ai/eval"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/prompts"
 )
 
 func TestRunDeterministicWritesPassingReports(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 )
 
 // IsTrainingBuilding identifies the production kinds supported by authored content.
