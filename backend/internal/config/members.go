@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
 )
 
 // Members configures managed Player invitations, which sync a dedicated Cloudflare

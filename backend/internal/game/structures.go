@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 )
 
 // ConstructibleBuildings includes the legacy economy definition for a uniform API.

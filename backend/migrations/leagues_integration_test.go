@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 func insertBudgetBattle(t *testing.T, db *pgxpool.Pool, exempt bool, executions int) string {

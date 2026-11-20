@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/battle/queue"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
 )
 
 // concurrentRepository is a goroutine-safe queue. Battles named in hold block their

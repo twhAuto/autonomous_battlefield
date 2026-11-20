@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agent"
-	"github.com/twh09/autonomous_battlefield/backend/internal/config"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/agent"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/config"
 )
 
 func TestRunRejectsInvalidListenOrMCPAddress(t *testing.T) {

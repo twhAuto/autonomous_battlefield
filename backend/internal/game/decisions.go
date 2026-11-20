@@ -6,7 +6,7 @@ package game
 import (
 	"fmt"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 )
 
 // DecisionWindowDue reports whether the next transition is a production and

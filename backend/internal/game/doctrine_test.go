@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func doctrineMatch(t *testing.T) *Match {

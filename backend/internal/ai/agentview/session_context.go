@@ -3,7 +3,7 @@ package agentview
 import (
 	"encoding/json"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
 )
 
 // Omit exact identity copies already supplied in the prompt's faction identity. Never

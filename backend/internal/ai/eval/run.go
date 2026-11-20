@@ -13,13 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/briefing"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
-	airunner "github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/briefing"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/capability"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/prompts"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/providers"
+	airunner "github.com/twhAuto/autonomous_battlefield/backend/internal/ai/runner"
 )
 
 type Runner struct {

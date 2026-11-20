@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
-	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/decision"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/faction"
 )
 
 func TestIdentityTemplateEscapesProfileAndDefinesPrecedence(t *testing.T) {

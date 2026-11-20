@@ -10,7 +10,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 // insertLeague adds a running two-group league with entrants 0 and 1 in group A.

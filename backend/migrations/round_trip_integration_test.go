@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/pressly/goose/v3"
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 // roleRenameVersion renames the cluster-wide AI gateway role. Its Down section would

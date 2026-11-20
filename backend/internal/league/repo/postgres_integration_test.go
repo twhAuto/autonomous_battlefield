@@ -19,11 +19,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/league"
-	leagueservice "github.com/twh09/autonomous_battlefield/backend/internal/league/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	battlerepo "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/repo"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/league"
+	leagueservice "github.com/twhAuto/autonomous_battlefield/backend/internal/league/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 func privateDatabase(t *testing.T) *pgxpool.Pool {

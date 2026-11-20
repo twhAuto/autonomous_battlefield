@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/generation"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 func database(t *testing.T) *Postgres {

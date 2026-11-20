@@ -10,13 +10,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
-	"github.com/twh09/autonomous_battlefield/backend/internal/league"
-	leagueservice "github.com/twh09/autonomous_battlefield/backend/internal/league/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/apierror"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/httpapi"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/league"
+	leagueservice "github.com/twhAuto/autonomous_battlefield/backend/internal/league/service"
 )
 
 type Handler struct {

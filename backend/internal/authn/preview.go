@@ -3,7 +3,7 @@ package authn
 import (
 	"net/http"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/apierror"
 )
 
 // RolePreview applies real read permissions using the administrator's own identity.

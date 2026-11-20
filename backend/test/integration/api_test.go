@@ -27,15 +27,15 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/twh09/autonomous_battlefield/backend/gamedata"
-	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
-	"github.com/twh09/autonomous_battlefield/backend/internal/app"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/catalog"
-	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
-	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twhAuto/autonomous_battlefield/backend/gamedata"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/apierror"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/app"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/battle/catalog"
+	battlerepo "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/repo"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/battle/worker"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/httpapi"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 const (

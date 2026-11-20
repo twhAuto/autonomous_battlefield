@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
 )
 
 func TestBattleAllowanceAgainstPostgres(t *testing.T) {

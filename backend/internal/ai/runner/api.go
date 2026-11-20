@@ -12,10 +12,10 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/prompts"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/providers"
 )
 
 type APIRunner struct {

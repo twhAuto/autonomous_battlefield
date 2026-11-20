@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/apierror"
 )
 
 type Role string

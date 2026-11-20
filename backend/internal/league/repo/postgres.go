@@ -14,10 +14,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/league"
-	leagueservice "github.com/twh09/autonomous_battlefield/backend/internal/league/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/league"
+	leagueservice "github.com/twhAuto/autonomous_battlefield/backend/internal/league/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 // schedulerLock serializes league scheduling passes, cancellations and

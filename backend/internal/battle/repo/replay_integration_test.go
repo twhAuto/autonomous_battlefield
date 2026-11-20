@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/battle/queue"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
+	battle "github.com/twhAuto/autonomous_battlefield/backend/internal/game"
 )
 
 func TestReplayFramesAgainstPostgres(t *testing.T) {

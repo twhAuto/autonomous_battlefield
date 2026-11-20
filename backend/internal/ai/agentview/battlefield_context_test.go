@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
 )
 
 // Optional local measurement; never commit recorded battle context as a fixture.

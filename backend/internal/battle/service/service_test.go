@@ -8,14 +8,14 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/profile"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
-	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/faction"
+	factionservice "github.com/twhAuto/autonomous_battlefield/backend/internal/faction/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 )
 
 var serviceParticipantIDs = [2]string{

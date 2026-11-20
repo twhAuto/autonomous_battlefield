@@ -3,7 +3,7 @@
 
 package eval
 
-import "github.com/twh09/autonomous_battlefield/backend/internal/ai"
+import "github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
 
 type KnowledgeReport struct {
 	Digest         string             `json:"digest"`

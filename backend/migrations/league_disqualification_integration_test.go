@@ -9,7 +9,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 func TestLeagueDisqualificationMigration(t *testing.T) {

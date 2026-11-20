@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/league"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/league"
 )
 
 func runningHarness(t *testing.T, entrants int) *fixtureHarness {

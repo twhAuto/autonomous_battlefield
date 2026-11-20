@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
 )
 
 type fakeOwnerNames struct {

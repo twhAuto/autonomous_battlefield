@@ -10,7 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
 )
 
 // listBattlesSQL returns one history page. $1 status filter (empty for all), $2/$3

@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/apierror"
 )
 
 type routeFunc func(*http.ServeMux)

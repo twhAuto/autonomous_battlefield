@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
-	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/faction"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
 )
 
 const contextBattleID = "7f22e693-bacd-46bb-b942-64fa613cd388"

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
+	factionservice "github.com/twhAuto/autonomous_battlefield/backend/internal/faction/service"
 )
 
 func TestUpdateFactionRoute(t *testing.T) {

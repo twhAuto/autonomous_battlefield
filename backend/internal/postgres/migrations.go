@@ -11,7 +11,7 @@ import (
 
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/lock"
-	"github.com/twh09/autonomous_battlefield/backend/migrations"
+	"github.com/twhAuto/autonomous_battlefield/backend/migrations"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )

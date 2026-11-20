@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
-	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/league"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/faction"
+	factionservice "github.com/twhAuto/autonomous_battlefield/backend/internal/faction/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/league"
 )
 
 const leagueID = "9d7a1d2c-6c43-4cf8-9a6e-0c5a1f3b2e10"

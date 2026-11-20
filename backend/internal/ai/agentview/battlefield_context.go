@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
 )
 
 // Only the agent projection changes; persisted observations retain all fields.

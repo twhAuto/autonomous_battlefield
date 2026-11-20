@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
 )
 
 // SubmissionRepository is intentionally unable to mutate battle state. The AI

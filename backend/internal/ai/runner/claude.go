@@ -9,8 +9,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/prompts"
 )
 
 type claudeUsage struct {

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 	"go.yaml.in/yaml/v3"
 )
 

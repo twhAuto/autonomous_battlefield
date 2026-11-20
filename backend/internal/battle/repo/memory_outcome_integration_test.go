@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
 )
 
 func TestFactionMemoryOutcomesReadRecordedEvents(t *testing.T) {

@@ -10,9 +10,9 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/twh09/autonomous_battlefield/backend/gamedata"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twhAuto/autonomous_battlefield/backend/gamedata"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/agentview"
 )
 
 func currentMechanics(t *testing.T) string {

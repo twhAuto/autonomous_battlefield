@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/apierror"
 )
 
 func TestLoginSessionAndLogout(t *testing.T) {
