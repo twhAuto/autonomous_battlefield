@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
 )
 
 func TestFactionGroupingPreservesEveryEntity(t *testing.T) {

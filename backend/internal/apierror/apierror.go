@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/requestid"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/requestid"
 )
 
 // ErrorCode is a stable, machine-readable identifier for a failure class. Values are

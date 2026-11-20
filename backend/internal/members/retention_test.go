@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
 )
 
 // age moves a member's last change into the past, as if it happened that long ago.

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
 )
 
 func providerRequest() ai.ModelTurnRequest {

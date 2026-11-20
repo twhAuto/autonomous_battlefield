@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/config"
-	"github.com/twh09/autonomous_battlefield/backend/internal/members"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/config"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/members"
 )
 
 func TestMigrateCommandReportsAnUnreachableDatabase(t *testing.T) {

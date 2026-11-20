@@ -8,15 +8,15 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
-	factions "github.com/twh09/autonomous_battlefield/backend/internal/faction"
-	factionrepo "github.com/twh09/autonomous_battlefield/backend/internal/faction/repo"
-	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/prompts"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/battle/queue"
+	factions "github.com/twhAuto/autonomous_battlefield/backend/internal/faction"
+	factionrepo "github.com/twhAuto/autonomous_battlefield/backend/internal/faction/repo"
+	factionservice "github.com/twhAuto/autonomous_battlefield/backend/internal/faction/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func TestDoctrinePersistenceAndTickZeroAgainstPostgres(t *testing.T) {

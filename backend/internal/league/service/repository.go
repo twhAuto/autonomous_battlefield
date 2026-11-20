@@ -6,10 +6,10 @@ package service
 import (
 	"context"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
-	"github.com/twh09/autonomous_battlefield/backend/internal/league"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/faction"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/league"
 )
 
 // Repository stores leagues. Fixtures carry their current battle's outcome.

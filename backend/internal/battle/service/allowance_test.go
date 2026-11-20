@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
 )
 
 func TestBattleAllowanceFollowsTheCallersRole(t *testing.T) {

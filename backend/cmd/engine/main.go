@@ -11,14 +11,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/cmd/internal/startup"
-	"github.com/twh09/autonomous_battlefield/backend/cmd/internal/startup/database"
-	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
-	"github.com/twh09/autonomous_battlefield/backend/internal/config"
-	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
+	"github.com/twhAuto/autonomous_battlefield/backend/cmd/internal/startup"
+	"github.com/twhAuto/autonomous_battlefield/backend/cmd/internal/startup/database"
+	battlerepo "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/repo"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/battle/worker"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/config"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/httpapi"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/logging"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/metrics"
 )
 
 func main() {

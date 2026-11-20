@@ -13,10 +13,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/requestid"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/metrics"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/requestid"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 // clientRequestID limits caller-supplied correlation IDs to characters that are safe to

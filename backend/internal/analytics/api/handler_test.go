@@ -10,9 +10,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/analytics"
-	analyticsservice "github.com/twh09/autonomous_battlefield/backend/internal/analytics/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/analytics"
+	analyticsservice "github.com/twhAuto/autonomous_battlefield/backend/internal/analytics/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
 )
 
 type fakeRepo struct {

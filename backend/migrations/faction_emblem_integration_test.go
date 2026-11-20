@@ -7,9 +7,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
-	factionrepo "github.com/twh09/autonomous_battlefield/backend/internal/faction/repo"
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/faction"
+	factionrepo "github.com/twhAuto/autonomous_battlefield/backend/internal/faction/repo"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 func TestFactionEmblemMigrationAndPersistence(t *testing.T) {

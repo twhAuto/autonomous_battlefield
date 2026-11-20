@@ -2,7 +2,7 @@
 package config
 
 import (
-	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/generation"
 )
 
 func parseBackgroundGeneration(raw fileConfig) (generation.Config, error) {

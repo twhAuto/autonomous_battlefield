@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/twh09/autonomous_battlefield/backend/internal/analytics"
-	analyticsservice "github.com/twh09/autonomous_battlefield/backend/internal/analytics/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/analytics"
+	analyticsservice "github.com/twhAuto/autonomous_battlefield/backend/internal/analytics/service"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 const (

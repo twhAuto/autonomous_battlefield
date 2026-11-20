@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
 )
 
 // Models is the model-profile catalog the API server lists and the agent runs.

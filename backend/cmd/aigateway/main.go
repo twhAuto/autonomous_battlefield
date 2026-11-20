@@ -11,16 +11,16 @@ import (
 	"os"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/cmd/internal/startup"
-	"github.com/twh09/autonomous_battlefield/backend/cmd/internal/startup/database"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/mcpserver"
-	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
-	"github.com/twh09/autonomous_battlefield/backend/internal/config"
-	generationrepo "github.com/twh09/autonomous_battlefield/backend/internal/generation/repo"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twhAuto/autonomous_battlefield/backend/cmd/internal/startup"
+	"github.com/twhAuto/autonomous_battlefield/backend/cmd/internal/startup/database"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/mcpserver"
+	battlerepo "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/repo"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/config"
+	generationrepo "github.com/twhAuto/autonomous_battlefield/backend/internal/generation/repo"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/logging"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/tracing"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 func main() {

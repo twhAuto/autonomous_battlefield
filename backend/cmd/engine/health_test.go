@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
-	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/battle/queue"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/battle/worker"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/httpapi"
 )
 
 func TestEngineProbesFollowWorkerAndDatabaseLifecycle(t *testing.T) {

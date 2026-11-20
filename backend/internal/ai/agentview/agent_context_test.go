@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/briefing"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/briefing"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/decision"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game"
 )
 
 func compactFixture() (game.Ruleset, ai.DecisionContext) {

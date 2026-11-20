@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/battle/queue"
+	battleservice "github.com/twhAuto/autonomous_battlefield/backend/internal/battle/service"
+	battle "github.com/twhAuto/autonomous_battlefield/backend/internal/game"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/postgres"
 )
 
 func TestBattleRepositoryLifecycleAgainstPostgres(t *testing.T) {

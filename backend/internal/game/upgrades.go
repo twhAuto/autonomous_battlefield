@@ -7,7 +7,7 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func (m *Match) runUpgrades(id string, plan controller.PlanProposal) []Event {

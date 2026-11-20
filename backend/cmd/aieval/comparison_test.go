@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	aieval "github.com/twh09/autonomous_battlefield/backend/internal/ai/eval"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
+	aieval "github.com/twhAuto/autonomous_battlefield/backend/internal/ai/eval"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/ai/runner"
 )
 
 func TestComparisonContextDeliveryAndEffort(t *testing.T) {

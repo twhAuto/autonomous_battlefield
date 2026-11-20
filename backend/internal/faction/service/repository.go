@@ -6,7 +6,7 @@ package service
 import (
 	"context"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/faction"
 )
 
 // Repository describes the faction persistence required by the service.

@@ -11,7 +11,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
 )
 
 var httpMethods = []string{"get", "put", "post", "delete", "patch", "head", "options"}

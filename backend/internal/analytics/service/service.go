@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/analytics"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/analytics"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/authn"
 )
 
 var ErrInvalidQuery = errors.New("invalid analytics query")

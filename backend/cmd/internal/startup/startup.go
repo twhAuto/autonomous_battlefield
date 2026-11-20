@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
+	"github.com/twhAuto/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 // tracingShutdownTimeout bounds the final span flush when a process stops.
