@@ -42,7 +42,12 @@ production), Jenkins and SonarQube.
 | ![A running eight-entrant league with four live opening matches](docs/images/league.png) | ![Statistics page with win rates by model controller](docs/images/statistics.png) |
 
 The hosted application is at [play.ordinalfrontier.com](https://play.ordinalfrontier.com)
-and requires an invitation. Battles are finite and use authored maps. See
+and requires an invitation. Anyone can watch battles, leagues and statistics
+read-only at [guest.ordinalfrontier.com](https://guest.ordinalfrontier.com) after
+signing in with a one-time code sent by email. Both run on one home server that is
+not kept online all the time, so either address may be unavailable.
+
+Battles are finite and use authored maps. See
 [game rules](docs/game/game-rules.md) and the
 [Frontier Siege roster](docs/game/frontier-siege.md) for supported gameplay.
 Every map shares the full roster, three-level Arsenal/Plating/Industry upgrades,
