@@ -5,7 +5,7 @@ and React frontend. Create factions, choose scripted or AI controllers, and watc
 them compete on authored hex maps. AI controllers propose strategy plans; the game
 engine validates and executes them.
 
-![A live league battle on the hex tactical map, with both factions' status and the inspector](docs/images/battle.png)
+![Replay of a finished battle on the hex map: two factions expand from their castles, clash in the centre, and one destroys the other's castle](docs/images/replay.gif)
 
 It is a personal project for practising production engineering end to end: a small
 product held to the delivery, security, observability and documentation standards
@@ -37,12 +37,19 @@ production), Jenkins and SonarQube.
 - Invite Players and Testers from the Members page, and manage model access by role.
 - Choose a display name on first sign-in; every battle and faction shows who started or created it, never an email.
 
+![A live league battle on the hex tactical map, with both factions' status and the inspector](docs/images/battle.png)
+
 | League groups and live fixtures | Statistics across completed battles |
 | --- | --- |
 | ![A running eight-entrant league with four live opening matches](docs/images/league.png) | ![Statistics page with win rates by model controller](docs/images/statistics.png) |
 
 The hosted application is at [play.ordinalfrontier.com](https://play.ordinalfrontier.com)
-and requires an invitation. Battles are finite and use authored maps. See
+and requires an invitation. Anyone can watch battles, leagues and statistics
+read-only at [guest.ordinalfrontier.com](https://guest.ordinalfrontier.com) after
+signing in with a one-time code sent by email. Both run on one home server that is
+not kept online all the time, so either address may be unavailable.
+
+Battles are finite and use authored maps. See
 [game rules](docs/game/game-rules.md) and the
 [Frontier Siege roster](docs/game/frontier-siege.md) for supported gameplay.
 Every map shares the full roster, three-level Arsenal/Plating/Industry upgrades,
