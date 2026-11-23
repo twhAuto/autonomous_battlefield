@@ -5,7 +5,7 @@ and React frontend. Create factions, choose scripted or AI controllers, and watc
 them compete on authored hex maps. AI controllers propose strategy plans; the game
 engine validates and executes them.
 
-![A live league battle on the hex tactical map, with both factions' status and the inspector](docs/images/battle.png)
+![Replay of a finished battle on the hex map: two factions expand from their castles, clash in the centre, and one destroys the other's castle](docs/images/replay.gif)
 
 It is a personal project for practising production engineering end to end: a small
 product held to the delivery, security, observability and documentation standards
@@ -36,6 +36,8 @@ production), Jenkins and SonarQube.
 - Compare models, factions, units, upgrades and maps across completed battles on the Statistics page.
 - Invite Players and Testers from the Members page, and manage model access by role.
 - Choose a display name on first sign-in; every battle and faction shows who started or created it, never an email.
+
+![A live league battle on the hex tactical map, with both factions' status and the inspector](docs/images/battle.png)
 
 | League groups and live fixtures | Statistics across completed battles |
 | --- | --- |
